@@ -56,6 +56,12 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: verification.md round 3 note - upsert where A create B (tenant-guard)
 - last seen: 2026-09-21T18:21:04Z
 
+### L-008 - Reject a filter that names more than one tenant instead of trusting the first tenant key found
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `tenant-guard` · harmful: 0
+- features: tenant-guard
+- evidence: verification.md round 4 gap 1 - database.ts:78-84 (W3m) (tenant-guard)
+- last seen: 2026-09-21T18:47:40Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

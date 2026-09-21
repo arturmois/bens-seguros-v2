@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 8,
+  "next_id": 9,
   "lessons": [
     {
       "id": "L-001",
@@ -130,6 +130,24 @@
       ],
       "created": "2026-09-21T18:21:04Z",
       "last_seen": "2026-09-21T18:21:04Z"
+    },
+    {
+      "id": "L-008",
+      "key": "ac_gap::reject a filter that names more than one tenant instead of trusting the first tenant key found",
+      "text": "Reject a filter that names more than one tenant instead of trusting the first tenant key found",
+      "signal": "ac_gap",
+      "scope": "tenant-guard",
+      "status": "candidate",
+      "features": [
+        "tenant-guard"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "verification.md round 4 gap 1 - database.ts:78-84 (W3m) (tenant-guard)"
+      ],
+      "created": "2026-09-21T18:47:40Z",
+      "last_seen": "2026-09-21T18:47:40Z"
     }
   ]
 }
