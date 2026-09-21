@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 6,
+  "next_id": 8,
   "lessons": [
     {
       "id": "L-001",
@@ -94,6 +94,42 @@
       ],
       "created": "2026-09-21T17:45:55Z",
       "last_seen": "2026-09-21T17:45:55Z"
+    },
+    {
+      "id": "L-006",
+      "key": "ac_gap::a relation guard must cover every shorthand of a projection key such as count true not only its expanded form",
+      "text": "A relation guard must cover every shorthand of a projection key, such as _count: true, not only its expanded form",
+      "signal": "ac_gap",
+      "scope": "tenant-guard",
+      "status": "candidate",
+      "features": [
+        "tenant-guard"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "verification.md round 3 gap 1 - database.ts:168-176 (tenant-guard)"
+      ],
+      "created": "2026-09-21T18:21:04Z",
+      "last_seen": "2026-09-21T18:21:04Z"
+    },
+    {
+      "id": "L-007",
+      "key": "ac_gap::both sides of an upsert must name the same tenant",
+      "text": "Both sides of an upsert must name the same tenant",
+      "signal": "ac_gap",
+      "scope": "tenant-guard",
+      "status": "candidate",
+      "features": [
+        "tenant-guard"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "verification.md round 3 note - upsert where A create B (tenant-guard)"
+      ],
+      "created": "2026-09-21T18:21:04Z",
+      "last_seen": "2026-09-21T18:21:04Z"
     }
   ]
 }

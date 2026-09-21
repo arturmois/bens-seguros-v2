@@ -44,6 +44,18 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: verification.md round 2 - schema.prisma:34 composite FK (N1-N6) (tenant-guard)
 - last seen: 2026-09-21T17:45:55Z
 
+### L-006 - A relation guard must cover every shorthand of a projection key, such as _count: true, not only its expanded form
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `tenant-guard` · harmful: 0
+- features: tenant-guard
+- evidence: verification.md round 3 gap 1 - database.ts:168-176 (tenant-guard)
+- last seen: 2026-09-21T18:21:04Z
+
+### L-007 - Both sides of an upsert must name the same tenant
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `tenant-guard` · harmful: 0
+- features: tenant-guard
+- evidence: verification.md round 3 note - upsert where A create B (tenant-guard)
+- last seen: 2026-09-21T18:21:04Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.
