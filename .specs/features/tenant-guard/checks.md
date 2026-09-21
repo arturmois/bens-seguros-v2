@@ -3,7 +3,7 @@
 Profile: standard
 Plan: `.specs/features/tenant-guard/plan.md`
 
-27 checks in 4 slices (C20-C27 adicionados na rodada 2) · 4 one-way doors · 0 open
+33 checks in 5 slices (C20-C27 na rodada 2; C28-C33 na rodada 3, que substituem C11, C12, C14 e C25) · 4 one-way doors · 0 open
 
 Todas as provas rodam em `apps/server` com o Postgres do docker compose no ar. Abreviação usada
 abaixo: `VT <arquivo> -t "<nome>"` = `pnpm --filter @bens/server exec vitest run <arquivo> -t "<nome>"`.
@@ -44,16 +44,16 @@ Proof: `VT src/infrastructure/database.spec.ts -t "leaves models without organiz
 
 ### S2 - Referências aninhadas não cruzam tenants · 3 files · 17 KB · ~5k
 
-**C11** - `connect` e `set` sem `organizationId` para model tenant-scoped lançam `TenantGuardError` em cada uma das 6 posições aninhadas (`create`, `createMany.data`, `update`, `upsert.create`, `upsert.update`, `connectOrCreate.create`), e com `organizationId` não lançam (AC 9)
+**C11** - `connect` e `set` sem `organizationId` para model tenant-scoped lançam `TenantGuardError` em cada uma das 6 posições aninhadas (`create`, `createMany.data`, `update`, `upsert.create`, `upsert.update`, `connectOrCreate.create`), e com `organizationId` não lançam (AC 9) — **substituído na rodada 3 (aprovado pelo usuário): ver C28, C30**
 Proof: `VT src/infrastructure/database.spec.ts -t "checks connect and set at every nested position"`
 
-**C12** - `connectOrCreate` para model tenant-scoped sem `organizationId` no `where` lança `TenantGuardError` citando `connectOrCreate on` (AC 10)
+**C12** - `connectOrCreate` para model tenant-scoped sem `organizationId` no `where` lança `TenantGuardError` citando `connectOrCreate on` (AC 10) — **substituído na rodada 3 (aprovado pelo usuário): ver C28, C30**
 Proof: `VT src/infrastructure/database.spec.ts -t "checks connects inside nested creates, connectOrCreate and set"`
 
 **C13** - Pelo client `db`, `connect` sem tenant a uma linha de outro tenant lança `TenantGuardError` citando `data.parent.connect on Example without organizationId` (AC 9)
 Proof: `VT src/infrastructure/database.spec.ts -t "rejects a nested connect to a tenant-scoped row without organizationId"`
 
-**C14** - Um `connect` com o filtro de A apontando para uma linha de B falha com Prisma `P2025`, e o `parentId` da linha de A continua `null` (AC 11)
+**C14** - Um `connect` com o filtro de A apontando para uma linha de B falha com Prisma `P2025`, e o `parentId` da linha de A continua `null` (AC 11) — **substituído na rodada 3 (aprovado pelo usuário): ver C28, C30**
 Proof: `VT src/infrastructure/database.spec.ts -t "does not find a foreign row through a tenant-filtered connect"`
 
 **C15** - Criar em A uma linha com `parentId` de uma linha de B falha com Prisma `P2003`, e nenhuma linha com aquele `name` existe em A (AC 12)
@@ -91,7 +91,7 @@ Proof: `VT src/infrastructure/database.spec.ts -t "rejects moving rows into an o
 **C24** - Um client criado por `createDatabase` com uma `DATABASE_URL` inalcançável rejeita as 13 operações sem tenant com `TenantGuardError`, nunca com erro de conexão — o guard lança antes de qualquer SQL ser enviado (AC 1)
 Proof: `VT src/infrastructure/database.spec.ts -t "rejects before sending any SQL"`
 
-**C25** - `connectOrCreate` sem `organizationId` no `where` lança `TenantGuardError` em cada uma das 6 posições aninhadas de C11, e com `organizationId` não lança (AC 10)
+**C25** - `connectOrCreate` sem `organizationId` no `where` lança `TenantGuardError` em cada uma das 6 posições aninhadas de C11, e com `organizationId` não lança (AC 10) — **substituído na rodada 3 (aprovado pelo usuário): ver C28, C30**
 Proof: `VT src/infrastructure/database.spec.ts -t "checks connectOrCreate at every nested position"`
 
 **C26** - `findFirst` com filtro de A e `select: { children: { select: { name: true, organizationId: true } } }` retorna exatamente `[{ name: 'child-s', organizationId: A }]`; sem o filtro, lança `TenantGuardError` (AC 13)
@@ -99,6 +99,26 @@ Proof: `VT src/infrastructure/database.spec.ts -t "allows select of relations un
 
 **C27** - Uma rota que dispara o guard responde `500` com `{ error: { code: 'INTERNAL_ERROR', message: 'Erro interno do servidor.', details: { requestId } } }`, `requestId` igual ao header `x-request-id`, e o corpo não contém `organizationId` (Flow hop 4)
 Proof: `VT src/app.spec.ts -t "surfaces a tenant guard violation as a generic 500"`
+
+### S5 - Rodada 3: nada aninhado em relação tenant-scoped · 3 files · 24 KB · ~6k
+
+**C28** - No guard, cada uma das 11 operações aninhadas (`connect`, `connectOrCreate`, `create`, `createMany`, `set`, `update`, `updateMany`, `upsert`, `delete`, `deleteMany`, `disconnect`) numa relação tenant-scoped lança `TenantGuardError` nas 6 posições (`create.data`, `update.data`, `upsert.create`, `upsert.update` de um model tenant-scoped; `create.data` e `upsert.create` de um model sem tenant; e aninhada sob um nó sem tenant), inclusive quando traz o `organizationId` do próprio tenant (AC 20)
+Proof: `VT src/infrastructure/database.spec.ts -t "rejects every nested write into a tenant-scoped relation"`
+
+**C29** - Pelo client `db`, os 10 caminhos da rodada 2 (`parent.connect`, `parent.connectOrCreate`, `parent.create`, `parent.upsert`, `parent.update`, `children.connect`, `children.set`, `children.connectOrCreate` a partir de `update`, `children.connect` a partir de `create` e de `upsert.create`) lançam `TenantGuardError`, e depois deles as linhas de A e de B continuam com os mesmos ids em cada tenant (AC 7, AC 20)
+Proof: `VT src/infrastructure/database.spec.ts -t "rejects the round 2 cross-tenant paths and moves no row"`
+
+**C30** - `update` de uma linha de A com `parentId` de outra linha de A grava o vínculo; com `parentId` de uma linha de B falha com Prisma `P2003` e o `parentId` continua o anterior (AC 21)
+Proof: `VT src/infrastructure/database.spec.ts -t "links rows only through the scalar foreign key"`
+
+**C31** - No guard, a partir de um model sem tenant (e de um nó sem tenant dentro do `include` de um model tenant-scoped), `include`, `select`, `_count.select`, `where` (direto, `some`, dentro de `AND`/`OR`/`NOT`) e `orderBy` por relação tenant-scoped lançam `TenantGuardError`; `include` de relação tenant-scoped a partir de model tenant-scoped e `findMany` de `Organization` só com escalares não lançam (AC 13, AC 22)
+Proof: `VT src/infrastructure/database.spec.ts -t "rejects reading tenant-scoped relations through unguarded models"`
+
+**C32** - Pelo client `db`, `organization.findMany({ include: { examples: true } })`, `organization.findMany({ where: { examples: { some: { name } } } })` e `example.findFirst` de A com `include: { organization: { include: { examples: true } } }` lançam `TenantGuardError` (AC 22)
+Proof: `VT src/infrastructure/database.spec.ts -t "rejects cross-tenant reads through Organization on the client"`
+
+**C33** - O guard lança `TenantGuardError` citando `Unknown model` para um model fora do datamodel (AC 23)
+Proof: `VT src/infrastructure/database.spec.ts -t "fails closed on an unknown model"`
 
 ## Coverage
 
@@ -111,9 +131,9 @@ Proof: `VT src/app.spec.ts -t "surfaces a tenant guard violation as a generic 50
 | formatos de filtro aceitos (2) | string direta C3, C4 · `id_organizationId` C3, C4 | - |
 | operações desconhecidas (3) | `findRaw` C7 · `aggregateRaw` C7 · nome inventado C7 | - |
 | updates que mudam o tenant (4) | `update` C8 · `updateMany` C8, C9 · `updateManyAndReturn` C8 · `upsert.update` C8 | - |
-| posições aninhadas (6) | `create` C11 · `createMany.data` C11 · `update` C11 · `upsert.create` C11 · `upsert.update` C11 · `connectOrCreate.create` C11 | - |
-| operações de referência aninhada (3) | `connect` C11, C13 · `set` C11 · `connectOrCreate.where` C12 | - |
-| erros do banco em referência cruzada (2) | `P2025` C14 · `P2003` C15 | - |
+| posições aninhadas antigas (6) | `create` C28 · `createMany.data` C28 · `update` C28 · `upsert.create` C28 · `upsert.update` C28 · `connectOrCreate.create` C28 (C11 substituído) | - |
+| operações de referência aninhada (3) | `connect` C13, C28 · `set` C28 · `connectOrCreate.where` C28 (C11, C12 substituídos) | - |
+| erros do banco em referência cruzada (1) | `P2003` C15, C30 (`P2025` de C14 substituído: o `connect` agora nem chega ao banco) | - |
 | clients da aplicação (2) | `db` C2 · `tx` C17 | - |
 | classificação de models (2) | tenant-scoped (`Example`) C18 · não tenant-scoped (`Organization`) C10, C18 | - |
 | portas de falha fechada do metadado (2) | ausente C18 · formato inesperado C18 | - |
@@ -121,10 +141,16 @@ Proof: `VT src/app.spec.ts -t "surfaces a tenant guard violation as a generic 50
 | updates que mudam o tenant pela relação (5) | `update` C20, C21 · `updateMany` C20 · `updateManyAndReturn` C20 · `upsert.update` C20, C21 · `update` aninhado C20 | - |
 | operações na relação `organization` (6) | `connect` C20 · `connectOrCreate` C20 · `create` C20 · `update` C20 · `upsert` C20 · `disconnect` C20 | - |
 | escritas aninhadas a partir de model sem tenant (11) | `connect` C22, C23 · `connectOrCreate` C22 · `create` C22 · `createMany` C22 · `set` C22 · `update` C22 · `updateMany` C22 · `upsert` C22 · `delete` C22 · `deleteMany` C22 · `disconnect` C22 | - |
-| `connectOrCreate` por posição aninhada (6) | `create` C25 · `createMany.data` C25 · `update` C25 · `upsert.create` C25 · `upsert.update` C25 · `connectOrCreate.create` C25 | - |
+| `connectOrCreate` por posição aninhada (6) | `create` C28 · `createMany.data` C28 · `update` C28 · `upsert.create` C28 · `upsert.update` C28 · `connectOrCreate.create` C28 (C25 substituído) | - |
 | leitura de relações sob filtro (2) | `include` C16 · `select` C26 | - |
 | "nenhum SQL" do AC 1 (13) | C24, table-driven sobre as 13 | - |
 | superfície do erro (Flow hop 4) (1) | `500 INTERNAL_ERROR` + `requestId` C27 | - |
+| operações aninhadas proibidas (11) | C28, table-driven sobre as 11 × 6 posições | - |
+| posições da escrita aninhada (6) | `create.data` tenant C28 · `update.data` tenant C28 · `upsert.create` tenant C28 · `upsert.update` tenant C28 · `create.data`/`upsert.create` sem tenant C28 · sob nó sem tenant C28 | - |
+| caminhos da rodada 2 (10) | C29, table-driven sobre os 10 | - |
+| vínculo por FK escalar (2) | mesmo tenant C30 · outro tenant `P2003` C30, C15 | - |
+| leituras por nó sem tenant (6) | `include` C31, C32 · `select` C31 · `_count` C31 · `where` C31, C32 · `orderBy` C31 · via nó sem tenant a partir de raiz tenant C31, C32 | - |
+| model desconhecido (1) | C33 | - |
 | doors do plano (4) | extensão única C2, C17 · datamodel interno C18 · create só pelo escalar C5 · FK composta C15, C19 | - |
 
 - Os três assemblies usam o mesmo `createDependencies` → `createDatabase`; C2 prova o do harness e o

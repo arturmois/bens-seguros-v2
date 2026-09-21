@@ -32,6 +32,18 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: verification.md C2 / AC 1 (specs)
 - last seen: 2026-09-21T17:33:41Z
 
+### L-004 - A nested tenant filter must equal the query's own tenant, not merely be present
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `tenant-guard` · harmful: 0
+- features: tenant-guard
+- evidence: verification.md round 2 gap 1 - database.ts:76-85 (N1-N23) (tenant-guard)
+- last seen: 2026-09-21T17:45:55Z
+
+### L-005 - A composite foreign key that shares the tenant column turns every relation write into a possible tenant change
+- signal: `spec_deviation` · recurrence: 1 feature(s) · scope: `tenant-guard` · harmful: 0
+- features: tenant-guard
+- evidence: verification.md round 2 - schema.prisma:34 composite FK (N1-N6) (tenant-guard)
+- last seen: 2026-09-21T17:45:55Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 4,
+  "next_id": 6,
   "lessons": [
     {
       "id": "L-001",
@@ -58,6 +58,42 @@
       ],
       "created": "2026-09-21T17:33:41Z",
       "last_seen": "2026-09-21T17:33:41Z"
+    },
+    {
+      "id": "L-004",
+      "key": "ac_gap::a nested tenant filter must equal the query s own tenant not merely be present",
+      "text": "A nested tenant filter must equal the query's own tenant, not merely be present",
+      "signal": "ac_gap",
+      "scope": "tenant-guard",
+      "status": "candidate",
+      "features": [
+        "tenant-guard"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "verification.md round 2 gap 1 - database.ts:76-85 (N1-N23) (tenant-guard)"
+      ],
+      "created": "2026-09-21T17:45:55Z",
+      "last_seen": "2026-09-21T17:45:55Z"
+    },
+    {
+      "id": "L-005",
+      "key": "spec_deviation::a composite foreign key that shares the tenant column turns every relation write into a possible tenant change",
+      "text": "A composite foreign key that shares the tenant column turns every relation write into a possible tenant change",
+      "signal": "spec_deviation",
+      "scope": "tenant-guard",
+      "status": "candidate",
+      "features": [
+        "tenant-guard"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "verification.md round 2 - schema.prisma:34 composite FK (N1-N6) (tenant-guard)"
+      ],
+      "created": "2026-09-21T17:45:55Z",
+      "last_seen": "2026-09-21T17:45:55Z"
     }
   ]
 }

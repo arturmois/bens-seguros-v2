@@ -21,7 +21,7 @@ Reusa a extensão de query do próprio Prisma (`$extends`) e o error handler exi
 mapeado → 500 com `requestId`); não há segundo client nem wrapper de repository.
 
 1. repository/use case chama `db.<model>.<op>(args)` ou `tx.<model>.<op>(args)` -> `infrastructure/database.ts` (exists) - a extensão `tenant-guard` recebe `model`, `operation`, `args`
-2. `createTenantGuard` (exists) - classifica o model pelo datamodel de runtime (door 2); se tenant-scoped, valida `where`, `data` e as escritas aninhadas (sem escrever a relação com `Organization`, door 5); se não, só recusa escritas aninhadas em relações tenant-scoped
+2. `createTenantGuard` (exists) - classifica o model pelo datamodel de runtime (door 2); se tenant-scoped, valida `where`, `data` e as escritas aninhadas (sem escrever a relação com `Organization`, door 5); nenhum `data` escreve aninhado em relação tenant-scoped, e nenhum nó sem `organizationId` lê, filtra ou ordena por relação tenant-scoped (door 6)
 3. se válido: a query segue inalterada -> PostgreSQL via `@prisma/adapter-pg` (exists); se inválido: lança `TenantGuardError` antes do SQL
 4. out: o resultado da query, ou `TenantGuardError` -> `shared/errors.ts` (exists) -> `500 INTERNAL_ERROR` com `requestId`, logado como `unhandled error`
 
@@ -58,6 +58,7 @@ resposta 500 do error handler, que já existe e não muda.
 | --- | --- | --- |
 | guard como extensão do client único | `client.$extends({ name: 'tenant-guard', query: { $allModels: { $allOperations } } })`; `Database = ReturnType<typeof createDatabase>` é o único tipo de client exportado | RLS (ADR-004 rejeitou: role separada, bypass para jobs); wrapper por repository - depende de cada repository lembrar, o mesmo vetor que o guard fecha |
 | classificação pelo datamodel interno do Prisma | `Reflect.get(client, '_runtimeDataModel')` validado com Zod; tenant-scoped = tem campo `organizationId` | lista manual de models - falha aberta quando alguém esquece um model novo; `@prisma/internals getDMMF` - dependência pesada só para metadados |
+| vínculo entre linhas tenant-scoped só por FK escalar (rodada 3) | `data: { parentId }` na escrita da própria linha; nenhuma operação aninhada em relação tenant-scoped | escrita aninhada com `organizationId` igual ao tenant da query - a FK composta compartilha a coluna e a regra falhou em duas rodadas; perde "pai + filhos numa chamada", que vira `createMany` na mesma transação |
 | escrita de create só pelo escalar | `data: { organizationId: ctx.organizationId, … }` | aceitar `organization: { connect }` - duas formas para validar, e o `connect` de Organization não é tenant-filtrável |
 | raiz do tenant fixa (rodada 2) | `const TENANT_ROOT = 'Organization'` em `database.ts`; relação com ela nunca é escrita pelo `data` de um model tenant-scoped | derivar a raiz do datamodel (o alvo comum das relações `organizationId`) - o metadado de runtime não expõe os `fields` da relação, e um nome fixo é revisável num diff |
 | FK composta entre models tenant-scoped | `@relation(fields: [xId, organizationId], references: [id, organizationId])` + `@@unique([id, organizationId])` no alvo | FK simples por `id` - permite um filho de outra org ligado a um pai desta org, e o `include` o traria; FK composta só nas relações críticas (texto anterior do ADR-004) - depende de alguém julgar o que é crítico |
@@ -81,7 +82,7 @@ Uma query sem `organizationId` falha antes do SQL; com ele, roda inalterada.
 7. IF `update`, `updateMany`, `updateManyAndReturn` ou `upsert.update` define `organizationId` em `data` THEN o guard SHALL lançar `TenantGuardError` (uma linha nunca muda de tenant) — **novo: o código atual não garante**
 8. The guard SHALL deixar passar sem validação de `where` as operações em models sem `organizationId` (hoje `Organization`) — **emendado na rodada 2 (aprovado pelo usuário): as escritas aninhadas desses models seguem o critério 19**
 18. IF o `data` de um model tenant-scoped, em qualquer operação e profundidade, escreve na relação com o model raiz do tenant (`Organization`: `connect`, `connectOrCreate`, `create`, `update`, `upsert`, `disconnect`) THEN o guard SHALL lançar `TenantGuardError` — **rodada 2: o AC 7 cobria só o escalar**
-19. IF o `data` de um model sem `organizationId` escreve, por qualquer operação aninhada, numa relação com model tenant-scoped THEN o guard SHALL lançar `TenantGuardError` — os filhos são gravados pelo próprio model — **rodada 2 (aprovado pelo usuário)**
+19. IF o `data` de um model sem `organizationId` escreve, por qualquer operação aninhada, numa relação com model tenant-scoped THEN o guard SHALL lançar `TenantGuardError` — os filhos são gravados pelo próprio model — **rodada 2 (aprovado pelo usuário)** — **absorvido pelo critério 20 na rodada 3**
 
 **Independent test:** `db.example.findMany({ where: { name } })` lança; com `organizationId` retorna só as linhas do tenant.
 
@@ -95,13 +96,22 @@ Um id vindo do input não liga uma linha a outra corretora.
 
 **Acceptance Criteria**
 
-9. IF `data`, em qualquer profundidade (`create`, `createMany.data`, `update`, `upsert.create`, `upsert.update`, `connectOrCreate.create`), referencia um model tenant-scoped por `connect` ou `set` sem `organizationId` string THEN o guard SHALL lançar `TenantGuardError`
-10. IF um `connectOrCreate` para model tenant-scoped não traz `organizationId` string no seu `where` THEN o guard SHALL lançar `TenantGuardError`
-11. WHEN um `connect` com filtro de tenant aponta para uma linha de outro tenant THEN a operação SHALL falhar com Prisma `P2025` e nenhuma linha SHALL mudar
+9. IF `data`, em qualquer profundidade (`create`, `createMany.data`, `update`, `upsert.create`, `upsert.update`, `connectOrCreate.create`), referencia um model tenant-scoped por `connect` ou `set` sem `organizationId` string THEN o guard SHALL lançar `TenantGuardError` — **substituído pelo critério 20 na rodada 3 (aprovado pelo usuário)**
+10. IF um `connectOrCreate` para model tenant-scoped não traz `organizationId` string no seu `where` THEN o guard SHALL lançar `TenantGuardError` — **substituído pelo critério 20 na rodada 3 (aprovado pelo usuário)**
+11. WHEN um `connect` com filtro de tenant aponta para uma linha de outro tenant THEN a operação SHALL falhar com Prisma `P2025` e nenhuma linha SHALL mudar — **substituído pelo critério 20 na rodada 3 (aprovado pelo usuário)**
 12. IF uma linha tenant-scoped referencia, pela FK de uma relação com outro model tenant-scoped, uma linha de outro tenant THEN o banco SHALL rejeitar a escrita com Prisma `P2003`
 13. WHEN a raiz da leitura tem filtro de tenant THEN `include` e `select` de relações SHALL ser permitidos e retornar só linhas relacionadas do mesmo tenant
 
-**Independent test:** `update` com `parent: { connect: { id: <id de outra org> } }` lança; com `organizationId` retorna `P2025`.
+20. IF o `data` de qualquer model, em qualquer posição e profundidade, contém uma escrita aninhada (`connect`, `connectOrCreate`, `create`, `createMany`, `set`, `update`, `updateMany`, `upsert`, `delete`, `deleteMany`, `disconnect`) numa relação cujo alvo é tenant-scoped THEN o guard SHALL lançar `TenantGuardError`, mesmo que a escrita traga o `organizationId` do próprio tenant — **rodada 3 (aprovado pelo usuário)**
+21. WHEN uma linha tenant-scoped se liga a outra, ela SHALL fazê-lo pela FK escalar (ex.: `parentId`) na sua própria escrita; IF a linha alvo é de outro tenant THEN o banco SHALL rejeitar com Prisma `P2003` e a linha SHALL continuar como estava — **rodada 3**
+22. IF uma leitura parte de um model sem `organizationId`, ou passa por um nó sem `organizationId` dentro de um `include`/`select`, e esse nó inclui, seleciona, conta (`_count`), filtra (`where`, inclusive dentro de `AND`/`OR`/`NOT`) ou ordena (`orderBy`) por uma relação tenant-scoped THEN o guard SHALL lançar `TenantGuardError` — **rodada 3 (aprovado pelo usuário)**
+23. IF a operação cita um model que o guard não conhece THEN o guard SHALL lançar `TenantGuardError` (falha fechada) — **rodada 3**
+
+> Rodada 3: a rodada 2 mostrou dez caminhos entre tenants pela relação pai/filho. A FK composta
+> compartilha a coluna `organizationId`, então toda escrita pela relação pode reescrever o tenant.
+> Os critérios 9–11 e 19 eram frágeis por construção; o critério 20 os substitui por uma proibição.
+
+**Independent test:** `update` com `parent: { connect: { id, organizationId: <o próprio tenant> } }` lança; `parentId` de outra org dá `P2003`.
 
 ### S3: O guard cobre todo client e falha fechado (P1)
 
@@ -135,6 +145,8 @@ Não existe caminho do código de aplicação para um client sem guard.
 | leitura do metadado interno `_runtimeDataModel` | aceito, com validação Zod e versão do Prisma fixada (7.10.x) | alternativa pública não existe no Prisma 7; falha fechada no boot se sumir | n |
 
 **Open questions:** none - all resolved or logged above.
+
+Resolvidas com o usuário em 2026-09-21 (rodada 3): nenhuma escrita aninhada em relação tenant-scoped (critério 20, vínculo por FK escalar, critério 21); nenhum include/select/filtro/ordenação de relação tenant-scoped a partir de nó sem `organizationId` (critério 22).
 
 Resolvidas com o usuário em 2026-09-21 (rodada 2): escritas aninhadas a partir de models sem `organizationId` são proibidas (critérios 8 e 19) e o "nenhum SQL" do critério 1 é provado, não reescrito.
 
