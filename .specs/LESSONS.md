@@ -71,8 +71,8 @@ Seen once or not yet corroborated. Tracked, not trusted.
 ### L-010 - Give each clause of a schema checker its own synthetic failing case
 - signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `tests` · harmful: 0
 - features: tenant-rls
-- evidence: verification.md tenant-rls round 1 - test/schema.spec.ts:17 (tests)
-- last seen: 2026-09-21T22:07:49Z
+- evidence: verification.md tenant-rls round 1 - test/schema.spec.ts:17 (tests) (+1 more)
+- last seen: 2026-09-21T22:18:51Z
 
 ## Quarantined (failed when applied - ignore)
 

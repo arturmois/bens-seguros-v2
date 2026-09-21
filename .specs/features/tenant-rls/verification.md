@@ -2,171 +2,219 @@
 
 **Verdict**: FAIL
 **Profile**: standard
-**Diff range**: 50b19a0..a51de9b
-**Round**: 1 - full
+**Diff range**: 50b19a0..562e200
+**Round**: 2 - scoped
 **Verifier**: independent sub-agent (author != verifier)
 
-All 16 named proofs exist, ran individually at `a51de9b` and pass, and each check has a located
-assertion. The verdict is FAIL for four reasons, ranked:
+Round 2 scope: the fix diff `a51de9b..562e200` (`d5e05d0` round 1 report, `b514955` plan/checks/ADR/
+architecture/CLAUDE.md, `562e200` migration + schema + tests), plus every round 1 verdict that was not
+PASS. All 21 named proofs exist and ran individually at `562e200`, and all of them pass. Each check has a
+located assertion. The gate is green (79 passed).
 
-1. **RLS bypass through `Organization` referential actions (not covered by Out of scope).**
-   `Example.organizationId -> Organization.id` is `ON DELETE CASCADE ON UPDATE CASCADE`
-   (`prisma/migrations/20260921170202_init/migration.sql`, FK `Example_organizationId_fkey`).
-   PostgreSQL runs referential actions as the table owner with RLS not forced, and `bens_app` has
-   `DELETE`/`UPDATE` on `Organization`, which has no RLS. From inside `withTenant(A)`,
-   `tx.organization.delete({ where: { id: B } })` removed **every row of B in `Example`** (the count
-   of B's rows inside the transaction went 2 -> 0). `tx.organization.update({ where: { id: B }, data: { id: <new uuid> } })`
-   moved all of B's rows to a new tenant id, so B's count also went 2 -> 0. The same happens outside `withTenant`, in psql as `bens_app`
-   (`DELETE FROM "Organization" WHERE id = B` -> `b_rows_after = 0`). The plan's Out of scope
-   excuses "RLS em `Organization`" (onboarding, "minhas organizações"). It does not excuse writes
-   into a tenant-scoped table. S1 says "nenhuma query ... grava linha de B, qualquer que seja a
-   forma", and ADR-004 "Why" says "O RLS vale para qualquer forma de query". Needs a fix or an
-   explicit scope decision from the user. Examples of a fix: `ON DELETE/UPDATE RESTRICT` on that FK,
-   or no `UPDATE(id)`/`DELETE` on `Organization` for `bens_app`.
-2. **Surviving mutant in the schema checker (AC 11).** Removing `c.relforcerowsecurity AND`
-   from `findUnprotectedTenantTables` (`test/schema.spec.ts:17`) leaves all 5 schema proofs green. The
-   synthetic tables in C12 (`Open`, `EnabledOnly`) both lack the policy, so C12 only exercises the
-   policy clause. A future migration with `ENABLE` + policy but no `FORCE` would pass the checker.
-   Removing `c.relrowsecurity` would survive for the same reason. That one was not injected (cap
-   of 5), but it follows from the same synthetic inputs.
-3. **Unmet Test policy row: the boot role check has no own-layer proof.** The row requires one case per row of the decision
-   table. `assertRowSecurityApplies` (`src/infrastructure/database.ts:49`) decides on
-   `rolsuper` and `rolbypassrls`. C7 uses `bens`, which is both, and C8 uses `bens_app`, which is
-   neither. No case covers a `BYPASSRLS`-only role, so dropping `role.bypassRls` from the condition
-   would pass every proof. This was not injected (cap); it holds by construction of the inputs.
-4. **Coverage members named by the plan with no proof.** AC 2 names `update` of the scalar, but
-   only `updateMany` is proven. AC 3 names `set`/`connectOrCreate` "a partir de ... `Organization`",
-   but only `examples.connect` is proven from `Organization`. The adversarial pass showed these are
-   blocked, but no test proves them.
+Every round 1 gap is closed. The `Organization` cascade is now refused inside and outside `withTenant`.
+The C12 mutant from round 1 is now killed. The boot check has an own-layer case for a `BYPASSRLS`-only
+role. The plan-named members of AC 2 and AC 3 have proofs. The ADR and architecture now state the
+primary-key exception, which the user ratified as criterion 18.
+
+The verdict is still **FAIL** for one reason, which is in the new round 2 surface:
+
+1. **Surviving mutant, and unproven members, in the FK-action checker (C18 / AC 16).** AC 16 names
+   three actions (`CASCADE`, `SET NULL`, `SET DEFAULT`) for two events (`ON DELETE`, `ON UPDATE`).
+   The C18 synthetic schema has only `DeleteCascade`, `UpdateCascade` and `SetNull` (delete). Three
+   members have no case: `ON DELETE SET DEFAULT`, `ON UPDATE SET NULL` and `ON UPDATE SET DEFAULT`.
+   The checker at HEAD is an allowlist (`NOT IN ('r', 'a')`), so it catches all six today. But when
+   the checker was rewritten as a plausible denylist (`IN ('c', 'n')`), every schema proof stayed green
+   (F2 survived). `SET DEFAULT` is the most dangerous of the six. I tested it in a throwaway schema,
+   with the Example FK changed to `ON DELETE SET DEFAULT`, as `bens_app` inside `withTenant(A)`.
+   `DELETE FROM "Organization" WHERE id = B` moved both of B's rows into A. The column default is
+   `current_setting('app.tenant_id')`, and the action runs as the owner, so RLS does not apply. A
+   regression of the checker to a denylist would let that FK through.
+
+Report-only findings. They do not fail any row, but the user should know them:
+
+- **Pool poisoning by a non-literal `app.tenant_id`.** Criterion 17 is a text search, as the plan
+  wrote it ("cita `app.tenant_id`"). So C19 meets the plan as approved. It does not close the runtime
+  risk from round 1. On the real DB, as `bens_app`, `SELECT set_config('app.' || 'tenant_id', B, false)`
+  worked. So did `SET app.tenant_id = B`. After either one, a query outside `withTenant` on that pooled
+  session read B's 2 rows. A string built at runtime, or a key passed in as a parameter, would not
+  match `includes('app.tenant_id')`. Is that acceptable? Per the plan, yes: AC 17 asks for a textual
+  guard against application code citing the setting, not a runtime defence. As a residual risk, it is
+  a gap: nothing resets `app.tenant_id` when a connection is checked out, so deliberate or obfuscated
+  code can still poison the pool. Code review is the only control. One option is a `RESET app.tenant_id`
+  or `DISCARD ALL` on checkout, which would make this fail closed.
+- **C20 is vacuous on the real tree.** No module exports a schema whose name ends in `Input`. The only
+  input schema is `commissionPreviewQuery` (`src/modules/examples/example.schema.ts`), named `*Query`.
+  So `offenders.toEqual([])` passes on zero members, and only the synthetic half discriminates (F4
+  killed). The door 5 primary-key exception rests on a naming convention. A future `createXBody` or
+  `createXQuery` with `id` would not be caught, and neither would a `z.looseObject`, a
+  `.transform`/pipe, or a union. That matches AC 18 as the user approved it. It is a precision gap on
+  the premise.
+- **C2 and C3 claim text drift.** C2's text says "das 5 escritas" but the test has 6 (`update scalar`
+  added). C3's text says "das 5 referências ... `P2025`, `P2018`, `P2003` ou `P2039`" but the test has
+  7. The test also widened the accepted codes to include `P2014` for every failing member
+  (`database.spec.ts:200`). So `parent.connect` would now pass on `P2014` too. Plan AC 3 still lists
+  only four codes, and still says `set` "conclui". But `organization examples.set` fails with `P2014`.
+  The Handoff in `checks.md` records the `P2014` decision. The security invariant (B identical, A's
+  existing rows unchanged) is asserted independently at `:205` and `:210`.
+- **Existence oracle from RESTRICT (Organization, out of scope).** A `DELETE` or id change of
+  `Organization` B returns `P2003` when B has tenant rows, and succeeds when B has none. The PG detail
+  says `Key (id)=(B) is referenced from table "Example"`. That reveals whether another tenant has data.
+  It stays inside the plan's Out of scope ("RLS em `Organization`", Phase 4). The error reaches HTTP as
+  a generic 500.
 
 ## Binding sources
 
+Verified at `562e200` for ADR-004 and architecture §7 (both touched by `b514955`). Architecture §5 is
+carried from `a51de9b` (not touched).
+
 | Source | Opened | Contradiction | Uncovered |
 | --- | --- | --- | --- |
-| `docs/decisions/ADR-004-tenant-isolation.md` (revised) | yes - read in full | Item 6 "todo índice único de tabela tenant-scoped inclui `organizationId`" vs C13/Landing door 5 as amended mid-build ("a chave primária fica de fora"). The PK `Example_pkey` is a global unique index. The oracle is real for anyone holding a B id: `create({ data: { id: <B id> } })` in A -> `P2002 Example_pkey`, and raw `INSERT ... ON CONFLICT (id) DO NOTHING` -> 0 rows. The ADR text must be ratified or amended | "Why": RLS "vale para qualquer forma de query". The `Organization` cascade (gap 1) writes B's rows, and no check covers referential actions |
-| `docs/architecture.md` §7 "Isolamento de tenant" | yes | item 5 repeats "todo índice único"; same PK narrowing as above | item 3 "Registro de outro tenant retorna 404 porque o banco não o devolve" holds for reads; the cascade in gap 1 is uncovered |
-| `docs/architecture.md` §5 "Jobs" | yes | none - jobs "rodam ... dentro de `db.withTenant` ... (sem bypass)"; pg-boss connects as `bens_app` (C8) | - |
-| `.specs/features/tenant-guard/` (context only) | yes - verification.md shapes replayed below | n/a | n/a |
+| `docs/decisions/ADR-004-tenant-isolation.md` (items 6-8 revised in round 2) - verified at `562e200` | yes - read in full | none. Item 6 now says "exceto a chave primária ... nenhum schema de entrada (`*Input`) aceita `id`, e um teste garante isso", which matches C13, door 5 and C20. Item 7 (RESTRICT, and only `database.ts` touches `app.tenant_id`) matches C17-C19. Item 8 matches C11-C14 and C18-C20 | - (the missing `SET DEFAULT` proof for item 8's "FK com cascade" is listed under Coverage) |
+| `docs/architecture.md` §7 item 5 - verified at `562e200` | yes | none. It now carries the PK exception and "FK para `Organization` é `RESTRICT`" | - |
+| `docs/architecture.md` §5 "Jobs" - carried from `a51de9b` | yes (round 1) | none | - |
+| `CLAUDE.md` "Tenant" rules - verified at `562e200` | yes | none. It now says `onDelete: Restrict, onUpdate: Restrict` and that "schema de entrada (`<x>Input`) nunca aceita `id`". The one existing input schema is named `*Query`, which the rule's suffix does not reach (report-only, above) | - |
 
-Mid-build changes to the approved artifacts (the Handoff names C2, C3, C13 and door 1). It does not
-name that **plan.md AC 2, AC 3 and Landing door 5 were also rewritten in `a51de9b`**.
+Round 1 items re-judged:
 
-- **C2 / AC 2 - fixes a wrong expectation; does not weaken security.** Prisma rejects a scalar
-  `organizationId` in a nested `children.create`/`createMany` at validation ("Unknown argument
-  `organizationId`"). With `organization.connect B`, the child inherits A from the parent through
-  the composite FK. The security intent, "no row of B written", is still asserted as an invariant
-  (`database.spec.ts:126`, `:127-129`, `:130`). What is lost is only the error signal for that one
-  shape: the illegal intent now succeeds silently in A.
-- **C3 / AC 3 - fixes a wrong expectation; does not weaken security.** `set`/`connectOrCreate`
-  against an invisible row cannot touch B, and the test asserts B identical and A's pre-existing
-  rows unchanged (`:176`, `:181`). Confirmed adversarially from `Organization` too:
-  `examples.set [B]` -> `P2014`, `examples.connectOrCreate` -> new row in A, B unchanged.
-- **C13 / door 5 - a narrowing, disclosed, but it contradicts the ADR wording.** The original door 5
-  literal (`@@unique`/`@unique`) already excluded `@id` in Prisma terms, so the check was aligned to
-  the plan. But ADR-004 item 6 and architecture §7.5 say "todo índice único", and the PK existence
-  oracle is real. Its safety depends on an unenforced convention ("id nunca vem do input"): Prisma
-  accepts `id` in `create`, and no lint or test forbids it. Needs user ratification.
+- **ADR item 6 / C13 primary-key wording:** resolved. The ADR, architecture §7.5 and plan door 5 now
+  state the exception and tie it to criterion 18, which the user approved (plan AC 18 says
+  "aprovado pelo usuário").
+- **Unlisted plan edits:** resolved. The `checks.md` Handoff now says "round 1 edits to plan AC 2,
+  AC 3 and door 5 are the C2/C3/C13 corrections listed above". The round 2 plan edits
+  (`git diff d5e05d0..b514955 -- plan.md`) are exactly S4 (AC 15-19), door 7 and the door 5
+  parenthesis, and all of them are listed. Remaining drift: the `P2014` code is in the Handoff but not
+  in plan AC 3 or in C3's text (report-only, above).
 
 ## Checks
 
-Proof command (one invocation, verbose): `cd apps/server && pnpm exec vitest run src/infrastructure/database.spec.ts src/infrastructure/queue.spec.ts src/app.spec.ts test/schema.spec.ts test/architecture.spec.ts test/boot.spec.ts --reporter=verbose`. Result: 6 files, 37 tests passed, exit 0, every named test listed with a check mark.
+Proof command (one invocation, verbose, at `562e200`):
+`cd apps/server && pnpm exec vitest run src/infrastructure/database.spec.ts src/infrastructure/queue.spec.ts src/app.spec.ts test/schema.spec.ts test/architecture.spec.ts test/boot.spec.ts --reporter=verbose`.
+Result: 6 files, **42 passed**, exit 0, and every named test is listed with `✓`. All citations below
+were refreshed at `562e200`. `database.spec.ts`, `schema.spec.ts` and `architecture.spec.ts` changed
+in the fix, so their lines moved. `queue.spec.ts`, `app.spec.ts` and `boot.spec.ts` did not change, and
+their lines match round 1.
 
 | Check | Claim | Proof run | Evidence | Result |
 | --- | --- | --- | --- | --- |
-| C1 | 8 read shapes in A return only A | `✓ database.spec.ts > row level security > reads only the tenant rows in every read shape` (rg: `src/infrastructure/database.spec.ts:46`) | `src/infrastructure/database.spec.ts:66` - `expect(reads.findMany.map((row) => row.organizationId)).not.toContain(tenantB.organizationId)`; `:68` `expect(reads.findUnique).toBeNull()`; `:69-70` count/aggregate `toBe(0)`; `:71` groupBy `toEqual([tenantA.organizationId])`; `:75` `_count.examples` `toBe(0)`; `:76` raw `not.toContain(rowB.id)` | PASS |
-| C2 | 4 writes into B -> `P2039`; `children.create` lands in A; B unchanged | `✓ ... rejects every write into another tenant` (rg `:80`) | `src/infrastructure/database.spec.ts:123` - `expect(prismaCode(error), write).toBe('P2039')`; `:122` `expect(error, write).toBeUndefined()` for `children.create`; `:126` `expect(afterB).toEqual(before[1])`; `:130` exactly 1 new A row | PASS |
-| C3 | 3 references fail with P2025/P2018/P2003/P2039; `set`/`connectOrCreate` absorbed; B and A's existing rows unchanged | `✓ ... cannot link or move another tenant's row` (rg `:133`) | `src/infrastructure/database.spec.ts:173` - `expect(['P2025', 'P2018', 'P2003', 'P2039'], reference).toContain(prismaCode(error))`; `:176` `expect(afterB).toEqual(before[1])`; `:181` existing A rows `toEqual(before[0])` | PASS |
-| C4 | findMany/count/create outside `withTenant` fail; count unchanged | `✓ ... fails outside withTenant` (rg `:184`) | `src/infrastructure/database.spec.ts:188-192` - `await expect(deps.db.example.findMany()).rejects.toThrow()` (same for count, create); `:194` `expect(await snapshot(tenantA)).toEqual(before)`. Weak: `toThrow()` accepts any error, not specifically a DB error, though the adversarial pass saw `42704`/`22P02` from the DB, including on an empty table | PASS |
-| C5 | `create` without `organizationId` gets A | `✓ ... fills organizationId from the tenant` (rg `:197`) | `src/infrastructure/database.spec.ts:200` - `expect(created.organizationId).toBe(tenantA.organizationId)` | PASS |
-| C6 | scalar `parentId` within A links; B -> `P2003`, unchanged | `✓ ... links rows only within the tenant` (rg `:203`) | `src/infrastructure/database.spec.ts:211` - `expect(linked.parentId).toBe(parentA.id)`; `:218` `expect(prismaCode(error)).toBe('P2003')`; `:222` `expect(reloaded?.parentId).toBe(parentA.id)` | PASS |
-| C7 | boot as superuser exits 1 naming the role | `✓ boot.spec.ts > server boot > refuses to boot with a role that bypasses row security` (rg `test/boot.spec.ts:23`) | `test/boot.spec.ts:41-44` - `await expect(boot).rejects.toMatchObject({ code: 1, stderr: expect.stringContaining('Database role "bens" bypasses row level security') })` | PASS |
-| C8 | client is `bens_app` (no super/bypass); pg-boss schema owned by `bens_app`; prisma.config reads `MIGRATION_DATABASE_URL` | `✓ ... connects as the application role` (rg `:244`) | `src/infrastructure/database.spec.ts:249` - `expect(role).toEqual({ name: 'bens_app', superuser: false, bypassRls: false })`; `:256` `expect(schema?.owner).toBe('bens_app')`; `:260` `expect(prismaConfig).toContain('process.env.MIGRATION_DATABASE_URL')` (source-text assertion, matches the claim as written) | PASS |
-| C9 | enqueue in `withTenant`: rollback -> no job; commit -> processed | `✓ queue.spec.ts > queue > enqueues inside a tenant transaction` (rg `src/infrastructure/queue.spec.ts:37`) | `src/infrastructure/queue.spec.ts:54` - `expect(await jobsIn(name)).toEqual([])`; `:61` `expect(processed).toEqual([2])` | PASS |
-| C10 | after 5 commit + 5 rollback, 10 outside queries fail; B sees only B | `✓ ... does not leak the tenant to the next transaction` (rg `:225`) | `src/infrastructure/database.spec.ts:237` - `await expect(deps.db.example.count(), \`outside #${i}\`).rejects.toThrow()`; `:241` `expect(asB.every((row) => row.organizationId === tenantB.organizationId)).toBe(true)` | PASS |
-| C11 | every `organizationId` table has ENABLE + FORCE + `tenant_isolation` | `✓ schema.spec.ts > tenant tables > every tenant table is protected by row security` (rg `test/schema.spec.ts:64`) | `test/schema.spec.ts:69` - `expect(unprotected).toEqual([])` | PASS |
-| C12 | checker flags a synthetic tenant table without RLS | `✓ ... flags a tenant table without row security` (rg `:72`) | `test/schema.spec.ts:85` - `expect(tables).toEqual(['EnabledOnly', 'Open'])`. Proven as written, but both synthetic tables lack the policy, so the FORCE and ENABLE clauses are not discriminated (surviving mutant F5) | PASS |
-| C13 | unique indexes include `organizationId` (PK excluded); synthetic flagged | `✓ ... every unique index of a tenant table includes organizationId` (rg `:88`) | `test/schema.spec.ts:103` - `expect(real).toEqual([])`; `:104` `expect(synthetic).toEqual(['Client_email_key'])` | PASS |
-| C14 | composite-FK test passes on the real schema and flags `Item.product` | `✓ ... every relation between tenant-scoped models uses a composite foreign key`, `✓ ... flags a relation between tenant-scoped models without organizationId` (rg `:156`, `:167`) | `test/schema.spec.ts:164` - `expect(findSimpleTenantRelations(schema)).toEqual([])`; `:193` `.toEqual(['Item.product'])` | PASS |
-| C15 | no `createTenantGuard`/`TenantGuardError`/`readModels` in `src` | `✓ architecture.spec.ts > tenant isolation > has no syntactic tenant guard` (rg `test/architecture.spec.ts:82`) | `test/architecture.spec.ts:90` - `expect(leftovers).toEqual([])`; `rg` for the three names in `apps/server/src` -> no hits outside generated | PASS |
-| C16 | isolation violation -> `500 INTERNAL_ERROR` with `requestId` = `x-request-id` | `✓ app.spec.ts > error handler > surfaces a row security violation as a generic 500` (rg `src/app.spec.ts:134`) | `src/app.spec.ts:137` - `expect(res.statusCode).toBe(500)`; `:138-144` `toEqual({ error: { code: 'INTERNAL_ERROR', message: 'Erro interno do servidor.', details: { requestId: res.headers['x-request-id'] } } })` | PASS |
+| C1 | 8 read shapes in A return only A | `✓ database.spec.ts > row level security > reads only the tenant rows in every read shape` (rg `src/infrastructure/database.spec.ts:48`) - verified at `562e200` | `src/infrastructure/database.spec.ts:68` - `expect(reads.findMany.map((row) => row.organizationId)).not.toContain(tenantB.organizationId)`; `:70` `expect(reads.findUnique).toBeNull()`; `:71-72` count/aggregate `toBe(0)`; `:73` groupBy `toEqual([tenantA.organizationId])`; `:77` `_count.examples` `toBe(0)`; `:78` raw `not.toContain(rowB.id)` | PASS |
+| C2 | writes into B -> `P2039` (now 5 members, `update scalar` added); `children.create` lands in A; B unchanged | `✓ ... rejects every write into another tenant` (rg `:82`; members at `:88`, `:92`, `:96`, `:100`, `:107`, `:115`) - verified at `562e200` | `src/infrastructure/database.spec.ts:129` - `else expect(prismaCode(error), write).toBe('P2039')`; `:128` `if (landsInA.has(write)) expect(error, write).toBeUndefined()`; `:132` `expect(afterB).toEqual(before[1])`; `:136` `...toHaveLength(1)` | PASS |
+| C3 | references to B fail or are absorbed (now 7 members); B and A's existing rows unchanged | `✓ ... cannot link or move another tenant's row` (rg `:139`; members at `:145`, `:149`, `:153`, `:157`, `:164`, `:171`, `:180`) - verified at `562e200` | `src/infrastructure/database.spec.ts:200` - `expect(['P2014', 'P2025', 'P2018', 'P2003', 'P2039'], reference).toContain(prismaCode(error))`; `:198` absorbed `toBeUndefined()`; `:205` `expect(afterB).toEqual(before[1])`; `:210` existing A rows `toEqual(before[0])`. The accepted-code set was widened to include `P2014` for every member (precision note above) | PASS |
+| C4 | findMany/count/create outside `withTenant` fail; count unchanged | `✓ ... fails outside withTenant` (rg `:213`) - verified at `562e200` | `src/infrastructure/database.spec.ts:217` - `await expect(deps.db.example.findMany()).rejects.toThrow()` (`:218` count, `:219` create); `:223` `expect(await snapshot(tenantA)).toEqual(before)` | PASS |
+| C5 | `create` without `organizationId` gets A | `✓ ... fills organizationId from the tenant` (rg `:226`) - verified at `562e200` | `src/infrastructure/database.spec.ts:229` - `expect(created.organizationId).toBe(tenantA.organizationId)` | PASS |
+| C6 | scalar `parentId` within A links; B -> `P2003`, unchanged | `✓ ... links rows only within the tenant` (rg `:232`) - verified at `562e200` | `src/infrastructure/database.spec.ts:240` - `expect(linked.parentId).toBe(parentA.id)`; `:247` `expect(prismaCode(error)).toBe('P2003')`; `:251` `expect(reloaded?.parentId).toBe(parentA.id)` | PASS |
+| C7 | boot as superuser exits 1 naming the role | `✓ boot.spec.ts > server boot > refuses to boot with a role that bypasses row security` (rg `test/boot.spec.ts:23`) - verified at `562e200` (file untouched) | `test/boot.spec.ts:41-44` - `await expect(boot).rejects.toMatchObject({ code: 1, stderr: expect.stringContaining('Database role "bens" bypasses row level security') })` | PASS |
+| C8 | client is `bens_app`; pg-boss schema owned by `bens_app`; prisma.config reads `MIGRATION_DATABASE_URL` | `✓ ... connects as the application role` (rg `:273`) - verified at `562e200` | `src/infrastructure/database.spec.ts:278` - `expect(role).toEqual({ name: 'bens_app', superuser: false, bypassRls: false })`; `:285` `expect(schema?.owner).toBe('bens_app')`; `:289` `expect(prismaConfig).toContain('process.env.MIGRATION_DATABASE_URL')` | PASS |
+| C9 | enqueue in `withTenant`: rollback -> no job; commit -> processed | `✓ queue.spec.ts > queue > enqueues inside a tenant transaction` (rg `src/infrastructure/queue.spec.ts:37`) - verified at `562e200` (file untouched) | `src/infrastructure/queue.spec.ts:54` - `expect(await jobsIn(name)).toEqual([])`; `:61` `expect(processed).toEqual([2])` | PASS |
+| C10 | after 5 commit + 5 rollback, 10 outside queries fail; B sees only B | `✓ ... does not leak the tenant to the next transaction` (rg `:254`) - verified at `562e200` | `src/infrastructure/database.spec.ts:266` - ``await expect(deps.db.example.count(), `outside #${i}`).rejects.toThrow()``; `:270` `expect(asB.every((row) => row.organizationId === tenantB.organizationId)).toBe(true)` | PASS |
+| C11 | every `organizationId` table has ENABLE + FORCE + `tenant_isolation` | `✓ schema.spec.ts > tenant tables > every tenant table is protected by row security` (rg `test/schema.spec.ts:85`) - verified at `562e200` | `test/schema.spec.ts:90` - `expect(unprotected).toEqual([])` | PASS |
+| C12 | checker flags a synthetic tenant table without RLS, one case per clause | `✓ ... flags a tenant table without row security` (rg `:93`) - verified at `562e200` | `test/schema.spec.ts:122` - `expect(tables).toEqual(['NoEnable', 'NoForce', 'NoPolicy', 'Open'])`, with a fully protected `Protected` control that stays out of the list. Round 1 mutant F5 is now killed (re-run below) | PASS |
+| C13 | unique indexes include `organizationId` (PK excluded, now ratified); synthetic flagged | `✓ ... every unique index of a tenant table includes organizationId` (rg `:149`) - verified at `562e200` | `test/schema.spec.ts:164` - `expect(real).toEqual([])`; `:165` `expect(synthetic).toEqual(['Client_email_key'])` | PASS |
+| C14 | composite-FK test passes on the real schema and flags `Item.product` | `✓ ... every relation between tenant-scoped models uses a composite foreign key` (rg `:217`), `✓ ... flags a relation between tenant-scoped models without organizationId` (rg `:228`) - verified at `562e200` | `test/schema.spec.ts:225` - `expect(findSimpleTenantRelations(schema)).toEqual([])`; `:254` `.toEqual(['Item.product'])` | PASS |
+| C15 | no syntactic guard names in `src` | `✓ architecture.spec.ts > tenant isolation > has no syntactic tenant guard` (rg `test/architecture.spec.ts:83`) - verified at `562e200` | `test/architecture.spec.ts:91` - `expect(leftovers).toEqual([])` | PASS |
+| C16 | isolation violation -> `500 INTERNAL_ERROR` with `requestId` | `✓ app.spec.ts > error handler > surfaces a row security violation as a generic 500` (rg `src/app.spec.ts:134`) - verified at `562e200` (file untouched) | `src/app.spec.ts:137` - `expect(res.statusCode).toBe(500)`; `:138` `expect(res.json()).toEqual({ error: { code: 'INTERNAL_ERROR', ..., details: { requestId: res.headers['x-request-id'] } } })` | PASS |
+| C17 | `organization.delete`/id change of B, inside and outside `withTenant`, -> `P2003`; B identical | `✓ database.spec.ts > row level security > does not reach tenant rows through Organization` (rg `:292`; attempts at `:296`, `:300`, `:307`, `:309`) - verified at `562e200` | `src/infrastructure/database.spec.ts:317` - `expect(prismaCode(await errorOf(run)), attempt).toBe('P2003')`; `:319` `expect(await snapshot(tenantB)).toEqual(before)` | PASS |
+| C18 | no FK from a tenant table to an unguarded table cascades; checker flags synthetic `ON DELETE CASCADE` and `ON UPDATE CASCADE` | `✓ schema.spec.ts > tenant tables > foreign keys to unguarded tables never cascade` (rg `test/schema.spec.ts:125`) - verified at `562e200` | `test/schema.spec.ts:145` - `expect(real).toEqual([])`; `:146` `expect(synthetic).toEqual(['DeleteCascade_fkey', 'SetNull_fkey', 'UpdateCascade_fkey'])`. Proven as written. The claim is narrower than AC 16 (which also names `SET DEFAULT` and `ON UPDATE SET NULL`), and F2 survived: see Coverage | PASS |
+| C19 | no `src` file outside `infrastructure/database.ts` cites `app.tenant_id`; checker flags a synthetic file | `✓ architecture.spec.ts > tenant settings and ids > only the database module sets the tenant` (rg `test/architecture.spec.ts:116`) - verified at `562e200` | `test/architecture.spec.ts:117` - `expect(filesCitingTenantSetting(readSourceTree(srcRoot))).toEqual([])`; `:118-123` synthetic `.toEqual(['modules/x/x.repository.ts'])`. `rg -n tenant_id apps/server/src` -> only `infrastructure/database.ts:17,38`. The check is a literal text search; non-literal forms are not caught (report-only above) | PASS |
+| C20 | no exported `*Input` Zod object in `modules/**/*.schema.ts` accepts `id`; checker flags a synthetic one | `✓ architecture.spec.ts > tenant settings and ids > input schemas never accept an id` (rg `test/architecture.spec.ts:126`) - verified at `562e200` | `test/architecture.spec.ts:137` - `expect(offenders).toEqual([])`; `:138-145` `inputsAcceptingId({ createClientInput, updateClientInput, idParams })` `.toEqual(['createClientInput'])`; `:136` `expect(schemaFiles.length).toBeGreaterThan(0)`. The real-tree half has 0 `*Input` members (vacuous, report-only above) | PASS |
+| C21 | `assertRowSecurityApplies` throws for a `BYPASSRLS`-only role and for `bens`; resolves for `bens_app` | `✓ database.spec.ts > row level security > refuses every role that bypasses row security` (rg `:322`) - verified at `562e200` | `src/infrastructure/database.spec.ts:334` - `await expect(bypass.assertRowSecurityApplies()).rejects.toThrow(RowSecurityBypassError)`; `:335` owner `.rejects.toThrow(RowSecurityBypassError)`; `:336` `await expect(deps.db.assertRowSecurityApplies()).resolves.toBeUndefined()`. The probe role is dropped in `finally`; after every run (including the F5 mutant) `pg_roles` held only `bens`, `bens_app` | PASS |
 
-All 16 proofs are in files the diff touched (`git diff --stat 50b19a0..a51de9b`: `database.spec.ts`, `queue.spec.ts`, `app.spec.ts`, `schema.spec.ts`, `architecture.spec.ts`, `boot.spec.ts`). C14's two tests are unchanged from `tenant-guard` by design ("critério mantido").
+All five round 2 proofs (C17-C21) live in files `562e200` touched. So do the added C2/C3 members and the
+C12 cases.
 
 ## Coverage
 
+Rows round 2 added or touched are recomputed at `562e200`. The others are carried from `a51de9b`.
+
 | Set (size) | Recomputed from | Member -> proof | Unproven |
 | --- | --- | --- | --- |
-| read shapes (8 named by AC 1) | plan AC 1; Prisma read API | findMany, findUnique B, count, aggregate, groupBy, org include examples, org include `_count`, raw SQL -> C1 (`database.spec.ts:66-77`). The Prisma shapes the plan does not name were replayed adversarially as `bens_app`; B is invisible in every one: `findFirst`/fluent `org(B).examples()` -> `[]`, `cursor` on a B row -> `[]`, `orderBy examples._count` -> B `0`, `where examples.some` -> `[]`, `_count.select.children.where organization.examples`, `example include organization.include.examples`, `COPY ... TO STDOUT`, `pg_stats` (hidden) | - |
-| writes into another tenant (AC 2 names 5; Prisma + PG add more) | plan AC 2; Prisma write API; PostgreSQL referential actions | create -> C2; updateMany scalar -> C2; organization.connect -> C2; upsert create B -> C2; nested children.create -> C2. Blocked adversarially but not in any test: `createMany`/`createManyAndReturn` B -> `P2039`; `organization(B).update examples.create` -> `P2039`; raw `INSERT` B -> `P2010/42501`; W3m upsert -> `P2039` | `update` of the scalar (named in AC 2; adversarially `P2039`, no test); **`Organization` delete/update-id cascade writes B's rows - NOT blocked (gap 1)** |
-| references to another tenant's row (AC 3: connect/set/connectOrCreate from Example or Organization) | plan AC 3; Prisma relation API | parent.connect, children.connect, children.set, children.connectOrCreate, org examples.connect -> C3 | org `examples.set` and org `examples.connectOrCreate` (named by AC 3 "a partir de ... Organization"; adversarially `P2014` and "creates in A, B unchanged", no test) |
-| operations outside `withTenant` (3) | plan AC 4; PostgreSQL (`current_setting` without `missing_ok`) | findMany, count, create -> C4 (`:188-192`). Adversarial: `deleteMany`, `updateMany`, `findUnique`, `update`/`delete` by id, raw select, batch `$transaction([])`, each on empty and non-empty tables -> error (`42704` or `22P02`), never an empty result | - |
-| scalar FK link (2) | plan AC 6 | same tenant -> C6 `:211`; other tenant `P2003` -> C6 `:218` | - |
-| startup config: DB role per assembly (6 assemblies) | `src/server.ts`, `src/dependencies.ts`, `test/app.ts`/`test/setup-db.ts`, `scripts/export-openapi.ts`, `prisma.config.ts`, pg-boss in `queue.ts` | server: `server.ts:34` `await deps.db.assertRowSecurityApplies()` before `listen` -> C7. dependencies: `dependencies.ts:18` `createDatabase(config.DATABASE_URL)` and `:13`,`:19-23` pg-boss on the same `connectionString` -> C8 `:249`, `:256`. Test harness: `setup-db.ts:21` app URL defaults to `bens_app`, and the owner (`:16`) only migrates/grants/drops -> C8 `:249`. pg-boss: `queue.ts:33` `new PgBoss({ connectionString })` from `DATABASE_URL` -> C8 `:256`. Prisma CLI: `prisma.config.ts:12` `process.env.MIGRATION_DATABASE_URL` -> C8 `:260`. export-openapi: `scripts/export-openapi.ts:11` placeholder URL, `app.ready()` without `queue.start()` or any query, so it never connects (n/a) | - |
-| transaction and pool (2) | plan AC 10; PostgreSQL `set_config(..., true)` | commit -> C10; rollback -> C10 (killed F2) | - |
-| `enqueue` in tenant tx (2) | plan AC 9 | commit C9 `:61`; rollback C9 `:54` | - |
-| tenant-table protection clauses (3) | plan door 2 / AC 11; checker SQL `test/schema.spec.ts:17-20` | policy -> C11, C12. FORCE -> C11 on the real table (killed F1) | FORCE and ENABLE in the checker: no synthetic table isolates either clause (F5 survived) |
-| schema invariants (3) | plan AC 11-13 | RLS C11; unique with tenant C13; composite FK C14 | - |
-| boot decision table (3 rows) | `database.ts:49` `!role or role.superuser or role.bypassRls` | superuser (also bypass) -> C7; neither -> C8 `:250` | `BYPASSRLS`-only role (and missing role) - no case |
-| plan doors (6) | plan Landing | 1 role -> C7, C8; 2 policy -> C11; 3 per-tx tenant -> C10; 4 default -> C5; 5 unique -> C13; 6 pg-boss role -> C8, C9 | - |
+| read shapes (8) - carried from `a51de9b` | plan AC 1; Prisma read API | C1, all 8 (`database.spec.ts:68-79`) | - |
+| writes into another tenant (6 named by AC 2) - verified at `562e200` | plan AC 2 | create `:88`, update scalar `:92`, updateMany scalar `:96`, organization.connect `:100`, upsert create `:107` -> `P2039` `:129`; children.create `:115` -> lands in A `:128`, `:133`; B identical `:132` | - |
+| writes that reach tenant rows through `Organization` (2 ops x 2 contexts) - verified at `562e200` | plan AC 15; PostgreSQL referential actions (`Example_organizationId_fkey` now `r`/`r` in the worker schema and in dev `public`) | delete in A `:296`, id change in A `:300`, delete outside `:307`, id change outside `:309` -> `P2003` `:317`; B identical `:319`. Adversarial as `bens_app` (throwaway schema `verify_r2`, dropped): all four refused with `violates RESTRICT setting of foreign key constraint "Example_organizationId_fkey"`; B's 2 rows identical afterwards. Other paths hunted: `TRUNCATE "Organization" CASCADE` / `TRUNCATE "Example"` -> `permission denied`; a `bens_app`-owned table with an FK into `Example`/`Organization` -> `permission denied` (no `REFERENCES`); a trigger on `Organization` -> `permission denied`; `ALTER TABLE ... DROP CONSTRAINT` / `DISABLE ROW LEVEL SECURITY` -> `must be owner`. The only other FK on a tenant table is the composite self-FK `Example_parentId_organizationId_fkey` (`r`/`c`), whose `ON UPDATE CASCADE` stays inside one tenant because it shares `organizationId`. No SECURITY DEFINER functions, no user triggers, no other tables with `organizationId` (`pgboss.*`, `_prisma_migrations`, `Organization` do not have it) | - |
+| references to another tenant's row (7 named by AC 3) - verified at `562e200` | plan AC 3 | parent.connect `:145`, children.connect `:149`, org examples.set `:164`, org examples.connect `:180` -> error code `:200`; children.set `:153`, children.connectOrCreate `:157`, org examples.connectOrCreate `:171` -> absorbed `:198`; B identical `:205`, A's existing rows `:210` | - |
+| operations outside `withTenant` (3) - carried from `a51de9b` | plan AC 4 | C4 `:217-219`. Regression: raw `SELECT count(*)` outside -> `invalid input syntax for type uuid: ""` | - |
+| scalar FK link (2) - carried from `a51de9b` | plan AC 6 | C6 `:240`, `:247`. Regression: raw `UPDATE ... SET "parentId" = <B row>` in A -> `violates foreign key constraint "Example_parentId_organizationId_fkey"` | - |
+| startup config: DB role per assembly (6) - carried from `a51de9b` | `server.ts`, `dependencies.ts`, test harness, pg-boss, Prisma CLI, export-openapi | as round 1; `server.ts:34` `await deps.db.assertRowSecurityApplies()` unchanged | - |
+| transaction and pool (2) - carried from `a51de9b` | plan AC 10 | C10 `:266`, `:270` | - |
+| `enqueue` in tenant tx (2) - carried from `a51de9b` | plan AC 9 | C9 `queue.spec.ts:54`, `:61` | - |
+| tenant-table protection clauses (3) - verified at `562e200` | checker SQL `test/schema.spec.ts:10-24` | ENABLE -> `NoEnable`; FORCE -> `NoForce` (round 1 F5 re-run now killed); policy -> `NoPolicy`; all three -> `Open`; control `Protected` (C12 `:122`); real table C11 `:90` | - |
+| FK actions from a tenant table to an unguarded table (AC 16: 3 actions x 2 events = 6) - verified at `562e200` | plan AC 16; PostgreSQL `confdeltype`/`confupdtype` (`c` cascade, `n` set null, `d` set default) | ON DELETE CASCADE -> `DeleteCascade_fkey`; ON UPDATE CASCADE -> `UpdateCascade_fkey`; ON DELETE SET NULL -> `SetNull_fkey` (C18 `:146`); RESTRICT and NO ACTION controls stay out of the list | **ON DELETE SET DEFAULT, ON UPDATE SET NULL, ON UPDATE SET DEFAULT: no synthetic case.** F2 (allowlist -> denylist `IN ('c','n')`) survived. `SET DEFAULT` moves B's rows into the deleting tenant (shown on the real DB, above) |
+| boot decision table (3 rows) - verified at `562e200` | `database.ts:49` `!role or role.superuser or role.bypassRls` | superuser -> C7 `boot.spec.ts:41`, C21 `:335`; `BYPASSRLS`-only -> C21 `:334` (F5 killed); neither -> C21 `:336`, C8 `:279`. `!role` cannot happen: `current_user` is always in `pg_roles` | - |
+| schema and code invariants (6) - verified at `562e200` | plan AC 11-13, 16-18 | RLS C11; unique C13; composite FK C14; FK without cascade C18 (partial, row above); tenant only in `database.ts` C19 (F3 killed); no `id` in input C20 (F4 killed) | - (the C18 gap is counted once, in the FK-action row) |
+| plan doors (7) - verified at `562e200` | plan Landing | 7 FK to unguarded table -> C17, C18 (F1 killed); 1 role -> C7, C8, C21; 2 policy -> C11; 3 per-tx tenant -> C10; 4 default -> C5; 5 unique + PK exception -> C13, C20; 6 pg-boss role -> C8, C9 | - |
 
 ## Test policy rows
 
 | Row | Files it classifies | Required proof | Expectation met |
 | --- | --- | --- | --- |
-| Decides, reached across a boundary - `tenant_isolation` policies | `prisma/migrations/20260921215300_tenant_rls/migration.sql` | boundary C16 (HTTP 500) · own layer C1-C6 against real PostgreSQL; presence C11 | yes - `USING` (C1), `WITH CHECK` (C2), no tenant (C4) each asserted |
-| Decides, reached across a boundary - boot role check | `src/server.ts:34-45`, `src/infrastructure/database.ts:44-52` | boundary C7 (process exit) · own layer: one case per row of `superuser`/`bypassRls` | no - only the boundary proof exists (checks.md Evidence says "provada no boundary do processo por C7"); the `BYPASSRLS`-only row has no case |
-| Instrumentation, pass-throughs | `src/infrastructure/database.ts:33-41` (`withTenant`) | none of its own; consumers C1-C6, C9, C10 | yes - consumers cover it; F2 (session-level `set_config`) killed by C4 and C10 |
+| Decides, reached across a boundary - `tenant_isolation` policies - carried from `a51de9b` | `prisma/migrations/20260921215300_tenant_rls/migration.sql` | boundary C16 (HTTP 500) · own layer C1-C6 against real PostgreSQL; presence C11 | yes - `USING` (C1), `WITH CHECK` (C2), missing tenant (C4) each asserted |
+| Decides, reached across a boundary - FK action `RESTRICT` (new in round 2) - verified at `562e200` | `prisma/migrations/20260921221115_organization_fk_restrict/migration.sql`, `prisma/schema.prisma:34-35` | own layer C17 against real PostgreSQL (4 attempts); presence C18 on the worker schema; boundary: the Prisma error reaches HTTP through the same `shared/errors.ts` path C16 proves (plan Surface: "None", and no route deletes an organization yet) | yes - each attempt asserted `P2003`, and B's rows asserted identical; F1 (`CASCADE`) killed by C17 |
+| Decides, reached across a boundary - boot role check (unmet in round 1) - verified at `562e200` | `src/server.ts:34`, `src/infrastructure/database.ts:44-52` | boundary C7 (process exit) · own layer: one case per row of `superuser`/`bypassRls` | yes - C21 covers the `BYPASSRLS`-only row (`:334`), the superuser row (`:335`) and the neither row (`:336`); F5 (drop `role.bypassRls`) killed |
+| Instrumentation, pass-throughs - carried from `a51de9b` | `src/infrastructure/database.ts:33-41` (`withTenant`) | none of its own; consumers C1-C6, C9, C10 | yes - consumers cover it |
 
-Swept `existing` row re-read: "observability: existing - `shared/errors.ts` loga `unhandled error`
-com `requestId`". It holds: `src/shared/errors.ts:53` `request.log.error({ err: error }, 'unhandled error')`,
-and `:56` sends `{ requestId: request.id }`.
+Swept `existing` row re-read at `562e200`: "observability: existing - `shared/errors.ts` loga
+`unhandled error` com `requestId`". It holds: `src/shared/errors.ts:53`
+`request.log.error({ err: error }, 'unhandled error')`, and `:56` sends `{ requestId: request.id }`.
+The other Swept rows are `n/a` (policy) or point at checks.
 
-### Adversarial pass (real DB, `bens_app`, throwaway schemas `verify_adv`/`verify_adv2`, dropped afterwards)
+### Adversarial pass, round 2 (real DB, `bens_app` via `docker exec psql`, throwaway schemas `verify_r2`, `verify_r2sd`, `verify_r2_evil`, all dropped; `pg_namespace` shows no `verify%` left)
 
 | Attempt | Observed | Judged against the plan |
 | --- | --- | --- |
-| `tx.organization.delete({ where: { id: B } })` in `withTenant(A)`; also `DELETE FROM "Organization" WHERE id = B` outside | B's `Example` rows 2 -> 0 (cascade runs as the owner, RLS not forced) | **breach** - gap 1, not covered by Out of scope |
-| `tx.organization.update({ where: { id: B }, data: { id: <new> } })` | B's rows moved to the new id; B sees 0 | **breach** - gap 1 |
-| `SET app.tenant_id = B` (session) via `tx.$executeRawUnsafe` in `withTenant(A)`, then 12 `db.example.count()` outside | all 12 returned B's count (`ok:2`) - the pooled connection carries B | not addressed by plan or ADR: door 3 rejects session `SET` for `withTenant` only. Nothing forbids application SQL touching `app.tenant_id`, and nothing resets it on checkout. Trust question; recommend an architecture test forbidding `app.tenant_id` outside `database.ts` |
-| `tx.$executeRaw\`SELECT set_config('app.tenant_id', B, true)\`` or `SET LOCAL` in `withTenant(A)` | reads B's rows for the rest of that transaction | same trust question; transaction-local, no pool carry-over; not addressed by plan/ADR |
-| `RESET app.tenant_id` inside the tx | next query errors (`22P02`) | fail-closed |
-| `SET ROLE bens` | `permission denied to set role "bens"` (no role memberships) | closed |
-| `ALTER TABLE ... DISABLE ROW LEVEL SECURITY` / `DROP POLICY` / `TRUNCATE` / `CREATE TABLE public.x` | `must be owner` / `permission denied` | closed. `bens_app` can `CREATE SCHEMA` (needed by pg-boss, door 6) |
-| nested `db.$transaction` inside `withTenant(A)` | different connection, no tenant -> `42704` | fail-closed |
-| nested `db.withTenant(B)` inside `withTenant(A)` | each sees only its own tenant | isolated |
-| create/upsert/raw `ON CONFLICT DO NOTHING` with the id of a B row | `P2002 Example_pkey` / `42501 (USING expression)` / 0 rows vs 1 | existence oracle for a known UUID; door 5 as amended accepts it ("id nunca vem do input"), which is unenforced; ADR item 6 wording contradicts (Binding sources) |
-| unique `(organizationId, name)` with B's name | inserted in A | no oracle |
-| composite FK `parentId` -> B id | `P2003` (same as a non-existent id) | no oracle |
-| `ON UPDATE CASCADE` on the composite FK: update a B row's `id` as B | only B's own child followed | cannot cross tenants (children share `organizationId`) |
-| `pgboss.job` read in a tenant tx | readable by `bens_app` (owner) for all tenants | door 6 accepted; jobs are not tenant-scoped tables; payload hygiene is a jobs rule |
-| `Organization` rows of B readable/renamable from A | yes | Out of scope ("RLS em `Organization`") |
-| `pg_class.reltuples` | total row estimate across tenants visible | metadata only; not addressed; minor |
+| Round 1 cascade attacks: delete Org B / change its id, inside `withTenant(A)` and outside | all 4 -> `violates RESTRICT setting of foreign key constraint "Example_organizationId_fkey"`; B's 2 rows identical | closed (AC 15) |
+| Delete own Org A while A has rows | refused (RESTRICT) | expected |
+| Delete or rename an Org with no tenant rows | allowed | `Organization` has no RLS - Out of scope |
+| `TRUNCATE "Organization" CASCADE`, `TRUNCATE "Example"` | `permission denied` | closed |
+| `bens_app` creates a schema (allowed, door 6) with an FK into `Example`/`Organization`; trigger on `Organization` | `permission denied for table ...` | closed |
+| `ALTER TABLE "Example" DROP CONSTRAINT` / `DISABLE ROW LEVEL SECURITY` | `must be owner` | closed |
+| FK changed to `ON DELETE SET DEFAULT` (hypothetical migration), delete Org B in `withTenant(A)` | B's `b1`, `b2` now have `organizationId` = A, visible to A | a real cross-tenant move; the HEAD checker catches it, but no proof asserts that (gap 1, F2) |
+| Regression, in A: read B / insert into B / update scalar to B / `parentId` -> B row / update or delete a B row by id | 0 visible / RLS `WITH CHECK` error / RLS `WITH CHECK` error / composite FK error / 0 rows / 0 rows | closed (C1-C3, C6) |
+| Regression: `SET app.tenant_id = B` (session), then an outside query | returned B's count (2) | not closed at runtime; C19 forbids the literal in `src` (report-only) |
+| `set_config('app.' \|\| 'tenant_id', B, false)`, then an outside query | returned B's count (2) | not caught by C19's text search; acceptable per AC 17 as written, residual risk (report-only) |
 
 ## Faults injected
 
-Worktree `scratchpad/wt` at `a51de9b` with `pnpm install --frozen-lockfile`. The real tree's
-`git status --porcelain` was empty before and still empty after `git worktree remove --force`
-(checked with `diff`).
+Worktrees `scratchpad/wt2` and `scratchpad/wt3` at `562e200`, each with `pnpm install --frozen-lockfile`.
+The worktree baseline was green (26/26 on the three touched spec files). Each fault was reverted with
+`git -C <wt> checkout -- .` before the next one. The real tree's `git status --porcelain` was empty
+before, and still empty after each `git worktree remove --force` (checked with `diff`). I never used
+`git stash`. After the runs, `pg_roles` held only `bens` and `bens_app`.
 
 | Mutation | Location | Killed |
 | --- | --- | --- |
-| F1 - delete `ALTER TABLE "Example" FORCE ROW LEVEL SECURITY;` | `prisma/migrations/20260921215300_tenant_rls/migration.sql:7` | yes - C11 `expected [ 'Example' ] to deeply equal []` |
-| F2 - `set_config('app.tenant_id', …, true)` -> `false` (session-level) | `src/infrastructure/database.ts:38` | yes - C10 `promise resolved "10" instead of rejecting`; C4 also |
-| F3 - remove `await deps.db.assertRowSecurityApplies()` | `src/server.ts:34` | yes - C7 `expected Error ... to match object { code, stderr }` |
-| F4 - harness app URL -> `ownerDatabaseUrl()` | `test/setup-db.ts:21` | yes - C8 `expected { name: 'bens', superuser: true, … } to deeply equal { name: 'bens_app', … }`; C1-C4, C10 also |
-| F5 - checker drops `c.relforcerowsecurity AND` | `test/schema.spec.ts:17` | no - survived: 5/5 schema proofs green (C12 synthetic tables lack the policy) |
+| F1 - `ON DELETE RESTRICT` -> `ON DELETE CASCADE` on `Example_organizationId_fkey` | `prisma/migrations/20260921221115_organization_fk_restrict/migration.sql:5` | yes - C17 `delete in tenant A: expected undefined to be 'P2003'` |
+| F2 - FK checker allowlist `NOT IN ('r','a')` -> denylist `IN ('c','n')` (both events) | `test/schema.spec.ts:61` | no - C18 stayed green (1 passed); the synthetic schema has no `SET DEFAULT` case |
+| F3 - `app.tenant_id` checker narrowed to `includes("set_config('app.tenant_id'")` | `test/architecture.spec.ts:101` | yes - C19 `expected [] to deeply equal [ 'modules/x/x.repository.ts' ]` |
+| F4 - `Input` checker drops the `'id' in value.shape` condition | `test/architecture.spec.ts:109` | yes - C20 `expected [ 'createClientInput', …(1) ] to deeply equal [ 'createClientInput' ]` |
+| F5 - `assertRowSecurityApplies` drops `\|\| role.bypassRls` | `src/infrastructure/database.ts:49` | yes - C21 `promise resolved "undefined" instead of rejecting` |
+| Re-run of round 1 F5 (the mutant that was not killed): protection checker drops `c.relforcerowsecurity AND` | `test/schema.spec.ts:17` | yes - C12 `expected [ 'NoEnable', 'NoPolicy', 'Open' ] to deeply equal [ 'NoEnable', 'NoForce', …(2) ]` |
+
+F1-F5 are the five new faults on round 2 surfaces (the cap). The last row re-checks a round 1 verdict
+that was not PASS, and does not count as a new fault. I reasoned about the other FK-checker clauses
+from the inputs, without injecting them. Dropping the delete half is killed by `DeleteCascade`/`SetNull`.
+Dropping the update half is killed by `UpdateCascade`. Dropping "parent has no `organizationId`" is
+killed by the real schema, because the self-FK `ON UPDATE CASCADE` would be flagged. Dropping "child has
+`organizationId`" would only over-report. The `SET DEFAULT` gap is what F2 exposed.
 
 ## Gate
 
-`pnpm lint && pnpm typecheck && pnpm test && pnpm build` at `a51de9b`: exit 0. Biome checked 64 files with
-no fixes; tsc passed for server and web; vitest ran 15 files, **74 passed, 0 failed**; server tsc build and web vite build passed.
+`pnpm lint && pnpm typecheck && pnpm test && pnpm build` at `562e200`: exit 0. Biome checked 64 files
+and applied no fixes. tsc passed for server and web. vitest ran 15 files, **79 passed, 0 failed**. The
+server tsc build and the web vite build passed. The real tree's porcelain was still empty afterwards.
 
 ## Ranked gaps
 
-1. `Organization` cascade (`ON DELETE CASCADE`/`ON UPDATE CASCADE` + `bens_app` DML on `Organization`) deletes or moves another tenant's `Example` rows from inside `withTenant(A)` or outside it. No check covers it - `prisma/migrations/20260921170202_init/migration.sql` (FK `Example_organizationId_fkey`), `docker/postgres/init/01-app-role.sql` (grants)
-2. Surviving mutant F5: the checker's FORCE (and ENABLE) clause is not discriminated. C12 - `test/schema.spec.ts:72-85`
-3. Test policy row unmet: boot check lacks an own-layer case for a `BYPASSRLS`-only role - `src/infrastructure/database.ts:49`
-4. Coverage members named by the plan without proof: AC 2 `update` scalar; AC 3 `set`/`connectOrCreate` from `Organization` - C2, C3
-5. ADR-004 item 6 / architecture §7.5 "todo índice único" vs the mid-build PK exclusion in C13 and door 5. The oracle exists for known ids, and the premise "id never from input" is not enforced. Needs ratification
-6. Not a check failure, report only: a session-level `SET app.tenant_id` issued by application SQL poisons the pooled connection for later out-of-`withTenant` queries. Plan and ADR are silent; they rely on application code not writing `app.tenant_id`
-7. Not a check failure, report only: plan AC 2, AC 3 and door 5 were edited in `a51de9b` after approval. The Handoff lists C2/C3/C13/door 1, but not the plan AC edits
+1. AC 16 members `ON DELETE SET DEFAULT`, `ON UPDATE SET NULL` and `ON UPDATE SET DEFAULT` have no
+   proof, and mutant F2 (denylist `IN ('c','n')`) survived. `SET DEFAULT` would silently move another
+   tenant's rows into the deleting tenant - C18 - `test/schema.spec.ts:125-146` (synthetic cases at
+   `:137-141`). Fix: add a `SetDefault` synthetic FK (and an `ON UPDATE SET NULL` one) and expect them
+   in `:146`.
+2. Report-only: pool poisoning by a non-literal `app.tenant_id` (`'app.' || 'tenant_id'`, or a key
+   passed as a parameter) passes C19's text search, and still poisons the pooled session on the real
+   DB. It is acceptable under AC 17 as written, but it is a residual runtime risk with no reset on
+   checkout - C19 - `test/architecture.spec.ts:101`
+3. Report-only: C20 is vacuous on the real tree (0 `*Input` exports). The only existing input schema
+   is `commissionPreviewQuery`, so the PK-exception premise rests on a naming suffix -
+   `src/modules/examples/example.schema.ts`
+4. Report-only: the C2/C3 claim text and plan AC 3 were not updated for 6/7 members and `P2014`. The
+   widened code set also applies to the four previously-proven members -
+   `src/infrastructure/database.spec.ts:200`
