@@ -31,7 +31,8 @@ model Example {
   parentId       String?  @db.Uuid
   createdAt      DateTime @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // RESTRICT: a cascade runs as the table owner and would skip row security (ADR-004).
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   // Composite FK: the database rejects a parent from another tenant.
   parent       Example?     @relation("ExampleTree", fields: [parentId, organizationId], references: [id, organizationId])
   children     Example[]    @relation("ExampleTree")

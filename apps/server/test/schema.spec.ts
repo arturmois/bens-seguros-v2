@@ -44,6 +44,27 @@ async function findUniqueIndexesWithoutTenant(client: pg.Client, schema: string)
   return rows.map((row) => row.index)
 }
 
+// A cascade runs as the table owner, so it ignores row security (ADR-004): from a tenant table to a
+// table without organizationId, deletes and updates must not propagate.
+async function findCascadingForeignKeysToUnguarded(client: pg.Client, schema: string) {
+  const { rows } = await client.query<{ fk: string }>(
+    `SELECT con.conname AS fk
+       FROM pg_constraint con
+       JOIN pg_class child ON child.oid = con.conrelid
+       JOIN pg_class parent ON parent.oid = con.confrelid
+       JOIN pg_namespace n ON n.oid = child.relnamespace
+      WHERE n.nspname = $1 AND con.contype = 'f'
+        AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = child.oid
+                     AND a.attname = 'organizationId' AND NOT a.attisdropped)
+        AND NOT EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = parent.oid
+                         AND a.attname = 'organizationId' AND NOT a.attisdropped)
+        AND (con.confdeltype NOT IN ('r', 'a') OR con.confupdtype NOT IN ('r', 'a'))
+      ORDER BY 1`,
+    [schema],
+  )
+  return rows.map((row) => row.fk)
+}
+
 // A throwaway schema next to the worker's, dropped afterwards.
 function withProbeSchema<T>(label: string, run: (client: pg.Client, probe: string) => Promise<T>) {
   const probe = `${workerSchema()}_${label}_probe`
@@ -71,18 +92,58 @@ describe('tenant tables', () => {
 
   it('flags a tenant table without row security', async () => {
     const tables = await withProbeSchema('rls', async (client, probe) => {
-      await client.query(
-        `CREATE TABLE "${probe}"."Open" (id uuid PRIMARY KEY, "organizationId" uuid)`,
-      )
-      await client.query(
-        `CREATE TABLE "${probe}"."EnabledOnly" (id uuid PRIMARY KEY, "organizationId" uuid)`,
-      )
-      await client.query(`ALTER TABLE "${probe}"."EnabledOnly" ENABLE ROW LEVEL SECURITY`)
+      const create = (name: string) =>
+        client.query(
+          `CREATE TABLE "${probe}"."${name}" (id uuid PRIMARY KEY, "organizationId" uuid)`,
+        )
+      const policy = (name: string) =>
+        client.query(
+          `CREATE POLICY tenant_isolation ON "${probe}"."${name}" USING (true) WITH CHECK (true)`,
+        )
+      // One synthetic table per missing clause, plus a fully protected control.
+      await create('Open')
+      await create('NoForce')
+      await client.query(`ALTER TABLE "${probe}"."NoForce" ENABLE ROW LEVEL SECURITY`)
+      await policy('NoForce')
+      await create('NoEnable')
+      await client.query(`ALTER TABLE "${probe}"."NoEnable" FORCE ROW LEVEL SECURITY`)
+      await policy('NoEnable')
+      await create('NoPolicy')
+      await client.query(`ALTER TABLE "${probe}"."NoPolicy" ENABLE ROW LEVEL SECURITY`)
+      await client.query(`ALTER TABLE "${probe}"."NoPolicy" FORCE ROW LEVEL SECURITY`)
+      await create('Protected')
+      await client.query(`ALTER TABLE "${probe}"."Protected" ENABLE ROW LEVEL SECURITY`)
+      await client.query(`ALTER TABLE "${probe}"."Protected" FORCE ROW LEVEL SECURITY`)
+      await policy('Protected')
       await client.query(`CREATE TABLE "${probe}"."NoTenant" (id uuid PRIMARY KEY)`)
       return findUnprotectedTenantTables(client, probe)
     })
 
-    expect(tables).toEqual(['EnabledOnly', 'Open'])
+    expect(tables).toEqual(['NoEnable', 'NoForce', 'NoPolicy', 'Open'])
+  })
+
+  it('foreign keys to unguarded tables never cascade', async () => {
+    const real = await withOwnerClient((client) =>
+      findCascadingForeignKeysToUnguarded(client, workerSchema()),
+    )
+    const synthetic = await withProbeSchema('fk', async (client, probe) => {
+      await client.query(`CREATE TABLE "${probe}"."Root" (id uuid PRIMARY KEY)`)
+      const child = (name: string, actions: string) =>
+        client.query(
+          `CREATE TABLE "${probe}"."${name}" (id uuid PRIMARY KEY, "organizationId" uuid,
+             CONSTRAINT "${name}_fkey" FOREIGN KEY ("organizationId")
+             REFERENCES "${probe}"."Root"(id) ${actions})`,
+        )
+      await child('DeleteCascade', 'ON DELETE CASCADE ON UPDATE RESTRICT')
+      await child('UpdateCascade', 'ON DELETE RESTRICT ON UPDATE CASCADE')
+      await child('SetNull', 'ON DELETE SET NULL ON UPDATE RESTRICT')
+      await child('Restricted', 'ON DELETE RESTRICT ON UPDATE RESTRICT')
+      await child('NoAction', '')
+      return findCascadingForeignKeysToUnguarded(client, probe)
+    })
+
+    expect(real).toEqual([])
+    expect(synthetic).toEqual(['DeleteCascade_fkey', 'SetNull_fkey', 'UpdateCascade_fkey'])
   })
 
   it('every unique index of a tenant table includes organizationId', async () => {

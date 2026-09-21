@@ -2,9 +2,11 @@ import { readFileSync } from 'node:fs'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestDeps } from '../../test/app.ts'
 import { withTwoTenants } from '../../test/factories.ts'
+import { ownerDatabaseUrl, withOwnerClient } from '../../test/setup-db.ts'
 import type { Deps } from '../dependencies.ts'
 import { Prisma } from '../generated/prisma/client.ts'
 import type { RequestContext } from '../shared/request-context.ts'
+import { createDatabase, RowSecurityBypassError } from './database.ts'
 
 let deps: Deps
 let tenantA: RequestContext
@@ -87,6 +89,10 @@ describe('row level security', () => {
         deps.db.withTenant(tenantA, (tx) =>
           tx.example.create({ data: { organizationId: B, name: 'w1' } }),
         ),
+      'update scalar': () =>
+        deps.db.withTenant(tenantA, (tx) =>
+          tx.example.update({ where: { id: rowA.id }, data: { organizationId: B } }),
+        ),
       'updateMany scalar': () =>
         deps.db.withTenant(tenantA, (tx) =>
           tx.example.updateMany({ where: { id: rowA.id }, data: { organizationId: B } }),
@@ -155,6 +161,22 @@ describe('row level security', () => {
             data: { children: { connectOrCreate: { where: byB, create: { name: 'link-c' } } } },
           }),
         ),
+      'organization examples.set': () =>
+        deps.db.withTenant(tenantA, (tx) =>
+          tx.organization.update({
+            where: { id: tenantA.organizationId },
+            data: { examples: { set: [{ id: rowB.id }] } },
+          }),
+        ),
+      'organization examples.connectOrCreate': () =>
+        deps.db.withTenant(tenantA, (tx) =>
+          tx.organization.update({
+            where: { id: tenantA.organizationId },
+            data: {
+              examples: { connectOrCreate: { where: { id: rowB.id }, create: { name: 'link-o' } } },
+            },
+          }),
+        ),
       'organization examples.connect': () =>
         deps.db.withTenant(tenantA, (tx) =>
           tx.organization.update({
@@ -166,18 +188,25 @@ describe('row level security', () => {
 
     // The row of B is invisible: `set` ends with no children and `connectOrCreate` creates a new
     // child in A, both without an error. Neither touches B.
-    const absorbed = new Set(['children.set', 'children.connectOrCreate'])
+    const absorbed = new Set([
+      'children.set',
+      'children.connectOrCreate',
+      'organization examples.connectOrCreate',
+    ])
     for (const [reference, run] of Object.entries(references)) {
       const error = await errorOf(run)
       if (absorbed.has(reference)) expect(error, reference).toBeUndefined()
-      else expect(['P2025', 'P2018', 'P2003', 'P2039'], reference).toContain(prismaCode(error))
+      else
+        expect(['P2014', 'P2025', 'P2018', 'P2003', 'P2039'], reference).toContain(
+          prismaCode(error),
+        )
     }
     const [afterA, afterB] = [await snapshot(tenantA), await snapshot(tenantB)]
     expect(afterB).toEqual(before[1])
     expect(afterA.every(([, organizationId]) => organizationId === tenantA.organizationId)).toBe(
       true,
     )
-    // Existing rows of A kept their tenant and parent; only the connectOrCreate child is new.
+    // Existing rows of A kept their tenant and parent; only the connectOrCreate rows are new.
     expect(afterA.filter(([id]) => before[0]?.some(([seen]) => seen === id))).toEqual(before[0])
   })
 
@@ -258,5 +287,56 @@ describe('row level security', () => {
 
     const prismaConfig = readFileSync(new URL('../../prisma.config.ts', import.meta.url), 'utf8')
     expect(prismaConfig).toContain('process.env.MIGRATION_DATABASE_URL')
+  })
+
+  it('does not reach tenant rows through Organization', async () => {
+    await createExample(tenantB, 'cascade-b')
+    const before = await snapshot(tenantB)
+    const attempts: Record<string, () => Promise<unknown>> = {
+      'delete in tenant A': () =>
+        deps.db.withTenant(tenantA, (tx) =>
+          tx.organization.delete({ where: { id: tenantB.organizationId } }),
+        ),
+      'change id in tenant A': () =>
+        deps.db.withTenant(tenantA, (tx) =>
+          tx.organization.update({
+            where: { id: tenantB.organizationId },
+            data: { id: '01a0c4ee-0000-7000-8000-00000000beef' },
+          }),
+        ),
+      'delete outside withTenant': () =>
+        deps.db.organization.delete({ where: { id: tenantB.organizationId } }),
+      'change id outside withTenant': () =>
+        deps.db.organization.update({
+          where: { id: tenantB.organizationId },
+          data: { id: '01a0c4ee-0000-7000-8000-00000000cafe' },
+        }),
+    }
+
+    for (const [attempt, run] of Object.entries(attempts)) {
+      expect(prismaCode(await errorOf(run)), attempt).toBe('P2003')
+    }
+    expect(await snapshot(tenantB)).toEqual(before)
+  })
+
+  it('refuses every role that bypasses row security', async () => {
+    const probe = 'bens_bypass_probe'
+    const probeUrl = new URL(ownerDatabaseUrl())
+    probeUrl.username = probe
+    probeUrl.password = probe
+    await withOwnerClient(async (client) => {
+      await client.query(`DROP ROLE IF EXISTS ${probe}`)
+      await client.query(`CREATE ROLE ${probe} LOGIN PASSWORD '${probe}' BYPASSRLS NOSUPERUSER`)
+    })
+    const bypass = createDatabase(probeUrl.toString())
+    const owner = createDatabase(ownerDatabaseUrl())
+    try {
+      await expect(bypass.assertRowSecurityApplies()).rejects.toThrow(RowSecurityBypassError)
+      await expect(owner.assertRowSecurityApplies()).rejects.toThrow(RowSecurityBypassError)
+      await expect(deps.db.assertRowSecurityApplies()).resolves.toBeUndefined()
+    } finally {
+      await Promise.all([bypass.$disconnect(), owner.$disconnect()])
+      await withOwnerClient((client) => client.query(`DROP ROLE ${probe}`))
+    }
   })
 })

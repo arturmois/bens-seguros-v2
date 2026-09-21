@@ -143,3 +143,6 @@ Cost: 6 provas de comportamento no banco, 1 no boot, 3 de schema, 1 de arquitetu
 - **Boundary:** C1-C16 closed at the commit `feat(server): isolate tenants with row level security` (gate green, 74 passed; `pnpm dev` boots as `bens_app`)
 - **Settled mid-build:** C2 and C3 corrected (Prisma absorbs `children.create` via the parent's tenant, and `set`/`connectOrCreate` against an invisible row finish without error; B is untouched in every case — asserted as an invariant); C13 excludes primary keys (server-generated UUID v7); Landing door 1 literal corrected (grants go straight to `bens_app`, no `app_rw` group role); Prisma 7 `migrate dev` does not run `generate`
 - **Abandoned:** none
+- **Boundary:** C17-C21 closed at the commit `fix(server): stop cascades from Organization reaching tenant rows` (round 2; gate green, 79 passed). C2 and C3 gained the plan-named members the round 1 report found untested; C12 has one synthetic case per protection clause
+- **Settled mid-build:** round 1 edits to plan AC 2, AC 3 and door 5 are the C2/C3/C13 corrections listed above; `organization examples.set` fails with `P2014` (required relation), added to the accepted codes
+- **Abandoned:** none
