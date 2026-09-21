@@ -73,7 +73,7 @@ bens-seguros-v2/
 │   │   │   │   ├── chat/            # canais, conversas, mensagens, fila, bot IA, whatsapp/, widget/
 │   │   │   │   └── admin/           # super-admin: tenants, uso de IA, jobs com falha
 │   │   │   ├── infrastructure/
-│   │   │   │   ├── database.ts      # PrismaClient + guard de tenant
+│   │   │   │   ├── database.ts      # PrismaClient (role da aplicação) + withTenant (RLS)
 │   │   │   │   ├── queue.ts         # interface mínima sobre o pg-boss (enqueue/registerWorker/schedule)
 │   │   │   │   ├── realtime.ts      # Socket.IO (auth por cookie, rooms)
 │   │   │   │   ├── storage.ts       # S3/R2
@@ -225,6 +225,7 @@ O schema Prisma é derivado do legado, com estas decisões:
 - **Claim:** número sequencial via `OrganizationCounter(organizationId, key, value)` com `UPDATE … RETURNING` na transação.
 - **AuditLog:** `changes` jsonb **sem PII**. Campos de PII são registrados como `"[alterado]"`.
 - **FKs compostas com `organizationId`** em toda relação entre models tenant-scoped (teste de schema, ADR-004).
+- **RLS forçado** em toda tabela com `organizationId`, com a política `tenant_isolation` na migration da tabela (ADR-004).
 - **IDs:** UUID v7 (ordenáveis, bons para cursor).
 - **Removidos:** `Goal`, `AuditLogArchive`, contato duplicado.
 - **Migrations:** `prisma migrate`. Em produção, o serviço one-shot `migrate` roda `migrate deploy` antes do server.
@@ -258,7 +259,7 @@ A interface expõe apenas o que o BullMQ também consegue fazer, então uma troc
 | `chat.meta-token-refresh` | cron diário |
 | `retention.purge` | cron semanal |
 
-Os jobs recebem `organizationId` no payload e rodam com um `RequestContext` de sistema, pelo mesmo caminho de repository (sem bypass).
+Os jobs recebem `organizationId` no payload e rodam com um `RequestContext` de sistema dentro de `db.withTenant`, pelo mesmo caminho de repository (sem bypass). Crons que varrem todas as orgs listam as organizações e abrem `withTenant` por org.
 
 ### Rate limit (sem Redis)
 
@@ -327,13 +328,11 @@ A assinatura é lida na mesma query da membership.
 ### Isolamento de tenant (ADR-004)
 
 1. O tenant vem só da sessão validada contra `Member`.
-2. Todo repository recebe `ctx` e filtra `organizationId` (+ `scopeFor`). Registro de outro tenant retorna 404.
-3. **Guard do Prisma:** lança erro em operação sobre modelo tenant-scoped sem `organizationId` no `where`.
-4. FKs compostas com `organizationId` em toda relação entre models tenant-scoped.
-5. Referências vindas do input são carregadas com escopo antes do uso.
-6. `withTwoTenants()`: teste cross-tenant obrigatório por endpoint.
-
-Não há RLS. Os gatilhos para adotá-lo estão no ADR-004.
+2. **RLS forçado** em toda tabela com `organizationId`: política `tenant_isolation` (`USING` + `WITH CHECK` por `current_setting('app.tenant_id')`), criada na migration da tabela.
+3. Todo acesso a tabela tenant-scoped passa por `db.withTenant(ctx, async (tx) => …)`; fora dela a query falha. Repositories **não** filtram nem gravam `organizationId` (default da coluna = tenant da transação). Registro de outro tenant retorna 404 porque o banco não o devolve.
+4. Runtime, testes e pg-boss conectam como `bens_app` (sem superuser nem `BYPASSRLS`); o boot recusa outro role. Só o Prisma CLI usa o owner (`MIGRATION_DATABASE_URL`).
+5. FKs compostas com `organizationId` em toda relação entre models tenant-scoped; todo índice único de tabela tenant-scoped inclui `organizationId`.
+6. `withTwoTenants()`: teste cross-tenant obrigatório por endpoint; teste de schema cobre os itens 2 e 5.
 
 ### Controles de segurança
 
@@ -346,6 +345,7 @@ Não há RLS. Os gatilhos para adotá-lo estão no ADR-004.
 | CSRF | `SameSite=Lax` + checagem de `Origin` em métodos mutáveis |
 | Rate limit | ver §5 |
 | Uploads | limite de tamanho, allowlist de MIME confirmada por magic bytes, `Content-Disposition: attachment` |
+| Isolamento | RLS forçado por tabela + `withTenant` (ADR-004) |
 | PII | CPF/CNPJ cifrado; presenter por role; `pino.redact`; Sentry `beforeSend`; **redação de PII antes do provider de IA** (as tools recebem o dado real no server) |
 | Auditoria | só ações sensíveis, **sem PII**: login, mudança de role, transferência de carteira, aprovação/pagamento/estorno de comissão, emissão/importação/cancelamento de apólice, exclusão LGPD, acesso a documento, mudanças de billing |
 | Webhooks | Meta (`X-Hub-Signature-256`), Asaas (token com rotação); dedup em `WebhookEvent` |
@@ -488,7 +488,7 @@ VPS     caddy (TLS + SPA + proxy) · server · postgres · migrate (one-shot)
 | `packages/core/src/platform/storage` | `infrastructure/storage.ts` |
 | `packages/auth` (Better Auth + CASL) | `modules/auth` + `shared/permissions.ts` |
 | `packages/env` | `shared/config.ts` (server) + `import.meta.env` validado (web) |
-| `packages/db` | `apps/server/prisma` (sem RLS) |
+| `packages/db` | `apps/server/prisma` (RLS nas migrations, role da aplicação sem bypass) |
 | `packages/db-chat` | modelos Prisma |
 | `packages/shared`, `packages/ai` | server; `ai` + `@ai-sdk/anthropic` + `@ai-sdk/openai` em `chat/bot` |
 | `packages/aggilizador` | removido |
@@ -512,7 +512,7 @@ VPS     caddy (TLS + SPA + proxy) · server · postgres · migrate (one-shot)
 
 **Dados:**
 
-- RLS: `rls-policies.sql`, a role `app_user`, o `prismaAdmin` e o passo manual após `db:reset`.
+- O RLS do legado como era: `rls-policies.sql` separado, a role `app_user` criada à mão, o `prismaAdmin` (bypass) e o passo manual após `db:reset`. No v2 as políticas estão nas migrations e o role vem de um script versionado (ADR-004).
 - `AuditLogArchive` e particionamento.
 - Migração de mídia do chat.
 - Cache de assinatura + pub/sub de invalidação.
@@ -534,4 +534,4 @@ VPS     caddy (TLS + SPA + proxy) · server · postgres · migrate (one-shot)
 
 **Tooling:** Turborepo, tsup, dependency-cruiser, jscpd, `.quality-gates`, testes de arquitetura extensos, Husky.
 
-**Adiados até haver necessidade:** Messenger, Instagram, Embedded Signup, cobrança de excedente de IA, quotas além de usuários e números de WhatsApp, plano anual, worker separado para o Baileys, mais de 1 instância do server, RLS, OpenTelemetry, logs centralizados.
+**Adiados até haver necessidade:** Messenger, Instagram, Embedded Signup, cobrança de excedente de IA, quotas além de usuários e números de WhatsApp, plano anual, worker separado para o Baileys, mais de 1 instância do server, OpenTelemetry, logs centralizados.
