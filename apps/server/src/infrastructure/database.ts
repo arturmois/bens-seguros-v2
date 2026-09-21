@@ -22,6 +22,7 @@ const WHERE_OPERATIONS = new Set([
   'groupBy',
 ])
 const CREATE_OPERATIONS = new Set(['create', 'createMany', 'createManyAndReturn'])
+const UPDATE_OPERATIONS = new Set(['update', 'updateMany', 'updateManyAndReturn'])
 
 // Raised for a query that could cross tenants. A programming error: it surfaces as a 500.
 export class TenantGuardError extends Error {
@@ -45,7 +46,7 @@ const runtimeDataModelSchema = z.object({
 
 // Prisma keeps the schema metadata on an internal field. Validated here so an upgrade that moves it
 // fails at boot (and in the guard tests) instead of silently disabling the guard.
-function readModels(client: PrismaClient): Map<string, ModelInfo> {
+export function readModels(client: object): Map<string, ModelInfo> {
   const dataModel = runtimeDataModelSchema.parse(Reflect.get(client, '_runtimeDataModel'))
   const models = new Map<string, ModelInfo>()
   for (const [name, model] of Object.entries(dataModel.models)) {
@@ -164,6 +165,14 @@ export function createTenantGuard(models: Map<string, ModelInfo>): Guard {
     }
     if (!hasTenantFilter(where)) {
       throw new TenantGuardError(`${model}.${operation} without where.${TENANT_FIELD}`)
+    }
+
+    // A row never changes tenant.
+    const updateData = operation === 'upsert' && isRecord(args) ? args.update : data
+    if ((UPDATE_OPERATIONS.has(operation) || operation === 'upsert') && isRecord(updateData)) {
+      if (updateData[TENANT_FIELD] !== undefined) {
+        throw new TenantGuardError(`${model}.${operation} must not change ${TENANT_FIELD}`)
+      }
     }
 
     if (operation === 'upsert' && isRecord(args)) {

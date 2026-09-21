@@ -134,3 +134,7 @@ Cost: 6 provas novas na camada própria (C1, C4, C5, C7, C8, C11), 3 no boundary
 ## Handoff
 
 - S1 + S2 + S3 = `database.ts` 7.9 KB + `database.spec.ts` 7.9 KB + `schema.prisma` 1.4 KB + `test/schema.spec.ts` novo ~3 KB ≈ 20 KB ≈ 5k tokens; bem abaixo do budget de 150k - one builder
+
+- **Boundary:** C1-C19 closed at the commit `fix(server): keep rows in their tenant and prove the tenant guard` (proofs green; `pnpm lint && pnpm typecheck && pnpm test && pnpm build` - 79 passed)
+- **Settled mid-build:** none
+- **Abandoned:** none
