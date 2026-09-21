@@ -3,7 +3,7 @@
 Profile: standard
 Plan: `.specs/features/tenant-rls/plan.md`
 
-21 checks in 4 slices (C17-C21 na rodada 2) · 7 one-way doors · 0 open
+21 checks in 4 slices (C17-C21 na rodada 2; textos de C2, C3 e C18 atualizados na rodada 3) · 7 one-way doors · 0 open
 
 Todas as provas rodam em `apps/server` com o Postgres do docker compose no ar (roles do script
 `docker/postgres/init/01-app-role.sql` aplicados). Abreviação: `VT <arquivo> -t "<nome>"` =
@@ -16,10 +16,10 @@ Todas as provas rodam em `apps/server` com o Postgres do docker compose no ar (r
 **C1** - Dentro de `withTenant(A)`, cada uma das 8 formas de leitura (`findMany` sem `where`, `findUnique` pelo id de uma linha de B, `count`, `aggregate`, `groupBy`, `organization.findMany` com `include: { examples: true }`, `organization.findMany` com `include: { _count: true }`, SQL cru `SELECT … FROM "Example"`) retorna só linhas de A: nenhum id de B aparece, a contagem de B vem `0` e o `findUnique` de B vem `null` (AC 1)
 Proof: `VT src/infrastructure/database.spec.ts -t "reads only the tenant rows in every read shape"`
 
-**C2** - Dentro de `withTenant(A)`, das 5 escritas em B, `create` com `organizationId` B, `updateMany` do escalar para B, `update` com `organization.connect` B e `upsert` com `create` em B falham com Prisma `P2039`; `children.create` com `organization.connect` B conclui gravando o filho em A (herda o tenant do pai pela FK composta). Depois, as linhas de B são idênticas às de antes e toda linha de A tem `organizationId` A (AC 2) — **corrigido no build: a versão anterior esperava `P2039` também do `children.create`**
+**C2** - Dentro de `withTenant(A)`, das 6 escritas em B, `create` com `organizationId` B, `update` e `updateMany` do escalar para B, `update` com `organization.connect` B e `upsert` com `create` em B falham com Prisma `P2039`; `children.create` com `organization.connect` B conclui gravando o filho em A (herda o tenant do pai pela FK composta). Depois, as linhas de B são idênticas às de antes e toda linha de A tem `organizationId` A (AC 2) — **corrigido no build (rodada 1) e ampliado com `update` do escalar (rodada 2)**
 Proof: `VT src/infrastructure/database.spec.ts -t "rejects every write into another tenant"`
 
-**C3** - Dentro de `withTenant(A)`, das 5 referências a uma linha de B, `parent.connect`, `children.connect` e `examples.connect` a partir de `Organization` falham com um de `P2025`, `P2018`, `P2003` ou `P2039`; `children.set` e `children.connectOrCreate` concluem sem erro porque a linha de B é invisível (o `set` fica sem filhos, o `connectOrCreate` cria um filho novo em A). Depois, as linhas de B são idênticas, as linhas de A que já existiam mantêm `organizationId` e `parentId`, e toda linha de A tem `organizationId` A (AC 3) — **corrigido no build: a versão anterior esperava erro também do `set` e do `connectOrCreate`**
+**C3** - Dentro de `withTenant(A)`, cada uma das 7 referências a uma linha de B dá exatamente: `parent.connect` → `P2025`; `children.connect` → `P2018`; `examples.connect` a partir de `Organization` → `P2018`; `examples.set` a partir de `Organization` → `P2014`; `children.set`, `children.connectOrCreate` e `examples.connectOrCreate` a partir de `Organization` concluem sem erro (a linha de B é invisível: o `set` fica sem filhos, o `connectOrCreate` cria uma linha nova em A). Depois, as linhas de B são idênticas, as linhas de A que já existiam mantêm `organizationId` e `parentId`, e toda linha de A tem `organizationId` A (AC 3) — **corrigido no build (rodada 1), ampliado na rodada 2, código por formato na rodada 3**
 Proof: `VT src/infrastructure/database.spec.ts -t "cannot link or move another tenant's row"`
 
 **C4** - Fora de `withTenant`, `db.example.findMany()`, `db.example.count()` e `db.example.create` falham com erro do banco, e a contagem de linhas (medida depois, dentro de `withTenant`) não muda (AC 4)
@@ -71,13 +71,13 @@ Proof: `VT src/app.spec.ts -t "surfaces a row security violation as a generic 50
 **C17** - Dentro de `withTenant(A)` e fora de `withTenant`, `organization.delete({ where: { id: B } })` e `organization.update({ where: { id: B }, data: { id: <novo> } })` falham com Prisma `P2003`, e as linhas de B continuam idênticas (AC 15)
 Proof: `VT src/infrastructure/database.spec.ts -t "does not reach tenant rows through Organization"`
 
-**C18** - No schema do worker, nenhuma FK de tabela tenant-scoped para tabela sem `organizationId` usa `CASCADE`, `SET NULL` ou `SET DEFAULT`; o checker aponta uma FK sintética `ON DELETE CASCADE` e outra `ON UPDATE CASCADE` (AC 16)
+**C18** - No schema do worker, nenhuma FK de tabela tenant-scoped para tabela sem `organizationId` usa `CASCADE`, `SET NULL` ou `SET DEFAULT`; o checker aponta uma FK sintética para cada uma das 6 ações proibidas (`ON DELETE` e `ON UPDATE` × `CASCADE`, `SET NULL`, `SET DEFAULT`) e não aponta `RESTRICT` nem `NO ACTION` (AC 16) — **casos de `SET DEFAULT` e `ON UPDATE SET NULL` acrescentados na rodada 3**
 Proof: `VT test/schema.spec.ts -t "foreign keys to unguarded tables never cascade"`
 
 **C19** - Nenhum arquivo de `apps/server/src` fora de `infrastructure/database.ts` cita `app.tenant_id`, e o checker aponta um arquivo sintético que cita (AC 17)
 Proof: `VT test/architecture.spec.ts -t "only the database module sets the tenant"`
 
-**C20** - Nenhum schema exportado de `modules/**/*.schema.ts` com nome terminado em `Input` aceita `id`, e o checker aponta um `ZodObject` sintético com `id` (AC 18)
+**C20** - Nenhum schema exportado de `modules/**/*.schema.ts` com nome terminado em `Input` aceita `id`, e o checker aponta um `ZodObject` sintético com `id` (AC 18) — enquanto nenhum módulo exporta `*Input`, só o caso sintético exercita o checker
 Proof: `VT test/architecture.spec.ts -t "input schemas never accept an id"`
 
 **C21** - `assertRowSecurityApplies` lança `RowSecurityBypassError` para um role `BYPASSRLS` não superuser e para o superuser `bens`, e não lança para `bens_app` (AC 7, AC 19)
@@ -97,7 +97,7 @@ Proof: `VT src/infrastructure/database.spec.ts -t "refuses every role that bypas
 | transação e pool (2) | commit C10 · rollback C10 | - |
 | `enqueue` na transação de tenant (2) | commit C9 · rollback C9 | - |
 | proteção de tabela tenant-scoped (3) | `ENABLE` C11, C12 · `FORCE` C11, C12 · política `tenant_isolation` C11, C12 (C12 com um caso sintético por cláusula na rodada 2) | - |
-| ações de FK para tabela sem RLS (2) | `ON DELETE` C18 · `ON UPDATE` C18 | - |
+| ações de FK proibidas para tabela sem RLS (6) | `ON DELETE CASCADE` C18 · `ON DELETE SET NULL` C18 · `ON DELETE SET DEFAULT` C18 · `ON UPDATE CASCADE` C18 · `ON UPDATE SET NULL` C18 · `ON UPDATE SET DEFAULT` C18 | - |
 | roles no boot (3) | superuser C7, C21 · `BYPASSRLS` C21 · `bens_app` C21 | - |
 | invariantes de schema e código (6) | RLS C11 · unicidade com tenant C13 · FK composta C14 · FK sem cascade C18 · tenant só em `database.ts` C19 · sem `id` no input C20 | - |
 | doors do plano (7) | FK para tabela sem RLS C17, C18 · role sem bypass C7, C8 · política por tabela C11 · tenant por transação C10 · default do tenant C5 · unicidade C13 · pg-boss no role da aplicação C8, C9 | - |
@@ -146,3 +146,6 @@ Cost: 6 provas de comportamento no banco, 1 no boot, 3 de schema, 1 de arquitetu
 - **Boundary:** C17-C21 closed at the commit `fix(server): stop cascades from Organization reaching tenant rows` (round 2; gate green, 79 passed). C2 and C3 gained the plan-named members the round 1 report found untested; C12 has one synthetic case per protection clause
 - **Settled mid-build:** round 1 edits to plan AC 2, AC 3 and door 5 are the C2/C3/C13 corrections listed above; `organization examples.set` fails with `P2014` (required relation), added to the accepted codes
 - **Abandoned:** none
+- **Boundary:** round 3 closed at the commit `test(server): prove every forbidden foreign key action and each reference code` (gate green, 79 passed): C18 covers all 6 forbidden FK actions; C3 asserts one exact code per shape; C2/C3/C18/C20 texts and plan AC 3 updated
+- **Settled mid-build:** runtime-built `SET app.tenant_id` recorded as an accepted risk (plan Assumptions, ADR-004 Trade-offs), not a new check
+- **Abandoned:** resetting `app.tenant_id` on every pool checkout — no concrete problem today

@@ -83,7 +83,7 @@ Dentro de `withTenant(A)`, nenhuma query vê ou grava linha de B, qualquer que s
 
 1. WHILE uma transação `withTenant(A)` está aberta, leituras de tabela tenant-scoped (`findMany` sem `where`, `findUnique` pelo id de uma linha de B, `count`, `aggregate`, `groupBy`, `include`/`_count` a partir de `Organization`, SQL cru) SHALL retornar só linhas de A
 2. IF dentro de `withTenant(A)` uma escrita tenta gravar linha com `organizationId` de B (`create`, `update`/`updateMany` do escalar, `organization.connect`, `upsert` com `create` em B, escrita aninhada com `organizationId` de B) THEN nenhuma linha de B SHALL ser gravada: o banco recusa com Prisma `P2039` (`42501`), ou o Prisma grava a linha aninhada em A por herdar o tenant do pai (`children.create`)
-3. IF dentro de `withTenant(A)` uma operação referencia uma linha de B por id (`connect`, `set`, `connectOrCreate.where`, a partir de `Example` ou de `Organization`) THEN ela SHALL não ligar nem mover linha de B (falha com `P2025`, `P2018`, `P2003` ou `P2039`; `set` e `connectOrCreate` concluem sem tocar em B, porque a linha de B é invisível)
+3. IF dentro de `withTenant(A)` uma operação referencia uma linha de B por id (`connect`, `set`, `connectOrCreate.where`, a partir de `Example` ou de `Organization`) THEN ela SHALL não ligar nem mover linha de B (falha com `P2025`, `P2018` ou `P2014` conforme o formato; `set` e `connectOrCreate` concluem sem tocar em B, porque a linha de B é invisível)
 4. IF uma query acessa tabela tenant-scoped fora de `withTenant` THEN o banco SHALL lançar erro e nenhuma linha SHALL ser lida ou gravada
 5. WHEN `create` é chamado dentro de `withTenant(A)` sem `organizationId` THEN a linha SHALL ser gravada com `organizationId` = A
 6. WHEN uma linha de A se liga a outra de A pela FK escalar (`parentId`) THEN o vínculo SHALL ser gravado; IF a outra linha é de B THEN o banco SHALL recusar com `P2003`
@@ -146,6 +146,7 @@ Toda tabela nova com tenant nasce protegida, ou o teste falha.
 | repositories deixam de filtrar `organizationId` | sim, o RLS é a garantia; os testes `withTwoTenants` provam por endpoint | é o que limpa o código; manter o filtro seria redundância que vira regra esquecida | y |
 | sem tenant na sessão | erro ruidoso (`current_setting` sem `missing_ok`) em vez de lista vazia | falha fechada e visível; lista vazia esconderia o esquecimento | n |
 | banco de dev existente | eu rodo o script de roles uma vez e recrio o schema `pgboss` de dev (dados de fila de dev, descartáveis) | necessário para os testes; é aditivo e reversível | n |
+| tenant da sessão trocado em runtime | risco aceito: um `SET app.tenant_id` montado com string dinâmica escapa do teste de arquitetura (critério 17); a ameaça é bug de código, não código malicioso, e um `SET` deliberado passa por revisão de PR | fechar exigiria resetar o setting a cada checkout do pool, complexidade sem problema concreto hoje (rodada 2 do Verifier, report-only) | n |
 | senha do role em dev | `bens_app` / `bens_app` no `docker-compose` e no `.env.example`, como as demais credenciais de dev | paridade com o resto do compose | n |
 
 **Open questions:** none - all resolved or logged above.

@@ -186,20 +186,23 @@ describe('row level security', () => {
         ),
     }
 
-    // The row of B is invisible: `set` ends with no children and `connectOrCreate` creates a new
-    // child in A, both without an error. Neither touches B.
-    const absorbed = new Set([
-      'children.set',
-      'children.connectOrCreate',
-      'organization examples.connectOrCreate',
-    ])
+    // What PostgreSQL + Prisma answer for each shape. `undefined`: the row of B is invisible, so
+    // `set` ends with no children and `connectOrCreate` creates a new row in A — neither touches B.
+    const expected: Record<string, string | undefined> = {
+      'parent.connect': 'P2025',
+      'children.connect': 'P2018',
+      'children.set': undefined,
+      'children.connectOrCreate': undefined,
+      'organization examples.set': 'P2014',
+      'organization examples.connectOrCreate': undefined,
+      'organization examples.connect': 'P2018',
+    }
+    expect(Object.keys(references).sort()).toEqual(Object.keys(expected).sort())
     for (const [reference, run] of Object.entries(references)) {
       const error = await errorOf(run)
-      if (absorbed.has(reference)) expect(error, reference).toBeUndefined()
-      else
-        expect(['P2014', 'P2025', 'P2018', 'P2003', 'P2039'], reference).toContain(
-          prismaCode(error),
-        )
+      const code = expected[reference]
+      if (code === undefined) expect(error, reference).toBeUndefined()
+      else expect(prismaCode(error), reference).toBe(code)
     }
     const [afterA, afterB] = [await snapshot(tenantA), await snapshot(tenantB)]
     expect(afterB).toEqual(before[1])

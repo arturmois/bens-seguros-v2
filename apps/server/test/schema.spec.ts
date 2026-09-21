@@ -137,13 +137,24 @@ describe('tenant tables', () => {
       await child('DeleteCascade', 'ON DELETE CASCADE ON UPDATE RESTRICT')
       await child('UpdateCascade', 'ON DELETE RESTRICT ON UPDATE CASCADE')
       await child('SetNull', 'ON DELETE SET NULL ON UPDATE RESTRICT')
+      // SET DEFAULT would move the rows into the tenant of the deleting transaction.
+      await child('SetDefault', 'ON DELETE SET DEFAULT ON UPDATE RESTRICT')
+      await child('UpdateSetNull', 'ON DELETE RESTRICT ON UPDATE SET NULL')
+      await child('UpdateSetDefault', 'ON DELETE RESTRICT ON UPDATE SET DEFAULT')
       await child('Restricted', 'ON DELETE RESTRICT ON UPDATE RESTRICT')
       await child('NoAction', '')
       return findCascadingForeignKeysToUnguarded(client, probe)
     })
 
     expect(real).toEqual([])
-    expect(synthetic).toEqual(['DeleteCascade_fkey', 'SetNull_fkey', 'UpdateCascade_fkey'])
+    expect(synthetic).toEqual([
+      'DeleteCascade_fkey',
+      'SetDefault_fkey',
+      'SetNull_fkey',
+      'UpdateCascade_fkey',
+      'UpdateSetDefault_fkey',
+      'UpdateSetNull_fkey',
+    ])
   })
 
   it('every unique index of a tenant table includes organizationId', async () => {
