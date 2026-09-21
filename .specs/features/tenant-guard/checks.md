@@ -3,7 +3,7 @@
 Profile: standard
 Plan: `.specs/features/tenant-guard/plan.md`
 
-19 checks in 3 slices · 4 one-way doors · 0 open
+27 checks in 4 slices (C20-C27 adicionados na rodada 2) · 4 one-way doors · 0 open
 
 Todas as provas rodam em `apps/server` com o Postgres do docker compose no ar. Abreviação usada
 abaixo: `VT <arquivo> -t "<nome>"` = `pnpm --filter @bens/server exec vitest run <arquivo> -t "<nome>"`.
@@ -74,6 +74,32 @@ Proof: `VT src/infrastructure/database.spec.ts -t "reads the model classificatio
 Proof: `VT test/schema.spec.ts -t "every relation between tenant-scoped models uses a composite foreign key"`
 Proof: `VT test/schema.spec.ts -t "flags a relation between tenant-scoped models without organizationId"`
 
+### S4 - Rodada 2: fechar os caminhos que o Verifier abriu · 3 files · 20 KB · ~5k
+
+**C20** - No guard, escrever a relação `organization` de um model tenant-scoped lança `TenantGuardError` em cada um dos 4 caminhos de update (`update`, `updateMany`, `updateManyAndReturn`, `upsert.update`) e dentro de um `update` aninhado de filho, para cada uma das 6 operações (`connect`, `connectOrCreate`, `create`, `update`, `upsert`, `disconnect`) (AC 18)
+Proof: `VT src/infrastructure/database.spec.ts -t "never writes the tenant relation"`
+
+**C21** - Pelo client `db`, `example.update` e `example.upsert` com `data`/`update` `{ organization: { connect: { id: B } } }` lançam `TenantGuardError`, e a linha continua com `organizationId` de A (AC 7, AC 18)
+Proof: `VT src/infrastructure/database.spec.ts -t "rejects moving a row through the organization relation"`
+
+**C22** - No guard, um model sem `organizationId` cujo `data` escreve numa relação tenant-scoped lança `TenantGuardError` para cada uma das 11 operações aninhadas (`connect`, `connectOrCreate`, `create`, `createMany`, `set`, `update`, `updateMany`, `upsert`, `delete`, `deleteMany`, `disconnect`), em `create`, `update` e `upsert`; um `update` só com escalares não lança (AC 8, AC 19)
+Proof: `VT src/infrastructure/database.spec.ts -t "rejects nested writes into tenant-scoped relations from unguarded models"`
+
+**C23** - Pelo client `db`, `organization.update({ where: { id: A }, data: { examples: { connect: { id: <linha de B> } } } })` lança `TenantGuardError` e a linha continua em B (AC 19)
+Proof: `VT src/infrastructure/database.spec.ts -t "rejects moving rows into an organization through its relation"`
+
+**C24** - Um client criado por `createDatabase` com uma `DATABASE_URL` inalcançável rejeita as 13 operações sem tenant com `TenantGuardError`, nunca com erro de conexão — o guard lança antes de qualquer SQL ser enviado (AC 1)
+Proof: `VT src/infrastructure/database.spec.ts -t "rejects before sending any SQL"`
+
+**C25** - `connectOrCreate` sem `organizationId` no `where` lança `TenantGuardError` em cada uma das 6 posições aninhadas de C11, e com `organizationId` não lança (AC 10)
+Proof: `VT src/infrastructure/database.spec.ts -t "checks connectOrCreate at every nested position"`
+
+**C26** - `findFirst` com filtro de A e `select: { children: { select: { name: true, organizationId: true } } }` retorna exatamente `[{ name: 'child-s', organizationId: A }]`; sem o filtro, lança `TenantGuardError` (AC 13)
+Proof: `VT src/infrastructure/database.spec.ts -t "allows select of relations under a tenant filter"`
+
+**C27** - Uma rota que dispara o guard responde `500` com `{ error: { code: 'INTERNAL_ERROR', message: 'Erro interno do servidor.', details: { requestId } } }`, `requestId` igual ao header `x-request-id`, e o corpo não contém `organizationId` (Flow hop 4)
+Proof: `VT src/app.spec.ts -t "surfaces a tenant guard violation as a generic 500"`
+
 ## Coverage
 
 | Set (size) | Member -> proof | Unproven |
@@ -92,6 +118,13 @@ Proof: `VT test/schema.spec.ts -t "flags a relation between tenant-scoped models
 | classificação de models (2) | tenant-scoped (`Example`) C18 · não tenant-scoped (`Organization`) C10, C18 | - |
 | portas de falha fechada do metadado (2) | ausente C18 · formato inesperado C18 | - |
 | startup config: instalação do guard (3) | `server.ts` C2 via `createDependencies` compartilhado · `test/app.ts` C2 · `scripts/export-openapi.ts` C2 via `createDependencies` compartilhado | - |
+| updates que mudam o tenant pela relação (5) | `update` C20, C21 · `updateMany` C20 · `updateManyAndReturn` C20 · `upsert.update` C20, C21 · `update` aninhado C20 | - |
+| operações na relação `organization` (6) | `connect` C20 · `connectOrCreate` C20 · `create` C20 · `update` C20 · `upsert` C20 · `disconnect` C20 | - |
+| escritas aninhadas a partir de model sem tenant (11) | `connect` C22, C23 · `connectOrCreate` C22 · `create` C22 · `createMany` C22 · `set` C22 · `update` C22 · `updateMany` C22 · `upsert` C22 · `delete` C22 · `deleteMany` C22 · `disconnect` C22 | - |
+| `connectOrCreate` por posição aninhada (6) | `create` C25 · `createMany.data` C25 · `update` C25 · `upsert.create` C25 · `upsert.update` C25 · `connectOrCreate.create` C25 | - |
+| leitura de relações sob filtro (2) | `include` C16 · `select` C26 | - |
+| "nenhum SQL" do AC 1 (13) | C24, table-driven sobre as 13 | - |
+| superfície do erro (Flow hop 4) (1) | `500 INTERNAL_ERROR` + `requestId` C27 | - |
 | doors do plano (4) | extensão única C2, C17 · datamodel interno C18 · create só pelo escalar C5 · FK composta C15, C19 | - |
 
 - Os três assemblies usam o mesmo `createDependencies` → `createDatabase`; C2 prova o do harness e o

@@ -78,9 +78,15 @@ Uma query sem `organizationId` falha antes do SQL; com ele, roda inalterada.
 5. IF um `upsert` não traz o tenant no `where` ou não traz `create.organizationId` string THEN o guard SHALL lançar `TenantGuardError`
 6. IF uma operação fora das 17 listadas nos critérios 1, 4 e 5 chega a um model tenant-scoped THEN o guard SHALL lançar `TenantGuardError` (falha fechada)
 7. IF `update`, `updateMany`, `updateManyAndReturn` ou `upsert.update` define `organizationId` em `data` THEN o guard SHALL lançar `TenantGuardError` (uma linha nunca muda de tenant) — **novo: o código atual não garante**
-8. The guard SHALL deixar passar sem validação as operações em models sem `organizationId` (hoje `Organization`)
+8. The guard SHALL deixar passar sem validação de `where` as operações em models sem `organizationId` (hoje `Organization`) — **emendado na rodada 2 (aprovado pelo usuário): as escritas aninhadas desses models seguem o critério 19**
+18. IF o `data` de um model tenant-scoped, em qualquer operação e profundidade, escreve na relação com o model raiz do tenant (`Organization`: `connect`, `connectOrCreate`, `create`, `update`, `upsert`, `disconnect`) THEN o guard SHALL lançar `TenantGuardError` — **rodada 2: o AC 7 cobria só o escalar**
+19. IF o `data` de um model sem `organizationId` escreve, por qualquer operação aninhada, numa relação com model tenant-scoped THEN o guard SHALL lançar `TenantGuardError` — os filhos são gravados pelo próprio model — **rodada 2 (aprovado pelo usuário)**
 
 **Independent test:** `db.example.findMany({ where: { name } })` lança; com `organizationId` retorna só as linhas do tenant.
+
+> Rodada 2 (verificação `FAIL`, 2026-09-21): o Verifier moveu linhas entre tenants por
+> `data.organization.connect` e por `organization.update(... examples.connect)`. Os critérios 8, 18
+> e 19 fecham esses caminhos; o critério 1 ("nenhum SQL") ganha prova própria.
 
 ### S2: Referências aninhadas não cruzam tenants (P1)
 
@@ -128,6 +134,8 @@ Não existe caminho do código de aplicação para um client sem guard.
 | leitura do metadado interno `_runtimeDataModel` | aceito, com validação Zod e versão do Prisma fixada (7.10.x) | alternativa pública não existe no Prisma 7; falha fechada no boot se sumir | n |
 
 **Open questions:** none - all resolved or logged above.
+
+Resolvidas com o usuário em 2026-09-21 (rodada 2): escritas aninhadas a partir de models sem `organizationId` são proibidas (critérios 8 e 19) e o "nenhum SQL" do critério 1 é provado, não reescrito.
 
 Resolvidas com o usuário em 2026-09-21: FK composta em **toda** relação tenant→tenant, com teste de
 schema (critério 17, door 4; ADR-004 atualizado); verificação no perfil `standard`.
