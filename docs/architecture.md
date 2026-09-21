@@ -77,15 +77,15 @@ bens-seguros-v2/
 │   │   │   │   ├── queue.ts         # interface mínima sobre o pg-boss (enqueue/registerWorker/schedule)
 │   │   │   │   ├── realtime.ts      # Socket.IO (auth por cookie, rooms)
 │   │   │   │   ├── storage.ts       # S3/R2
-│   │   │   │   ├── email.ts         # Resend + render de React Email
+│   │   │   │   ├── email.ts         # SMTP (Mailpit no dev, Resend em produção) + render de React Email
 │   │   │   │   └── pdf.ts           # @react-pdf/renderer → Buffer
+│   │   │   ├── emails/              # templates React Email (preview: pnpm email:dev)
 │   │   │   ├── shared/
 │   │   │   │   ├── config.ts  errors.ts  logger.ts  request-context.ts
 │   │   │   │   ├── permissions.ts  crypto.ts  money.ts  pagination.ts
 │   │   │   ├── app.ts               # buildApp(deps)
 │   │   │   ├── dependencies.ts      # composição explícita
 │   │   │   └── server.ts            # boot: config → deps → app → listen → workers
-│   │   ├── emails/                  # templates React Email (preview local)
 │   │   ├── test/                    # helpers: app de teste, factories, withTwoTenants, schema por worker
 │   │   ├── scripts/export-openapi.ts
 │   │   ├── Dockerfile
@@ -236,11 +236,14 @@ Todos os módulos usam **somente** `infrastructure/queue.ts`:
 
 ```ts
 enqueue(tx, name, payload, { singletonKey?, delaySeconds? })
-registerWorker(name, handler, { concurrency, retries, backoff })
+registerWorker(name, handler, { concurrency, retries, backoff, dedupe })
 schedule(name, cron, { tz: 'America/Sao_Paulo' })
 ```
 
 A interface expõe apenas o que o BullMQ também consegue fazer, então uma troca futura fica restrita a esse arquivo (ADR-006). Os handlers são **idempotentes**.
+
+- A fila precisa ter worker registrado antes do `enqueue`/`schedule` (o `queue.ts` recusa fila desconhecida).
+- `dedupe: true` declara a fila com a política `short` do pg-boss. Nela, o `singletonKey` é **obrigatório**: sem chave, a fila guardaria um único job e descartaria os outros em silêncio. Numa fila sem `dedupe`, passar `singletonKey` também é erro (não deduplicaria).
 
 | Job | Tipo |
 | --- | --- |

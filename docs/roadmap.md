@@ -83,6 +83,13 @@ As fases 5 e 6 podem correr em paralelo depois da 4. A fase 11 depende da 6 (con
   - **Versões:** o dist-tag `latest` do Prisma aponta para `8.0.0-rc`. Fixar a última estável (7.10.x) até o 8 sair em GA.
   - Guard do Prisma com operações aninhadas (`include`, `connect`).
 
+- **Remover o módulo exemplo** (quando o primeiro modelo tenant-scoped real existir, na Fase 4 ou 6):
+  1. apagar `apps/server/src/modules/examples/`, o registro `app.register(exampleRoutes)` em `app.ts` e `src/emails/example.tsx`;
+  2. apagar `apps/web/src/routes/(public)/example.tsx`;
+  3. remover o modelo `Example` (e a relação `examples` em `Organization`) do `schema.prisma` e gerar a migration de `DROP` com `pnpm --filter @bens/server db:migrate`;
+  4. portar para o modelo real os testes de `infrastructure/database.spec.ts` que usam `Example` (guard com `include`/`connect`, FK composta) e o teste de P2002 em `app.spec.ts`;
+  5. `pnpm api:generate` e commitar o `openapi.json` e o `src/api` atualizados.
+
 ## Checkpoint H1 — Avaliação do harness (após a Fase 2)
 
 - **Objetivo:** garantir que o harness de agentes (`CLAUDE.md`, `.claude/skills` → `.agents/skills`) está correto, enxuto e útil **antes** das fases de domínio. A partir da Fase 3, cada fase é implementada por agentes seguindo esse harness, então um erro aqui se multiplica.
