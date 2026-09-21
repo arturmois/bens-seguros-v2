@@ -1,22 +1,13 @@
-import { useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
+import { useGetHealth } from '@/api/endpoints'
 import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute('/(public)/')({
   component: Home,
 })
 
-type Health = { status: 'ok' }
-
-// Temporary hand-written fetch: Phase 2 replaces it with the Orval-generated hook.
-async function fetchHealth(): Promise<Health> {
-  const response = await fetch('/api/health')
-  if (!response.ok) throw new Error(`HTTP ${response.status}`)
-  return response.json()
-}
-
 function Home() {
-  const health = useQuery({ queryKey: ['health'], queryFn: fetchHealth, retry: false })
+  const health = useGetHealth({ query: { retry: false } })
 
   const status = health.isPending
     ? { label: 'Verificando a API…', dot: 'bg-muted-foreground animate-pulse' }

@@ -10,6 +10,7 @@ import {
 import { z } from 'zod'
 import type { Deps } from './dependencies.ts'
 import { createRealtime } from './infrastructure/realtime.ts'
+import { exampleRoutes } from './modules/examples/index.ts'
 import { errorHandler, notFoundHandler } from './shared/errors.ts'
 
 z.config(z.locales.ptBR())
@@ -56,6 +57,7 @@ export function buildApp(deps: Deps) {
       async () => ({ status: 'ok' as const }),
     )
   })
+  app.register(exampleRoutes)
 
   return app
 }
