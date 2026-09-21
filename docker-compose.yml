@@ -1,0 +1,43 @@
+# Local development services. The apps run on the host with `pnpm dev`.
+name: bens-seguros
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: bens
+      POSTGRES_PASSWORD: bens
+      POSTGRES_DB: bens
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U bens -d bens']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # S3-compatible storage (R2 in production). Docker Hub images were discontinued; quay.io keeps the last release.
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: server /data --console-address ':9001'
+    environment:
+      MINIO_ROOT_USER: bens
+      MINIO_ROOT_PASSWORD: bens-minio
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - minio-data:/data
+
+  # SMTP sink with a web inbox at http://localhost:8025.
+  mailpit:
+    image: axllent/mailpit:v1.31.2
+    ports:
+      - '1025:1025'
+      - '8025:8025'
+
+volumes:
+  postgres-data:
+  minio-data:
