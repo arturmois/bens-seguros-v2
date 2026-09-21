@@ -13,6 +13,28 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
+    # Same images and credentials as docker-compose.yml, so the test defaults need no env.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: bens
+          POSTGRES_PASSWORD: bens
+          POSTGRES_DB: bens
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bens -d bens"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      mailpit:
+        image: axllent/mailpit:v1.31.2
+        ports:
+          - 1025:1025
+          - 8025:8025
+
     steps:
       - uses: actions/checkout@v7
 
@@ -23,6 +45,16 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
+      # Job services cannot pass a command, and MinIO needs `server /data`.
+      - name: Start MinIO
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=bens -e MINIO_ROOT_PASSWORD=bens-minio \
+            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+          curl --silent --fail --retry 20 --retry-delay 1 --retry-all-errors \
+            http://localhost:9000/minio/health/live
+
+      # Also runs `prisma generate` (apps/server postinstall).
       - run: pnpm install --frozen-lockfile
 
       - run: pnpm lint
@@ -30,5 +62,12 @@ jobs:
       - run: pnpm typecheck
 
       - run: pnpm test
+
+      - name: Generated API client is up to date
+        run: |
+          pnpm api:generate
+          git add --all --intent-to-add apps/server/openapi.json apps/web/src/api
+          git diff --exit-code -- apps/server/openapi.json apps/web/src/api \
+            || (echo "::error::Run 'pnpm api:generate' and commit the result." && exit 1)
 
       - run: pnpm build
