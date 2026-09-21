@@ -93,11 +93,10 @@ export function createTenantGuard(models: Map<string, ModelInfo>): Guard {
     return info
   }
 
-  // Nested writes (`data`) may reference existing rows of tenant-scoped models by unique key. Those
-  // references must carry the tenant too, or a foreign id from the input would link across tenants.
-  // Two relations are never written from `data` at all: a tenant-scoped row's link to its tenant
-  // (it would move the row), and a tenant-scoped relation of an unguarded model such as the tenant
-  // itself (the connect would pull another tenant's row in). Each model writes its own rows.
+  // No nested write ever reaches a tenant-scoped relation: rows are linked by their scalar foreign
+  // key in their own write, and the composite FK rejects another tenant's row. A nested write cannot
+  // be made safe here, because the composite FK shares `organizationId`: connecting through the
+  // relation rewrites the tenant of one side. A tenant-scoped row never writes its tenant relation.
   function checkNestedWrites(model: string, data: unknown, path: string) {
     const { relations, tenantScoped } = modelInfo(model)
     for (const item of asList(data)) {
@@ -106,37 +105,19 @@ export function createTenantGuard(models: Map<string, ModelInfo>): Guard {
       for (const [field, target] of relations) {
         const operations = item[field]
         if (!isRecord(operations)) continue
-        const targetScoped = modelInfo(target).tenantScoped
         const at = `${path}.${field}`
 
+        if (modelInfo(target).tenantScoped) {
+          throw new TenantGuardError(
+            `${at}: nested writes into ${target} are not allowed (write ${target} itself, link by foreign key)`,
+          )
+        }
         if (tenantScoped && target === TENANT_ROOT) {
           throw new TenantGuardError(`${at} must not write the tenant relation`)
         }
-        if (!tenantScoped && targetScoped) {
-          throw new TenantGuardError(`${at} writes ${target} from ${model}; write it on ${target}`)
-        }
 
-        if (targetScoped) {
-          for (const operation of ['connect', 'set'] as const) {
-            if (operations[operation] === undefined) continue
-            for (const where of asList(operations[operation])) {
-              if (!hasTenantFilter(where)) {
-                throw new TenantGuardError(
-                  `${at}.${operation} on ${target} without ${TENANT_FIELD}`,
-                )
-              }
-            }
-          }
-          for (const connectOrCreate of asList(operations.connectOrCreate ?? [])) {
-            if (!isRecord(connectOrCreate) || !hasTenantFilter(connectOrCreate.where)) {
-              throw new TenantGuardError(
-                `${at}.connectOrCreate on ${target} without ${TENANT_FIELD}`,
-              )
-            }
-            checkNestedWrites(target, connectOrCreate.create, `${at}.connectOrCreate`)
-          }
-        }
-
+        // A model without organizationId (such as User) may be written nested; its own nested
+        // writes follow the same rule.
         checkNestedWrites(target, operations.create, `${at}.create`)
         if (isRecord(operations.createMany)) {
           checkNestedWrites(target, operations.createMany.data, `${at}.createMany`)
@@ -151,6 +132,77 @@ export function createTenantGuard(models: Map<string, ModelInfo>): Guard {
           checkNestedWrites(target, upsert.create, `${at}.upsert`)
           checkNestedWrites(target, upsert.update, `${at}.upsert`)
         }
+        for (const connectOrCreate of asList(operations.connectOrCreate ?? [])) {
+          if (isRecord(connectOrCreate)) {
+            checkNestedWrites(target, connectOrCreate.create, `${at}.connectOrCreate`)
+          }
+        }
+      }
+    }
+  }
+
+  // Reads follow relations from a tenant-filtered root, and composite FKs keep those rows in the same
+  // tenant. A model without organizationId (Organization, User) has no such filter, so from it no
+  // relation to a tenant-scoped model is read, counted, filtered or ordered by, at any depth.
+  function checkReads(model: string, args: unknown, path: string) {
+    if (!isRecord(args)) return
+    for (const key of ['include', 'select'] as const) {
+      checkProjection(model, args[key], `${path}.${key}`)
+    }
+    checkRelationFilter(model, args.where, `${path}.where`)
+    for (const orderBy of asList(args.orderBy ?? [])) {
+      checkRelationFilter(model, orderBy, `${path}.orderBy`)
+    }
+  }
+
+  function assertReadable(model: string, target: string, at: string) {
+    if (!modelInfo(model).tenantScoped && modelInfo(target).tenantScoped) {
+      throw new TenantGuardError(`${at}: ${model} has no tenant filter to read ${target} through`)
+    }
+  }
+
+  function checkProjection(model: string, projection: unknown, path: string) {
+    if (!isRecord(projection)) return
+    const { relations } = modelInfo(model)
+    for (const [key, value] of Object.entries(projection)) {
+      if (key === '_count') {
+        const counted = isRecord(value) ? value.select : undefined
+        if (isRecord(counted)) {
+          for (const field of Object.keys(counted)) {
+            const target = relations.get(field)
+            if (target) assertReadable(model, target, `${path}._count.${field}`)
+          }
+        }
+        continue
+      }
+      const target = relations.get(key)
+      if (!target || value === false || value === undefined) continue
+      assertReadable(model, target, `${path}.${key}`)
+      checkReads(target, value, `${path}.${key}`)
+    }
+  }
+
+  // `where` and `orderBy` share the shape that matters here: relation keys whose values nest the
+  // same shape for the target model (`some`, `is`, `_count`…), combined with AND/OR/NOT.
+  function checkRelationFilter(model: string, filter: unknown, path: string) {
+    for (const item of asList(filter)) {
+      if (!isRecord(item)) continue
+      const { relations } = modelInfo(model)
+      for (const [key, value] of Object.entries(item)) {
+        if (key === 'AND' || key === 'OR' || key === 'NOT') {
+          checkRelationFilter(model, value, `${path}.${key}`)
+          continue
+        }
+        const target = relations.get(key)
+        if (!target) continue
+        assertReadable(model, target, `${path}.${key}`)
+        if (!isRecord(value)) continue
+        for (const [operator, nested] of Object.entries(value)) {
+          const inner = ['some', 'every', 'none', 'is', 'isNot'].includes(operator)
+            ? nested
+            : { [operator]: nested }
+          checkRelationFilter(target, inner, `${path}.${key}.${operator}`)
+        }
       }
     }
   }
@@ -158,6 +210,7 @@ export function createTenantGuard(models: Map<string, ModelInfo>): Guard {
   return (model, operation, args) => {
     const where = isRecord(args) ? args.where : undefined
     const data = isRecord(args) ? args.data : undefined
+    checkReads(model, args, `${model}.${operation}`)
 
     if (!modelInfo(model).tenantScoped) {
       // No tenant filter to enforce, but its nested writes must not reach tenant-scoped rows.

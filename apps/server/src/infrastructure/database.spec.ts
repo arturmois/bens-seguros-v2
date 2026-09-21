@@ -154,39 +154,6 @@ describe('tenant guard on the database client', () => {
     ).rejects.toThrow(TenantGuardError)
   })
 
-  it('rejects a nested connect to a tenant-scoped row without organizationId', async () => {
-    const child = await createExample(tenantA, 'child-1b')
-    const foreignParent = await createExample(tenantB, 'foreign-parent')
-
-    await expect(
-      deps.db.example.update({
-        where: { id: child.id, organizationId: tenantA.organizationId },
-        data: { parent: { connect: { id: foreignParent.id } } },
-      }),
-    ).rejects.toThrow(/data.parent.connect on Example without organizationId/)
-  })
-
-  it('does not find a foreign row through a tenant-filtered connect', async () => {
-    const child = await createExample(tenantA, 'child-2b')
-    const foreignParent = await createExample(tenantB, 'foreign-parent-2')
-
-    const error = await deps.db.example
-      .update({
-        where: { id: child.id, organizationId: tenantA.organizationId },
-        data: {
-          parent: { connect: { id: foreignParent.id, organizationId: tenantA.organizationId } },
-        },
-      })
-      .catch((caught: unknown) => caught)
-
-    expect(error).toBeInstanceOf(Prisma.PrismaClientKnownRequestError)
-    expect(error).toMatchObject({ code: 'P2025' })
-    const reloaded = await deps.db.example.findUnique({
-      where: { id: child.id, organizationId: tenantA.organizationId },
-    })
-    expect(reloaded?.parentId).toBeNull()
-  })
-
   it('lets the composite foreign key reject a parent id from another tenant', async () => {
     const foreignParent = await createExample(tenantB, 'foreign-parent-3')
 
@@ -254,6 +221,106 @@ describe('tenant guard on the database client', () => {
     ).rejects.toThrow(TenantGuardError)
   })
 
+  it('rejects the round 2 cross-tenant paths and moves no row', async () => {
+    const rowA = await createExample(tenantA, 'r3-row-a')
+    const rowB = await createExample(tenantB, 'r3-row-b')
+    const beforeA = (await examplesOf(tenantA)).map((row) => row.id)
+    const beforeB = (await examplesOf(tenantB)).map((row) => row.id)
+    const whereA = { id: rowA.id, organizationId: tenantA.organizationId }
+    const toB = { id: rowB.id, organizationId: tenantB.organizationId }
+    const B = tenantB.organizationId
+    const A = tenantA.organizationId
+
+    const paths: Record<string, () => Promise<unknown>> = {
+      'parent.connect': () =>
+        deps.db.example.update({ where: whereA, data: { parent: { connect: toB } } }),
+      'parent.connectOrCreate': () =>
+        deps.db.example.update({
+          where: whereA,
+          data: {
+            parent: { connectOrCreate: { where: toB, create: { name: 'n4', organizationId: B } } },
+          },
+        }),
+      'parent.create': () =>
+        deps.db.example.update({
+          where: whereA,
+          data: { parent: { create: { name: 'n3', organizationId: B } } },
+        }),
+      'parent.upsert': () =>
+        deps.db.example.update({
+          where: whereA,
+          data: {
+            parent: {
+              upsert: { create: { name: 'n5', organizationId: B }, update: { organizationId: B } },
+            },
+          },
+        }),
+      'parent.update': () =>
+        deps.db.example.update({
+          where: whereA,
+          data: { parent: { update: { organizationId: B } } },
+        }),
+      'children.connect': () =>
+        deps.db.example.update({ where: whereA, data: { children: { connect: toB } } }),
+      'children.set': () =>
+        deps.db.example.update({ where: whereA, data: { children: { set: [toB] } } }),
+      'children.connectOrCreate': () =>
+        deps.db.example.update({
+          where: whereA,
+          data: { children: { connectOrCreate: { where: toB, create: { name: 'n16' } } } },
+        }),
+      'create children.connect': () =>
+        deps.db.example.create({
+          data: { name: 'n17', organizationId: A, children: { connect: toB } },
+        }),
+      'upsert.create children.connect': () =>
+        deps.db.example.upsert({
+          where: { id: '01a0c4ee-0000-7000-8000-00000000abcd', organizationId: A },
+          create: { name: 'n23', organizationId: A, children: { connect: toB } },
+          update: {},
+        }),
+    }
+
+    for (const [path, call] of Object.entries(paths)) {
+      await expect(call(), path).rejects.toThrow(TenantGuardError)
+    }
+
+    expect((await examplesOf(tenantA)).map((row) => row.id)).toEqual(beforeA)
+    expect((await examplesOf(tenantB)).map((row) => row.id)).toEqual(beforeB)
+  })
+
+  it('links rows only through the scalar foreign key', async () => {
+    const parentA = await createExample(tenantA, 'r3-parent-a')
+    const child = await createExample(tenantA, 'r3-child')
+    const rowB = await createExample(tenantB, 'r3-parent-b')
+    const where = { id: child.id, organizationId: tenantA.organizationId }
+
+    const linked = await deps.db.example.update({ where, data: { parentId: parentA.id } })
+    expect(linked.parentId).toBe(parentA.id)
+
+    const error = await deps.db.example
+      .update({ where, data: { parentId: rowB.id } })
+      .catch((caught: unknown) => caught)
+    expect(error).toBeInstanceOf(Prisma.PrismaClientKnownRequestError)
+    expect(error).toMatchObject({ code: 'P2003' })
+    expect((await deps.db.example.findUnique({ where }))?.parentId).toBe(parentA.id)
+  })
+
+  it('rejects cross-tenant reads through Organization on the client', async () => {
+    await expect(deps.db.organization.findMany({ include: { examples: true } })).rejects.toThrow(
+      TenantGuardError,
+    )
+    await expect(
+      deps.db.organization.findMany({ where: { examples: { some: { name: 'r3-row-b' } } } }),
+    ).rejects.toThrow(TenantGuardError)
+    await expect(
+      deps.db.example.findFirst({
+        where: { organizationId: tenantA.organizationId },
+        include: { organization: { include: { examples: true } } },
+      }),
+    ).rejects.toThrow(TenantGuardError)
+  })
+
   it('guards the transaction client too', async () => {
     await expect(
       deps.db.$transaction(async (tx) => tx.example.findMany({ where: { name: 'x' } })),
@@ -281,7 +348,8 @@ describe('tenant guard on the database client', () => {
 })
 
 describe('createTenantGuard (decision table)', () => {
-  // Invoice → Item → Product (tenant-scoped); Invoice and Item → Organization; Organization → Invoice.
+  // Invoice → Item → Product (tenant-scoped); Invoice and Item → Organization; Invoice → User.
+  // Organization and User have no organizationId and relate back to Invoice.
   const guard = createTenantGuard(
     new Map([
       [
@@ -291,6 +359,7 @@ describe('createTenantGuard (decision table)', () => {
           relations: new Map([
             ['items', 'Item'],
             ['organization', 'Organization'],
+            ['owner', 'User'],
           ]),
         },
       ],
@@ -306,6 +375,7 @@ describe('createTenantGuard (decision table)', () => {
       ],
       ['Product', { tenantScoped: true, relations: new Map() }],
       ['Organization', { tenantScoped: false, relations: new Map([['invoices', 'Invoice']]) }],
+      ['User', { tenantScoped: false, relations: new Map([['invoices', 'Invoice']]) }],
     ]),
   )
   const org = 'org-1'
@@ -398,50 +468,6 @@ describe('createTenantGuard (decision table)', () => {
     ).toThrow(TenantGuardError)
   })
 
-  it('checks connect and set at every nested position', () => {
-    const positions: Record<string, (product: unknown) => unknown> = {
-      create: (product) => ({ create: { product } }),
-      'createMany.data': (product) => ({ createMany: { data: [{ product }] } }),
-      update: (product) => ({ update: { where: { id: 'i1' }, data: { product } } }),
-      'upsert.create': (product) => ({
-        upsert: { where: { id: 'i1' }, create: { product }, update: {} },
-      }),
-      'upsert.update': (product) => ({
-        upsert: { where: { id: 'i1' }, create: {}, update: { product } },
-      }),
-      'connectOrCreate.create': (product) => ({
-        connectOrCreate: { where: { id: 'i1', organizationId: org }, create: { product } },
-      }),
-    }
-    const unscoped = { connect: { connect: { id: 'p' } }, set: { set: [{ id: 'p' }] } }
-    const scoped = {
-      connect: { connect: { id: 'p', organizationId: org } },
-      set: { set: [{ id: 'p', organizationId: org }] },
-    }
-    const update = (items: unknown) =>
-      guard('Invoice', 'update', { where: { id: 'i', organizationId: org }, data: { items } })
-
-    for (const [position, wrap] of Object.entries(positions)) {
-      for (const operation of ['connect', 'set'] as const) {
-        const label = `${position} ${operation}`
-        expect(() => update(wrap(unscoped[operation])), label).toThrow(TenantGuardError)
-        expect(() => update(wrap(scoped[operation])), label).not.toThrow()
-      }
-    }
-  })
-
-  it('checks connects inside nested creates, connectOrCreate and set', () => {
-    const create = (items: unknown) =>
-      guard('Invoice', 'create', { data: { organizationId: org, items } })
-
-    expect(() => create({ connectOrCreate: { where: { id: 'i' }, create: {} } })).toThrow(
-      /items.connectOrCreate on Item/,
-    )
-    expect(() =>
-      create({ connectOrCreate: { where: { id: 'i', organizationId: org }, create: {} } }),
-    ).not.toThrow()
-  })
-
   it('never writes the tenant relation', () => {
     const where = { id: 'i', organizationId: org }
     const relationOperations = {
@@ -520,31 +546,89 @@ describe('createTenantGuard (decision table)', () => {
     ).not.toThrow()
   })
 
-  it('checks connectOrCreate at every nested position', () => {
-    const positions: Record<string, (product: unknown) => unknown> = {
-      create: (product) => ({ create: { product } }),
-      'createMany.data': (product) => ({ createMany: { data: [{ product }] } }),
-      update: (product) => ({ update: { where: { id: 'i1' }, data: { product } } }),
-      'upsert.create': (product) => ({
-        upsert: { where: { id: 'i1' }, create: { product }, update: {} },
-      }),
-      'upsert.update': (product) => ({
-        upsert: { where: { id: 'i1' }, create: {}, update: { product } },
-      }),
-      'connectOrCreate.create': (product) => ({
-        connectOrCreate: { where: { id: 'i1', organizationId: org }, create: { product } },
-      }),
-    }
-    const update = (items: unknown) =>
-      guard('Invoice', 'update', { where: { id: 'i', organizationId: org }, data: { items } })
-    const unscoped = { connectOrCreate: { where: { id: 'p' }, create: { organizationId: org } } }
-    const scoped = {
-      connectOrCreate: { where: { id: 'p', organizationId: org }, create: { organizationId: org } },
+  it('rejects every nested write into a tenant-scoped relation', () => {
+    const nestedOperations = [
+      'connect',
+      'connectOrCreate',
+      'create',
+      'createMany',
+      'set',
+      'update',
+      'updateMany',
+      'upsert',
+      'delete',
+      'deleteMany',
+      'disconnect',
+    ]
+    const where = { id: 'i', organizationId: org }
+    // Each position receives `{ items: … }` or `{ invoices: … }` and returns the guard call.
+    const positions: Record<string, (write: unknown) => () => void> = {
+      'tenant create.data': (items) => () =>
+        guard('Invoice', 'create', { data: { organizationId: org, items } }),
+      'tenant update.data': (items) => () => guard('Invoice', 'update', { where, data: { items } }),
+      'tenant upsert.create': (items) => () =>
+        guard('Invoice', 'upsert', { where, create: { organizationId: org, items }, update: {} }),
+      'tenant upsert.update': (items) => () =>
+        guard('Invoice', 'upsert', { where, create: { organizationId: org }, update: { items } }),
+      'unguarded create.data': (invoices) => () =>
+        guard('User', 'create', { data: { name: 'x', invoices } }),
+      'unguarded upsert.create': (invoices) => () =>
+        guard('User', 'upsert', { where: { id: 'u' }, create: { invoices }, update: {} }),
+      'under an unguarded node': (invoices) => () =>
+        guard('Invoice', 'update', { where, data: { owner: { update: { invoices } } } }),
     }
 
-    for (const [position, wrap] of Object.entries(positions)) {
-      expect(() => update(wrap(unscoped)), position).toThrow(TenantGuardError)
-      expect(() => update(wrap(scoped)), position).not.toThrow()
+    for (const operation of nestedOperations) {
+      // Carrying the query's own tenant does not make a nested write acceptable.
+      const write = { [operation]: { id: 'x', organizationId: org } }
+      for (const [position, call] of Object.entries(positions)) {
+        expect(call(write), `${position} ${operation}`).toThrow(TenantGuardError)
+      }
     }
+  })
+
+  it('rejects reading tenant-scoped relations through unguarded models', () => {
+    const rejected: Record<string, [string, string, unknown]> = {
+      include: ['User', 'findMany', { include: { invoices: true } }],
+      select: ['User', 'findMany', { select: { invoices: { select: { id: true } } } }],
+      _count: ['User', 'findMany', { select: { _count: { select: { invoices: true } } } }],
+      'where relation': ['User', 'findMany', { where: { invoices: { some: { number: '1' } } } }],
+      'where AND': ['User', 'findMany', { where: { AND: [{ invoices: { none: {} } }] } }],
+      'where OR': ['User', 'findMany', { where: { OR: [{ invoices: { every: {} } }] } }],
+      'where NOT': ['User', 'findMany', { where: { NOT: { invoices: { some: {} } } } }],
+      orderBy: ['User', 'findMany', { orderBy: { invoices: { _count: 'desc' } } }],
+      'via an unguarded node': [
+        'Invoice',
+        'findFirst',
+        { where: { organizationId: org }, include: { owner: { include: { invoices: true } } } },
+      ],
+      'via an unguarded node (select)': [
+        'Invoice',
+        'findFirst',
+        {
+          where: { organizationId: org },
+          select: { organization: { select: { invoices: true } } },
+        },
+      ],
+    }
+    for (const [label, [model, operation, args]] of Object.entries(rejected)) {
+      expect(() => guard(model, operation, args), label).toThrow(TenantGuardError)
+    }
+
+    expect(() =>
+      guard('Invoice', 'findFirst', {
+        where: { organizationId: org },
+        include: { items: { include: { product: true } }, owner: true },
+      }),
+    ).not.toThrow()
+    expect(() =>
+      guard('Organization', 'findMany', { where: { name: 'x' }, select: { id: true } }),
+    ).not.toThrow()
+  })
+
+  it('fails closed on an unknown model', () => {
+    expect(() => guard('Ghost', 'findMany', { where: { organizationId: org } })).toThrow(
+      /Unknown model/,
+    )
   })
 })

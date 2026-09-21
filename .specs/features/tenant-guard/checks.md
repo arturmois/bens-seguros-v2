@@ -3,7 +3,7 @@
 Profile: standard
 Plan: `.specs/features/tenant-guard/plan.md`
 
-33 checks in 5 slices (C20-C27 na rodada 2; C28-C33 na rodada 3, que substituem C11, C12, C14 e C25) · 4 one-way doors · 0 open
+33 checks in 5 slices (C20-C27 na rodada 2; C28-C33 na rodada 3, que substituem C11, C12, C13, C14 e C25) · 4 one-way doors · 0 open
 
 Todas as provas rodam em `apps/server` com o Postgres do docker compose no ar. Abreviação usada
 abaixo: `VT <arquivo> -t "<nome>"` = `pnpm --filter @bens/server exec vitest run <arquivo> -t "<nome>"`.
@@ -50,7 +50,7 @@ Proof: `VT src/infrastructure/database.spec.ts -t "checks connect and set at eve
 **C12** - `connectOrCreate` para model tenant-scoped sem `organizationId` no `where` lança `TenantGuardError` citando `connectOrCreate on` (AC 10) — **substituído na rodada 3 (aprovado pelo usuário): ver C28, C30**
 Proof: `VT src/infrastructure/database.spec.ts -t "checks connects inside nested creates, connectOrCreate and set"`
 
-**C13** - Pelo client `db`, `connect` sem tenant a uma linha de outro tenant lança `TenantGuardError` citando `data.parent.connect on Example without organizationId` (AC 9)
+**C13** - Pelo client `db`, `connect` sem tenant a uma linha de outro tenant lança `TenantGuardError` citando `data.parent.connect on Example without organizationId` (AC 9) — **substituído na rodada 3 (aprovado pelo usuário): ver C29**
 Proof: `VT src/infrastructure/database.spec.ts -t "rejects a nested connect to a tenant-scoped row without organizationId"`
 
 **C14** - Um `connect` com o filtro de A apontando para uma linha de B falha com Prisma `P2025`, e o `parentId` da linha de A continua `null` (AC 11) — **substituído na rodada 3 (aprovado pelo usuário): ver C28, C30**
@@ -132,7 +132,7 @@ Proof: `VT src/infrastructure/database.spec.ts -t "fails closed on an unknown mo
 | operações desconhecidas (3) | `findRaw` C7 · `aggregateRaw` C7 · nome inventado C7 | - |
 | updates que mudam o tenant (4) | `update` C8 · `updateMany` C8, C9 · `updateManyAndReturn` C8 · `upsert.update` C8 | - |
 | posições aninhadas antigas (6) | `create` C28 · `createMany.data` C28 · `update` C28 · `upsert.create` C28 · `upsert.update` C28 · `connectOrCreate.create` C28 (C11 substituído) | - |
-| operações de referência aninhada (3) | `connect` C13, C28 · `set` C28 · `connectOrCreate.where` C28 (C11, C12 substituídos) | - |
+| operações de referência aninhada (3) | `connect` C28, C29 · `set` C28 · `connectOrCreate.where` C28 (C11, C12 substituídos) | - |
 | erros do banco em referência cruzada (1) | `P2003` C15, C30 (`P2025` de C14 substituído: o `connect` agora nem chega ao banco) | - |
 | clients da aplicação (2) | `db` C2 · `tx` C17 | - |
 | classificação de models (2) | tenant-scoped (`Example`) C18 · não tenant-scoped (`Organization`) C10, C18 | - |
@@ -200,3 +200,6 @@ Cost: 6 provas novas na camada própria (C1, C4, C5, C7, C8, C11), 3 no boundary
 - **Boundary:** C20-C27 closed at the commit `fix(server): close tenant moves through relations in the tenant guard` (round 2; `pnpm lint && pnpm typecheck && pnpm test && pnpm build` green)
 - **Settled mid-build:** AC 8 amended and AC 19 added (user, round 2); AC 1 kept and proven by C24 (user, round 2)
 - **Abandoned:** none
+- **Boundary:** C28-C33 closed at the commit `fix(server): forbid nested tenant writes and unguarded tenant reads` (round 3; gate green, 87 passed)
+- **Settled mid-build:** C13 superseded by C29 (its claim quoted the old error text); round 2 N17/N23 reproduced with the scalar `organizationId`, so the nested rule is what rejects them
+- **Abandoned:** requiring nested `organizationId` to equal the query's tenant (user chose the prohibition)
