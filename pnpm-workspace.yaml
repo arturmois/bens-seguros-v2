@@ -2,8 +2,11 @@ packages:
   - apps/*
 
 allowBuilds:
+  '@prisma/engines': false
   esbuild: true
+  prisma: false
 
 minimumReleaseAgeExclude:
   - '@tanstack/query-core@5.103.2'
   - '@tanstack/react-query@5.103.2'
+  - pg-boss@12.33.3

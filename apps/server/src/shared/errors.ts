@@ -1,5 +1,6 @@
 import type { FastifyError, FastifyReply, FastifyRequest } from 'fastify'
 import { hasZodFastifySchemaValidationErrors } from 'fastify-type-provider-zod'
+import { Prisma } from '../generated/prisma/client.ts'
 
 export type ErrorBody = {
   error: { code: string; message: string; details?: unknown }
@@ -35,6 +36,12 @@ export function errorHandler(error: FastifyError, request: FastifyRequest, reply
 
   if (error instanceof AppError) {
     return reply.status(error.status).send(body(error.code, error.message, error.details))
+  }
+
+  // Unique constraint violation that the use case did not turn into a friendlier AppError.
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+    request.log.info({ err: error }, 'unique constraint violation')
+    return reply.status(409).send(body('CONFLICT', 'Registro já existe.'))
   }
 
   // Client errors raised by Fastify itself (malformed JSON, unsupported media type, body too large).

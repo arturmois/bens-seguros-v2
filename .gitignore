@@ -8,3 +8,4 @@ coverage/
 .DS_Store
 *.log
 .playwright-mcp/
+apps/server/src/generated/

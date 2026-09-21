@@ -1,14 +1,18 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { type App, buildApp } from './app.ts'
-import { createDependencies } from './dependencies.ts'
-import { loadConfig } from './shared/config.ts'
+import { buildTestApp } from '../test/app.ts'
+import { createOrganization } from '../test/factories.ts'
+import type { App } from './app.ts'
 import { AppError } from './shared/errors.ts'
 
 let app: App
+let close: () => Promise<void>
 
 beforeAll(async () => {
-  app = buildApp(createDependencies(loadConfig({ NODE_ENV: 'test', LOG_LEVEL: 'silent' })))
+  const testApp = await buildTestApp()
+  app = testApp.app
+  close = testApp.close
+  const { db } = testApp.deps
 
   app.post(
     '/test/validated',
@@ -23,6 +27,12 @@ beforeAll(async () => {
       missing: ['plate'],
     })
   })
+  app.post('/test/duplicate', async () => {
+    const organization = await createOrganization(db)
+    const data = { organizationId: organization.id, name: 'duplicado' }
+    await db.example.create({ data })
+    await db.example.create({ data })
+  })
   app.get('/test/crash', async () => {
     throw new Error('database password is hunter2')
   })
@@ -30,7 +40,7 @@ beforeAll(async () => {
   await app.ready()
 })
 
-afterAll(() => app.close())
+afterAll(() => close())
 
 describe('GET /api/health', () => {
   it('returns ok with a request id header', async () => {
@@ -39,6 +49,10 @@ describe('GET /api/health', () => {
     expect(res.statusCode).toBe(200)
     expect(res.json()).toEqual({ status: 'ok' })
     expect(res.headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/)
+  })
+
+  it('is part of the OpenAPI document consumed by Orval', () => {
+    expect(app.swagger().paths?.['/api/health']?.get?.operationId).toBe('getHealth')
   })
 })
 
@@ -101,6 +115,13 @@ describe('error handler', () => {
         details: { missing: ['plate'] },
       },
     })
+  })
+
+  it('maps a unique constraint violation (Prisma P2002) to 409', async () => {
+    const res = await app.inject({ method: 'POST', url: '/test/duplicate' })
+
+    expect(res.statusCode).toBe(409)
+    expect(res.json()).toEqual({ error: { code: 'CONFLICT', message: 'Registro já existe.' } })
   })
 
   it('hides unexpected errors behind a generic 500 that carries the request id', async () => {
