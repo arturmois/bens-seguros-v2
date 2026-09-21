@@ -33,6 +33,7 @@ beforeAll(async () => {
     await db.example.create({ data })
     await db.example.create({ data })
   })
+  app.get('/test/tenant-guard', async () => db.example.findMany({ where: { name: 'x' } }))
   app.get('/test/crash', async () => {
     throw new Error('database password is hunter2')
   })
@@ -122,6 +123,20 @@ describe('error handler', () => {
 
     expect(res.statusCode).toBe(409)
     expect(res.json()).toEqual({ error: { code: 'CONFLICT', message: 'Registro já existe.' } })
+  })
+
+  it('surfaces a tenant guard violation as a generic 500', async () => {
+    const res = await app.inject({ method: 'GET', url: '/test/tenant-guard' })
+
+    expect(res.statusCode).toBe(500)
+    expect(res.json()).toEqual({
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Erro interno do servidor.',
+        details: { requestId: res.headers['x-request-id'] },
+      },
+    })
+    expect(res.body).not.toContain('organizationId')
   })
 
   it('hides unexpected errors behind a generic 500 that carries the request id', async () => {

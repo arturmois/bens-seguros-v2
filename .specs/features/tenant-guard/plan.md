@@ -21,7 +21,7 @@ Reusa a extensão de query do próprio Prisma (`$extends`) e o error handler exi
 mapeado → 500 com `requestId`); não há segundo client nem wrapper de repository.
 
 1. repository/use case chama `db.<model>.<op>(args)` ou `tx.<model>.<op>(args)` -> `infrastructure/database.ts` (exists) - a extensão `tenant-guard` recebe `model`, `operation`, `args`
-2. `createTenantGuard` (exists) - classifica o model pelo datamodel de runtime (door 2); se tenant-scoped, valida `where`, `data` e as escritas aninhadas
+2. `createTenantGuard` (exists) - classifica o model pelo datamodel de runtime (door 2); se tenant-scoped, valida `where`, `data` e as escritas aninhadas (sem escrever a relação com `Organization`, door 5); se não, só recusa escritas aninhadas em relações tenant-scoped
 3. se válido: a query segue inalterada -> PostgreSQL via `@prisma/adapter-pg` (exists); se inválido: lança `TenantGuardError` antes do SQL
 4. out: o resultado da query, ou `TenantGuardError` -> `shared/errors.ts` (exists) -> `500 INTERNAL_ERROR` com `requestId`, logado como `unhandled error`
 
@@ -59,6 +59,7 @@ resposta 500 do error handler, que já existe e não muda.
 | guard como extensão do client único | `client.$extends({ name: 'tenant-guard', query: { $allModels: { $allOperations } } })`; `Database = ReturnType<typeof createDatabase>` é o único tipo de client exportado | RLS (ADR-004 rejeitou: role separada, bypass para jobs); wrapper por repository - depende de cada repository lembrar, o mesmo vetor que o guard fecha |
 | classificação pelo datamodel interno do Prisma | `Reflect.get(client, '_runtimeDataModel')` validado com Zod; tenant-scoped = tem campo `organizationId` | lista manual de models - falha aberta quando alguém esquece um model novo; `@prisma/internals getDMMF` - dependência pesada só para metadados |
 | escrita de create só pelo escalar | `data: { organizationId: ctx.organizationId, … }` | aceitar `organization: { connect }` - duas formas para validar, e o `connect` de Organization não é tenant-filtrável |
+| raiz do tenant fixa (rodada 2) | `const TENANT_ROOT = 'Organization'` em `database.ts`; relação com ela nunca é escrita pelo `data` de um model tenant-scoped | derivar a raiz do datamodel (o alvo comum das relações `organizationId`) - o metadado de runtime não expõe os `fields` da relação, e um nome fixo é revisável num diff |
 | FK composta entre models tenant-scoped | `@relation(fields: [xId, organizationId], references: [id, organizationId])` + `@@unique([id, organizationId])` no alvo | FK simples por `id` - permite um filho de outra org ligado a um pai desta org, e o `include` o traria; FK composta só nas relações críticas (texto anterior do ADR-004) - depende de alguém julgar o que é crítico |
 
 - Nothing else in this change is hard to reverse

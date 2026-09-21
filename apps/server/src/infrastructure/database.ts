@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { PrismaClient } from '../generated/prisma/client.ts'
 
 const TENANT_FIELD = 'organizationId'
+// The tenant itself. Only its own module writes it; a tenant-scoped row never re-points to another.
+const TENANT_ROOT = 'Organization'
 
 // Operations that must be filtered by tenant in their top-level `where`.
 const WHERE_OPERATIONS = new Set([
@@ -93,16 +95,26 @@ export function createTenantGuard(models: Map<string, ModelInfo>): Guard {
 
   // Nested writes (`data`) may reference existing rows of tenant-scoped models by unique key. Those
   // references must carry the tenant too, or a foreign id from the input would link across tenants.
+  // Two relations are never written from `data` at all: a tenant-scoped row's link to its tenant
+  // (it would move the row), and a tenant-scoped relation of an unguarded model such as the tenant
+  // itself (the connect would pull another tenant's row in). Each model writes its own rows.
   function checkNestedWrites(model: string, data: unknown, path: string) {
+    const { relations, tenantScoped } = modelInfo(model)
     for (const item of asList(data)) {
       if (!isRecord(item)) continue
-      const { relations } = modelInfo(model)
 
       for (const [field, target] of relations) {
         const operations = item[field]
         if (!isRecord(operations)) continue
         const targetScoped = modelInfo(target).tenantScoped
         const at = `${path}.${field}`
+
+        if (tenantScoped && target === TENANT_ROOT) {
+          throw new TenantGuardError(`${at} must not write the tenant relation`)
+        }
+        if (!tenantScoped && targetScoped) {
+          throw new TenantGuardError(`${at} writes ${target} from ${model}; write it on ${target}`)
+        }
 
         if (targetScoped) {
           for (const operation of ['connect', 'set'] as const) {
@@ -144,9 +156,18 @@ export function createTenantGuard(models: Map<string, ModelInfo>): Guard {
   }
 
   return (model, operation, args) => {
-    if (!modelInfo(model).tenantScoped) return
     const where = isRecord(args) ? args.where : undefined
     const data = isRecord(args) ? args.data : undefined
+
+    if (!modelInfo(model).tenantScoped) {
+      // No tenant filter to enforce, but its nested writes must not reach tenant-scoped rows.
+      checkNestedWrites(model, data, `${model}.${operation}.data`)
+      if (isRecord(args)) {
+        checkNestedWrites(model, args.create, `${model}.${operation}.create`)
+        checkNestedWrites(model, args.update, `${model}.${operation}.update`)
+      }
+      return
+    }
 
     if (CREATE_OPERATIONS.has(operation)) {
       for (const row of asList(data)) {

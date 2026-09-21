@@ -171,3 +171,6 @@ Cost: 6 provas novas na camada própria (C1, C4, C5, C7, C8, C11), 3 no boundary
 - **Boundary:** C1-C19 closed at the commit `fix(server): keep rows in their tenant and prove the tenant guard` (proofs green; `pnpm lint && pnpm typecheck && pnpm test && pnpm build` - 79 passed)
 - **Settled mid-build:** none
 - **Abandoned:** none
+- **Boundary:** C20-C27 closed at the commit `fix(server): close tenant moves through relations in the tenant guard` (round 2; `pnpm lint && pnpm typecheck && pnpm test && pnpm build` green)
+- **Settled mid-build:** AC 8 amended and AC 19 added (user, round 2); AC 1 kept and proven by C24 (user, round 2)
+- **Abandoned:** none
