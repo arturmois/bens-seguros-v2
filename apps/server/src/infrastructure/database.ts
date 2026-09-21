@@ -73,15 +73,20 @@ function asList(value: unknown): unknown[] {
 }
 
 // `{ organizationId: '…' }` or a compound unique such as `{ id_organizationId: { id, organizationId } }`.
+function tenantOf(where: unknown): string | undefined {
+  if (!isRecord(where)) return undefined
+  for (const [key, value] of Object.entries(where)) {
+    if (key === TENANT_FIELD && typeof value === 'string') return value
+    if (key.split('_').includes(TENANT_FIELD) && isRecord(value)) {
+      const tenant = value[TENANT_FIELD]
+      if (typeof tenant === 'string') return tenant
+    }
+  }
+  return undefined
+}
+
 function hasTenantFilter(where: unknown): boolean {
-  if (!isRecord(where)) return false
-  return Object.entries(where).some(([key, value]) =>
-    key === TENANT_FIELD
-      ? typeof value === 'string'
-      : key.split('_').includes(TENANT_FIELD) &&
-        isRecord(value) &&
-        typeof value[TENANT_FIELD] === 'string',
-  )
+  return tenantOf(where) !== undefined
 }
 
 type Guard = (model: string, operation: string, args: unknown) => void
@@ -166,11 +171,21 @@ export function createTenantGuard(models: Map<string, ModelInfo>): Guard {
     const { relations } = modelInfo(model)
     for (const [key, value] of Object.entries(projection)) {
       if (key === '_count') {
+        // `_count: true` counts every relation of the node.
+        if (value === true) {
+          for (const [field, target] of relations) {
+            assertReadable(model, target, `${path}._count.${field}`)
+          }
+        }
         const counted = isRecord(value) ? value.select : undefined
         if (isRecord(counted)) {
-          for (const field of Object.keys(counted)) {
+          for (const [field, options] of Object.entries(counted)) {
             const target = relations.get(field)
-            if (target) assertReadable(model, target, `${path}._count.${field}`)
+            if (!target) continue
+            assertReadable(model, target, `${path}._count.${field}`)
+            if (isRecord(options)) {
+              checkRelationFilter(target, options.where, `${path}._count.${field}.where`)
+            }
           }
         }
         continue
@@ -252,6 +267,9 @@ export function createTenantGuard(models: Map<string, ModelInfo>): Guard {
     if (operation === 'upsert' && isRecord(args)) {
       if (!isRecord(args.create) || typeof args.create[TENANT_FIELD] !== 'string') {
         throw new TenantGuardError(`${model}.upsert without create.${TENANT_FIELD}`)
+      }
+      if (args.create[TENANT_FIELD] !== tenantOf(where)) {
+        throw new TenantGuardError(`${model}.upsert must create in the tenant of its where`)
       }
       checkNestedWrites(model, args.create, `${model}.upsert.create`)
       checkNestedWrites(model, args.update, `${model}.upsert.update`)

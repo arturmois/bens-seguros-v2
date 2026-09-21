@@ -321,6 +321,33 @@ describe('tenant guard on the database client', () => {
     ).rejects.toThrow(TenantGuardError)
   })
 
+  it('rejects counting tenant rows through Organization on the client', async () => {
+    await expect(deps.db.organization.findMany({ include: { _count: true } })).rejects.toThrow(
+      TenantGuardError,
+    )
+    await expect(deps.db.organization.findMany({ select: { _count: true } })).rejects.toThrow(
+      TenantGuardError,
+    )
+  })
+
+  it('rejects an upsert that would create the row in another tenant', async () => {
+    await expect(
+      deps.db.example.upsert({
+        where: {
+          id: '01a0c4ee-0000-7000-8000-00000000dcba',
+          organizationId: tenantA.organizationId,
+        },
+        create: { name: 'r4-upsert-into-b', organizationId: tenantB.organizationId },
+        update: {},
+      }),
+    ).rejects.toThrow(TenantGuardError)
+
+    const created = await deps.db.example.findFirst({
+      where: { organizationId: tenantB.organizationId, name: 'r4-upsert-into-b' },
+    })
+    expect(created).toBeNull()
+  })
+
   it('guards the transaction client too', async () => {
     await expect(
       deps.db.$transaction(async (tx) => tx.example.findMany({ where: { name: 'x' } })),
@@ -349,7 +376,7 @@ describe('tenant guard on the database client', () => {
 
 describe('createTenantGuard (decision table)', () => {
   // Invoice → Item → Product (tenant-scoped); Invoice and Item → Organization; Invoice → User.
-  // Organization and User have no organizationId and relate back to Invoice.
+  // Organization, User and Team have no organizationId; they relate to Invoice, and User to Team.
   const guard = createTenantGuard(
     new Map([
       [
@@ -375,7 +402,17 @@ describe('createTenantGuard (decision table)', () => {
       ],
       ['Product', { tenantScoped: true, relations: new Map() }],
       ['Organization', { tenantScoped: false, relations: new Map([['invoices', 'Invoice']]) }],
-      ['User', { tenantScoped: false, relations: new Map([['invoices', 'Invoice']]) }],
+      [
+        'User',
+        {
+          tenantScoped: false,
+          relations: new Map([
+            ['invoices', 'Invoice'],
+            ['teams', 'Team'],
+          ]),
+        },
+      ],
+      ['Team', { tenantScoped: false, relations: new Map([['invoices', 'Invoice']]) }],
     ]),
   )
   const org = 'org-1'
@@ -630,5 +667,69 @@ describe('createTenantGuard (decision table)', () => {
     expect(() => guard('Ghost', 'findMany', { where: { organizationId: org } })).toThrow(
       /Unknown model/,
     )
+  })
+
+  it('rejects every _count form through unguarded models', () => {
+    const rejected: Record<string, [string, unknown]> = {
+      'include _count: true': ['User', { include: { _count: true } }],
+      'select _count: true': ['User', { select: { _count: true } }],
+      '_count.select with where': [
+        'User',
+        { select: { _count: { select: { invoices: { where: { number: '1' } } } } } },
+      ],
+      'where inside a tenant _count through an unguarded node': [
+        'Invoice',
+        {
+          where: { organizationId: org },
+          select: {
+            _count: {
+              select: {
+                items: { where: { organization: { is: { invoices: { some: {} } } } } },
+              },
+            },
+          },
+        },
+      ],
+    }
+    for (const [label, [model, args]] of Object.entries(rejected)) {
+      expect(() => guard(model, 'findMany', args), label).toThrow(TenantGuardError)
+    }
+
+    expect(() =>
+      guard('Invoice', 'findMany', { where: { organizationId: org }, include: { _count: true } }),
+    ).not.toThrow()
+  })
+
+  it('requires the same tenant on both sides of an upsert', () => {
+    const wheres = {
+      direct: { id: 'i', organizationId: org },
+      compound: { id_organizationId: { id: 'i', organizationId: org } },
+    }
+    for (const [label, where] of Object.entries(wheres)) {
+      expect(
+        () => guard('Invoice', 'upsert', { where, create: { organizationId: other }, update: {} }),
+        label,
+      ).toThrow(TenantGuardError)
+      expect(
+        () => guard('Invoice', 'upsert', { where, create: { organizationId: org }, update: {} }),
+        label,
+      ).not.toThrow()
+    }
+  })
+
+  it('rejects nested tenant writes below an unguarded node on every route', () => {
+    const invoices = { connect: { id: 'i', organizationId: org } }
+    const routes: Record<string, unknown> = {
+      create: { create: { invoices } },
+      'createMany.data': { createMany: { data: [{ invoices }] } },
+      'upsert.create': { upsert: { where: { id: 't' }, create: { invoices }, update: {} } },
+      'upsert.update': { upsert: { where: { id: 't' }, create: {}, update: { invoices } } },
+      'connectOrCreate.create': { connectOrCreate: { where: { id: 't' }, create: { invoices } } },
+    }
+    for (const [route, teams] of Object.entries(routes)) {
+      expect(() => guard('User', 'update', { where: { id: 'u' }, data: { teams } }), route).toThrow(
+        TenantGuardError,
+      )
+    }
   })
 })

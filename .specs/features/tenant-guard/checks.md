@@ -224,3 +224,6 @@ Cost: 6 provas novas na camada própria (C1, C4, C5, C7, C8, C11), 3 no boundary
 - **Boundary:** C28-C33 closed at the commit `fix(server): forbid nested tenant writes and unguarded tenant reads` (round 3; gate green, 87 passed)
 - **Settled mid-build:** C13 superseded by C29 (its claim quoted the old error text); round 2 N17/N23 reproduced with the scalar `organizationId`, so the nested rule is what rejects them
 - **Abandoned:** requiring nested `organizationId` to equal the query's tenant (user chose the prohibition)
+- **Boundary:** C34-C38 closed at the commit `fix(server): close _count and cross-tenant upsert in the tenant guard` (round 4; gate green, 92 passed; C38 was already met by the code and only lacked its proof)
+- **Settled mid-build:** none
+- **Abandoned:** none
