@@ -54,6 +54,10 @@ jobs:
           curl --silent --fail --retry 20 --retry-delay 1 --retry-all-errors \
             http://localhost:9000/minio/health/live
 
+      # The application role the server and the tests connect as (ADR-004). The runner ships psql.
+      - name: Create the application database role
+        run: psql postgresql://bens:bens@localhost:5432/bens -v ON_ERROR_STOP=1 -f docker/postgres/init/01-app-role.sql
+
       # Also runs `prisma generate` (apps/server postinstall).
       - run: pnpm install --frozen-lockfile
 
