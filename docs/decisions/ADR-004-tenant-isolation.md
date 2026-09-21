@@ -34,10 +34,17 @@ de bypass**:
 5. **Repositories não filtram nem gravam `organizationId`**: o default da coluna é o tenant da
    transação e o RLS filtra. O filtro de carteira (`scopeFor`, ADR-010) continua no repository.
 6. **FKs compostas** `(id, organizationId)` em toda relação entre models tenant-scoped, e **todo
-   índice único** de tabela tenant-scoped inclui `organizationId`: checagens de integridade ignoram
-   RLS, e uma FK ou um único global revelaria se um valor existe em outro tenant.
-7. **Testes:** um teste de schema falha em tabela com `organizationId` sem RLS forçado e política,
-   em único sem o tenant e em relação sem FK composta; `withTwoTenants()` por endpoint.
+   índice único** de tabela tenant-scoped inclui `organizationId`, exceto a chave primária:
+   checagens de integridade ignoram RLS, e uma FK ou um único global revelaria se um valor existe em
+   outro tenant. A PK fica de fora porque o `id` é UUID v7 gerado no server; nenhum schema de entrada
+   (`*Input`) aceita `id`, e um teste garante isso.
+7. **FK de tabela tenant-scoped para tabela sem RLS** (`Organization`) é `ON DELETE RESTRICT ON UPDATE
+   RESTRICT`: um cascade roda como owner e ignoraria as políticas. Só `infrastructure/database.ts`
+   toca em `app.tenant_id`.
+8. **Testes:** um teste de schema falha em tabela com `organizationId` sem RLS forçado e política,
+   em único sem o tenant, em relação sem FK composta e em FK com cascade para tabela sem RLS; um teste
+   de arquitetura falha em `app.tenant_id` fora de `database.ts` e em `id` num schema de entrada;
+   `withTwoTenants()` por endpoint.
 
 ## Why
 **Ameaça mitigada:** vazamento entre tenants por filtro esquecido, IDOR, referência cruzada e SQL

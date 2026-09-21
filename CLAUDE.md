@@ -12,7 +12,8 @@ Legado (somente referência de regras, não de arquitetura): `github.com/arturmo
 - **Módulos:** `apps/server/src/modules/<x>/`. Um módulo importa outro só via `modules/<y>/index.ts` e escreve apenas nas próprias tabelas. Use case = função `(deps, ctx, input)`. Sem classes, sem DI container, sem decorators.
 - **Tenant:**
   - o PostgreSQL isola por RLS (ADR-004): todo acesso a tabela com `organizationId` passa por `db.withTenant(ctx, tx => …)`; o repository recebe esse `tx` e **não** filtra nem grava `organizationId` — só `scopeFor(ctx)` (carteira do COMMERCIAL);
-  - toda tabela nova com `organizationId` leva, na própria migration, RLS `ENABLE` + `FORCE` e a política `tenant_isolation` (o teste de schema falha sem elas); único sempre inclui `organizationId`;
+  - toda tabela nova com `organizationId` leva, na própria migration, RLS `ENABLE` + `FORCE` e a política `tenant_isolation` (o teste de schema falha sem elas); único sempre inclui `organizationId`; FK para `Organization` é `onDelete: Restrict, onUpdate: Restrict`;
+  - ids são gerados no server: schema de entrada (`<x>Input`) nunca aceita `id`;
   - o tenant nunca vem do request;
   - registro de outro tenant ou fora da carteira → 404.
 - **Toda rota:** schema Zod `.strict()`, `operationId` estável e `requirePermission(...)`.

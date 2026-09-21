@@ -331,7 +331,7 @@ A assinatura é lida na mesma query da membership.
 2. **RLS forçado** em toda tabela com `organizationId`: política `tenant_isolation` (`USING` + `WITH CHECK` por `current_setting('app.tenant_id')`), criada na migration da tabela.
 3. Todo acesso a tabela tenant-scoped passa por `db.withTenant(ctx, async (tx) => …)`; fora dela a query falha. Repositories **não** filtram nem gravam `organizationId` (default da coluna = tenant da transação). Registro de outro tenant retorna 404 porque o banco não o devolve.
 4. Runtime, testes e pg-boss conectam como `bens_app` (sem superuser nem `BYPASSRLS`); o boot recusa outro role. Só o Prisma CLI usa o owner (`MIGRATION_DATABASE_URL`).
-5. FKs compostas com `organizationId` em toda relação entre models tenant-scoped; todo índice único de tabela tenant-scoped inclui `organizationId`.
+5. FKs compostas com `organizationId` em toda relação entre models tenant-scoped; todo índice único de tabela tenant-scoped inclui `organizationId` (exceto a PK: ids são gerados no server, nunca vêm do input); FK para `Organization` é `RESTRICT` (cascade ignoraria o RLS).
 6. `withTwoTenants()`: teste cross-tenant obrigatório por endpoint; teste de schema cobre os itens 2 e 5.
 
 ### Controles de segurança

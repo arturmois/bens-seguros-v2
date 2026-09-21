@@ -67,7 +67,8 @@ error handler existente.
 | 2. política por tabela | `ALTER TABLE "X" ENABLE ROW LEVEL SECURITY; ALTER TABLE "X" FORCE ROW LEVEL SECURITY; CREATE POLICY tenant_isolation ON "X" USING ("organizationId" = current_setting('app.tenant_id')::uuid) WITH CHECK (mesma expressão);` anexado à migration que cria a tabela | guard sintático no Prisma - 4 rodadas `FAIL`; extensão de query com `$transaction` por operação - ignora a transação interativa (doc do Prisma 7, issue #20678) e quebraria `enqueue(tx)` |
 | 3. tenant por transação | `withTenant(ctx, fn)` = `$transaction(async (tx) => { await tx.$executeRaw\`SELECT set_config('app.tenant_id', ${ctx.organizationId}, true)\`; return fn(tx) })` | `SET` de sessão - vaza para a próxima query que reusar a conexão do pool |
 | 4. `organizationId` por default | `organizationId String @default(dbgenerated("(current_setting('app.tenant_id'))::uuid")) @db.Uuid` | escalar obrigatório no `create` - repete o tenant em todo repository, que é o que esta mudança remove |
-| 5. unicidade inclui o tenant | todo `@@unique`/`@unique` de tabela tenant-scoped contém `organizationId`; a chave primária não, porque o id é UUID v7 gerado no server e nunca vem do input | unicidade global - checagens de unicidade ignoram RLS e revelariam se um valor existe em outro tenant |
+| 5. unicidade inclui o tenant | todo `@@unique`/`@unique` de tabela tenant-scoped contém `organizationId`; a chave primária não, porque o id é UUID v7 gerado no server e nunca vem do input (critério 18, ratificado pelo usuário na rodada 2) | unicidade global - checagens de unicidade ignoram RLS e revelariam se um valor existe em outro tenant |
+| 7. FK para tabela sem RLS não propaga (rodada 2) | `@relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)` em toda relação de model tenant-scoped com `Organization` | `ON DELETE CASCADE` - o cascade roda como owner e apagou os dados de B de dentro de `withTenant(A)`; tirar `DELETE`/`UPDATE` de `Organization` do `bens_app` - a Fase 4 precisa editar a org |
 | 6. pg-boss no role da aplicação | o schema `pgboss` é criado e usado por `bens_app` (`GRANT CREATE ON DATABASE`) | pg-boss com a URL do owner - uma conexão com bypass dentro do processo |
 
 - Nothing else in this change is hard to reverse
@@ -88,6 +89,20 @@ Dentro de `withTenant(A)`, nenhuma query vê ou grava linha de B, qualquer que s
 6. WHEN uma linha de A se liga a outra de A pela FK escalar (`parentId`) THEN o vínculo SHALL ser gravado; IF a outra linha é de B THEN o banco SHALL recusar com `P2003`
 
 **Independent test:** dentro de `withTenant(A)`, `organization.findMany({ include: { examples: true } })` traz só os exemplos de A, e `example.updateMany({ data: { organizationId: B } })` falha com `P2039`.
+
+### S4: Rodada 2 — caminhos que o Verifier abriu (P1)
+
+A tabela sem RLS (`Organization`) não alcança dados de tenant, e nada troca o tenant da sessão.
+
+**Acceptance Criteria**
+
+15. IF um `delete` ou uma troca de `id` de uma `Organization` alcançaria linhas de tabela tenant-scoped (cascade executa como owner e ignora RLS) THEN o banco SHALL recusar (`P2003`) e as linhas do tenant SHALL continuar iguais — **rodada 2**
+16. IF uma FK de tabela tenant-scoped para tabela sem `organizationId` usa `CASCADE`, `SET NULL` ou `SET DEFAULT` em `ON DELETE` ou `ON UPDATE` THEN o teste de schema SHALL falhar citando a FK — **rodada 2**
+17. IF algum arquivo de `apps/server/src` fora de `infrastructure/database.ts` cita `app.tenant_id` THEN o teste de arquitetura SHALL falhar citando o arquivo — **rodada 2** (código da aplicação não troca o tenant da sessão)
+18. IF um schema Zod de entrada exportado por um módulo (nome terminado em `Input`) aceita o campo `id` THEN o teste de arquitetura SHALL falhar citando o schema — **rodada 2 (aprovado pelo usuário)**: ids são UUID v7 gerados no server, premissa da exceção da chave primária no critério 12
+19. IF o role conectado tem `BYPASSRLS` sem ser superuser THEN `assertRowSecurityApplies` SHALL lançar `RowSecurityBypassError`, como para superuser — **rodada 2**
+
+**Independent test:** dentro de `withTenant(A)`, `organization.delete({ where: { id: B } })` falha e os exemplos de B continuam lá.
 
 ### S2: Nada roda com bypass (P1)
 

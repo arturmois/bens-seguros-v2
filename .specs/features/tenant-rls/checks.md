@@ -3,7 +3,7 @@
 Profile: standard
 Plan: `.specs/features/tenant-rls/plan.md`
 
-16 checks in 3 slices · 6 one-way doors · 0 open
+21 checks in 4 slices (C17-C21 na rodada 2) · 7 one-way doors · 0 open
 
 Todas as provas rodam em `apps/server` com o Postgres do docker compose no ar (roles do script
 `docker/postgres/init/01-app-role.sql` aplicados). Abreviação: `VT <arquivo> -t "<nome>"` =
@@ -66,21 +66,41 @@ Proof: `VT test/architecture.spec.ts -t "has no syntactic tenant guard"`
 **C16** - Uma rota que viola o isolamento (`create` com `organizationId` de outro tenant dentro de `withTenant`) responde `500 INTERNAL_ERROR` com `requestId` igual ao `x-request-id` (Flow hop 5)
 Proof: `VT src/app.spec.ts -t "surfaces a row security violation as a generic 500"`
 
+### S4 - Rodada 2 · 6 files · 40 KB · ~10k
+
+**C17** - Dentro de `withTenant(A)` e fora de `withTenant`, `organization.delete({ where: { id: B } })` e `organization.update({ where: { id: B }, data: { id: <novo> } })` falham com Prisma `P2003`, e as linhas de B continuam idênticas (AC 15)
+Proof: `VT src/infrastructure/database.spec.ts -t "does not reach tenant rows through Organization"`
+
+**C18** - No schema do worker, nenhuma FK de tabela tenant-scoped para tabela sem `organizationId` usa `CASCADE`, `SET NULL` ou `SET DEFAULT`; o checker aponta uma FK sintética `ON DELETE CASCADE` e outra `ON UPDATE CASCADE` (AC 16)
+Proof: `VT test/schema.spec.ts -t "foreign keys to unguarded tables never cascade"`
+
+**C19** - Nenhum arquivo de `apps/server/src` fora de `infrastructure/database.ts` cita `app.tenant_id`, e o checker aponta um arquivo sintético que cita (AC 17)
+Proof: `VT test/architecture.spec.ts -t "only the database module sets the tenant"`
+
+**C20** - Nenhum schema exportado de `modules/**/*.schema.ts` com nome terminado em `Input` aceita `id`, e o checker aponta um `ZodObject` sintético com `id` (AC 18)
+Proof: `VT test/architecture.spec.ts -t "input schemas never accept an id"`
+
+**C21** - `assertRowSecurityApplies` lança `RowSecurityBypassError` para um role `BYPASSRLS` não superuser e para o superuser `bens`, e não lança para `bens_app` (AC 7, AC 19)
+Proof: `VT src/infrastructure/database.spec.ts -t "refuses every role that bypasses row security"`
+
 ## Coverage
 
 | Set (size) | Member -> proof | Unproven |
 | --- | --- | --- |
 | formas de leitura (8) | C1, table-driven sobre as 8 | - |
-| formas de escrita em outro tenant (5) | C2, table-driven sobre as 5 | - |
-| referências a linha de outro tenant (5) | C3, table-driven sobre as 5 | - |
+| formas de escrita em outro tenant (6) | C2, table-driven sobre as 6 (`update` do escalar incluído na rodada 2) | - |
+| escritas que alcançam tenant por `Organization` (2) | `delete` C17 · troca de `id` C17 | - |
+| referências a linha de outro tenant (7) | C3, table-driven sobre as 7 (`examples.set` e `examples.connectOrCreate` a partir de `Organization` incluídos na rodada 2) | - |
 | operações fora de `withTenant` (3) | `findMany` C4 · `count` C4 · `create` C4 | - |
 | vínculo por FK escalar (2) | mesmo tenant C6 · outro tenant `P2003` C6 | - |
 | startup config: role da conexão (4) | server (boot) C7 · test harness C8 · pg-boss C8 · Prisma CLI (`MIGRATION_DATABASE_URL`) C8 | - |
 | transação e pool (2) | commit C10 · rollback C10 | - |
 | `enqueue` na transação de tenant (2) | commit C9 · rollback C9 | - |
-| proteção de tabela tenant-scoped (3) | `ENABLE` C11, C12 · `FORCE` C11, C12 · política `tenant_isolation` C11, C12 | - |
-| invariantes de schema (3) | RLS C11 · unicidade com tenant C13 · FK composta C14 | - |
-| doors do plano (6) | role sem bypass C7, C8 · política por tabela C11 · tenant por transação C10 · default do tenant C5 · unicidade C13 · pg-boss no role da aplicação C8, C9 | - |
+| proteção de tabela tenant-scoped (3) | `ENABLE` C11, C12 · `FORCE` C11, C12 · política `tenant_isolation` C11, C12 (C12 com um caso sintético por cláusula na rodada 2) | - |
+| ações de FK para tabela sem RLS (2) | `ON DELETE` C18 · `ON UPDATE` C18 | - |
+| roles no boot (3) | superuser C7, C21 · `BYPASSRLS` C21 · `bens_app` C21 | - |
+| invariantes de schema e código (6) | RLS C11 · unicidade com tenant C13 · FK composta C14 · FK sem cascade C18 · tenant só em `database.ts` C19 · sem `id` no input C20 | - |
+| doors do plano (7) | FK para tabela sem RLS C17, C18 · role sem bypass C7, C8 · política por tabela C11 · tenant por transação C10 · default do tenant C5 · unicidade C13 · pg-boss no role da aplicação C8, C9 | - |
 
 - Claims que citam código de erro do Prisma: C2 (`P2039`), C3, C6 (`P2003`) - todos atravessam o banco real
 - Claim que cita status HTTP: C16 (`500`) - atravessa o Fastify por `app.inject`
