@@ -16,7 +16,7 @@ O isolamento é garantido na aplicação, em camadas:
 1. `organizationId` vem **apenas** da sessão validada contra `Member`.
 2. Todo repository recebe `ctx` e filtra por `organizationId` (+ `salespersonId` para COMMERCIAL). Registro de outro tenant retorna 404.
 3. **Extensão do Prisma** (guard) que lança erro quando uma operação em modelo tenant-scoped não tem `organizationId` no `where`.
-4. **FKs compostas** `(id, organizationId)` nas relações críticas, para que o banco rejeite referências cruzadas.
+4. **FKs compostas** `(id, organizationId)` em **toda** relação entre dois models tenant-scoped, para que o banco rejeite referências cruzadas. Um teste de schema falha numa relação simples (revisado em 2026-09-21; antes: "nas relações críticas").
 5. Jobs usam um `RequestContext` de sistema com `organizationId` explícito e o mesmo caminho de repository.
 6. **Testes cross-tenant obrigatórios** por endpoint (`withTwoTenants()`), rodando no CI.
 

@@ -224,7 +224,7 @@ O schema Prisma é derivado do legado, com estas decisões:
   - `billingManagedExternally`.
 - **Claim:** número sequencial via `OrganizationCounter(organizationId, key, value)` com `UPDATE … RETURNING` na transação.
 - **AuditLog:** `changes` jsonb **sem PII**. Campos de PII são registrados como `"[alterado]"`.
-- **FKs compostas com `organizationId`** nas relações críticas.
+- **FKs compostas com `organizationId`** em toda relação entre models tenant-scoped (teste de schema, ADR-004).
 - **IDs:** UUID v7 (ordenáveis, bons para cursor).
 - **Removidos:** `Goal`, `AuditLogArchive`, contato duplicado.
 - **Migrations:** `prisma migrate`. Em produção, o serviço one-shot `migrate` roda `migrate deploy` antes do server.
@@ -329,7 +329,7 @@ A assinatura é lida na mesma query da membership.
 1. O tenant vem só da sessão validada contra `Member`.
 2. Todo repository recebe `ctx` e filtra `organizationId` (+ `scopeFor`). Registro de outro tenant retorna 404.
 3. **Guard do Prisma:** lança erro em operação sobre modelo tenant-scoped sem `organizationId` no `where`.
-4. FKs compostas com `organizationId`.
+4. FKs compostas com `organizationId` em toda relação entre models tenant-scoped.
 5. Referências vindas do input são carregadas com escopo antes do uso.
 6. `withTwoTenants()`: teste cross-tenant obrigatório por endpoint.
 
