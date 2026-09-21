@@ -62,6 +62,18 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: verification.md round 4 gap 1 - database.ts:78-84 (W3m) (tenant-guard)
 - last seen: 2026-09-21T18:47:40Z
 
+### L-009 - A cascading foreign key from a table without row security runs as the owner and bypasses the policies of the tables it reaches
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `tenant-rls` · harmful: 0
+- features: tenant-rls
+- evidence: verification.md tenant-rls round 1 gap 1 - Example_organizationId_fkey ON DELETE CASCADE (tenant-rls)
+- last seen: 2026-09-21T22:07:49Z
+
+### L-010 - Give each clause of a schema checker its own synthetic failing case
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `tests` · harmful: 0
+- features: tenant-rls
+- evidence: verification.md tenant-rls round 1 - test/schema.spec.ts:17 (tests)
+- last seen: 2026-09-21T22:07:49Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

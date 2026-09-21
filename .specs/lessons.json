@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 9,
+  "next_id": 11,
   "lessons": [
     {
       "id": "L-001",
@@ -148,6 +148,42 @@
       ],
       "created": "2026-09-21T18:47:40Z",
       "last_seen": "2026-09-21T18:47:40Z"
+    },
+    {
+      "id": "L-009",
+      "key": "ac_gap::a cascading foreign key from a table without row security runs as the owner and bypasses the policies of the tables it reaches",
+      "text": "A cascading foreign key from a table without row security runs as the owner and bypasses the policies of the tables it reaches",
+      "signal": "ac_gap",
+      "scope": "tenant-rls",
+      "status": "candidate",
+      "features": [
+        "tenant-rls"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "verification.md tenant-rls round 1 gap 1 - Example_organizationId_fkey ON DELETE CASCADE (tenant-rls)"
+      ],
+      "created": "2026-09-21T22:07:49Z",
+      "last_seen": "2026-09-21T22:07:49Z"
+    },
+    {
+      "id": "L-010",
+      "key": "surviving_mutant::give each clause of a schema checker its own synthetic failing case",
+      "text": "Give each clause of a schema checker its own synthetic failing case",
+      "signal": "surviving_mutant",
+      "scope": "tests",
+      "status": "candidate",
+      "features": [
+        "tenant-rls"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "verification.md tenant-rls round 1 - test/schema.spec.ts:17 (tests)"
+      ],
+      "created": "2026-09-21T22:07:49Z",
+      "last_seen": "2026-09-21T22:07:49Z"
     }
   ]
 }
