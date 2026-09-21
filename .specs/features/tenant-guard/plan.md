@@ -106,6 +106,8 @@ Um id vindo do input não liga uma linha a outra corretora.
 21. WHEN uma linha tenant-scoped se liga a outra, ela SHALL fazê-lo pela FK escalar (ex.: `parentId`) na sua própria escrita; IF a linha alvo é de outro tenant THEN o banco SHALL rejeitar com Prisma `P2003` e a linha SHALL continuar como estava — **rodada 3**
 22. IF uma leitura parte de um model sem `organizationId`, ou passa por um nó sem `organizationId` dentro de um `include`/`select`, e esse nó inclui, seleciona, conta (`_count`), filtra (`where`, inclusive dentro de `AND`/`OR`/`NOT`) ou ordena (`orderBy`) por uma relação tenant-scoped THEN o guard SHALL lançar `TenantGuardError` — **rodada 3 (aprovado pelo usuário)**
 23. IF a operação cita um model que o guard não conhece THEN o guard SHALL lançar `TenantGuardError` (falha fechada) — **rodada 3**
+24. IF o `create.organizationId` de um `upsert` difere do tenant do seu `where` THEN o guard SHALL lançar `TenantGuardError` e nenhuma linha SHALL ser criada — **rodada 4 (aprovado pelo usuário): completa o critério 5**
+25. IF um nó sem `organizationId` que tem alguma relação tenant-scoped usa `_count` em qualquer forma (`_count: true`, `_count: { select: … }`) THEN o guard SHALL lançar `TenantGuardError`; e todo `where` dentro de `_count.select.<relação>` SHALL seguir o critério 22 — **rodada 4 (aprovado pelo usuário): completa o critério 22**
 
 > Rodada 3: a rodada 2 mostrou dez caminhos entre tenants pela relação pai/filho. A FK composta
 > compartilha a coluna `organizationId`, então toda escrita pela relação pode reescrever o tenant.
@@ -145,6 +147,8 @@ Não existe caminho do código de aplicação para um client sem guard.
 | leitura do metadado interno `_runtimeDataModel` | aceito, com validação Zod e versão do Prisma fixada (7.10.x) | alternativa pública não existe no Prisma 7; falha fechada no boot se sumir | n |
 
 **Open questions:** none - all resolved or logged above.
+
+Resolvidas com o usuário em 2026-09-21 (rodada 4): os dois lados do `upsert` nomeiam o mesmo tenant (critério 24) e `_count` a partir de nó sem tenant é recusado em qualquer forma (critério 25).
 
 Resolvidas com o usuário em 2026-09-21 (rodada 3): nenhuma escrita aninhada em relação tenant-scoped (critério 20, vínculo por FK escalar, critério 21); nenhum include/select/filtro/ordenação de relação tenant-scoped a partir de nó sem `organizationId` (critério 22).
 

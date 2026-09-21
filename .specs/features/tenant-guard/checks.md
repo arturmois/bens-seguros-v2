@@ -3,7 +3,7 @@
 Profile: standard
 Plan: `.specs/features/tenant-guard/plan.md`
 
-33 checks in 5 slices (C20-C27 na rodada 2; C28-C33 na rodada 3, que substituem C11, C12, C13, C14 e C25) · 4 one-way doors · 0 open
+38 checks in 6 slices (C20-C27 na rodada 2; C28-C33 na rodada 3, que substituem C11, C12, C13, C14 e C25; C34-C38 na rodada 4) · 4 one-way doors · 0 open
 
 Todas as provas rodam em `apps/server` com o Postgres do docker compose no ar. Abreviação usada
 abaixo: `VT <arquivo> -t "<nome>"` = `pnpm --filter @bens/server exec vitest run <arquivo> -t "<nome>"`.
@@ -120,6 +120,23 @@ Proof: `VT src/infrastructure/database.spec.ts -t "rejects cross-tenant reads th
 **C33** - O guard lança `TenantGuardError` citando `Unknown model` para um model fora do datamodel (AC 23)
 Proof: `VT src/infrastructure/database.spec.ts -t "fails closed on an unknown model"`
 
+### S6 - Rodada 4: `_count` e `upsert` entre tenants · 2 files · 30 KB · ~8k
+
+**C34** - No guard, a partir de um model sem tenant com relação tenant-scoped, `include: { _count: true }`, `select: { _count: true }` e `select: { _count: { select: { <relação>: { where } } } }` lançam `TenantGuardError`; a partir de um model tenant-scoped, `_count: true` não lança e um `where` dentro de `_count.select.<relação>` que filtra por relação tenant-scoped através de um nó sem tenant lança (AC 25)
+Proof: `VT src/infrastructure/database.spec.ts -t "rejects every _count form through unguarded models"`
+
+**C35** - Pelo client `db`, `organization.findMany({ include: { _count: true } })` e `organization.findMany({ select: { _count: true } })` lançam `TenantGuardError` (AC 25)
+Proof: `VT src/infrastructure/database.spec.ts -t "rejects counting tenant rows through Organization on the client"`
+
+**C36** - No guard, `upsert` com `where` do tenant `org-1` (direto ou em `id_organizationId`) e `create.organizationId` `org-2` lança `TenantGuardError`; com o mesmo tenant nos dois lados não lança (AC 24)
+Proof: `VT src/infrastructure/database.spec.ts -t "requires the same tenant on both sides of an upsert"`
+
+**C37** - Pelo client `db`, `upsert` com `where` de A (id inexistente) e `create.organizationId` de B lança `TenantGuardError`, e nenhuma linha com aquele `name` existe em B (AC 24)
+Proof: `VT src/infrastructure/database.spec.ts -t "rejects an upsert that would create the row in another tenant"`
+
+**C38** - No guard, abaixo de um nó sem tenant, uma escrita aninhada em relação tenant-scoped lança `TenantGuardError` pelas rotas `create`, `createMany.data`, `upsert.create`, `upsert.update` e `connectOrCreate.create` desse nó (AC 20)
+Proof: `VT src/infrastructure/database.spec.ts -t "rejects nested tenant writes below an unguarded node on every route"`
+
 ## Coverage
 
 | Set (size) | Member -> proof | Unproven |
@@ -151,11 +168,15 @@ Proof: `VT src/infrastructure/database.spec.ts -t "fails closed on an unknown mo
 | vínculo por FK escalar (2) | mesmo tenant C30 · outro tenant `P2003` C30, C15 | - |
 | leituras por nó sem tenant (6) | `include` C31, C32 · `select` C31 · `_count` C31 · `where` C31, C32 · `orderBy` C31 · via nó sem tenant a partir de raiz tenant C31, C32 | - |
 | model desconhecido (1) | C33 | - |
+| formas de `_count` a partir de nó sem tenant (3) | `_count: true` em `include` C34, C35 · `_count: true` em `select` C34, C35 · `_count.select.<relação>` C31, C34 | - |
+| `where` dentro de `_count.select.<relação>` (1) | C34 | - |
+| lados do `upsert` (tenant igual) (2) | `where` direto C36, C37 · `where` composto `id_organizationId` C36 | - |
+| rotas abaixo de nó sem tenant (6) | `update` C28 · `create` C38 · `createMany.data` C38 · `upsert.create` C38 · `upsert.update` C38 · `connectOrCreate.create` C38 | - |
 | doors do plano (4) | extensão única C2, C17 · datamodel interno C18 · create só pelo escalar C5 · FK composta C15, C19 | - |
 
 - Os três assemblies usam o mesmo `createDependencies` → `createDatabase`; C2 prova o do harness e o
   Verifier lê as linhas de `server.ts` e do script
-- Claims que citam código de erro do Prisma: C14 (`P2025`), C15 (`P2003`) - ambos atravessam o banco real
+- Claims que citam código de erro do Prisma: C15 e C30 (`P2003`) - atravessam o banco real (C14 e seu `P2025` foram substituídos na rodada 3)
 - Nenhum outro check afirma mais do que o caso que sua prova exercita
 
 ## Test policy
@@ -181,9 +202,9 @@ Cost: 6 provas novas na camada própria (C1, C4, C5, C7, C8, C11), 3 no boundary
 ## Swept
 
 - validation: C4, C5, C6
-- failure modes: C2, C9, C14, C15
+- failure modes: C2, C9, C15, C29, C30, C37
 - idempotency: n/a - o guard é uma checagem sem estado por chamada; nada é gravado por ele
-- authorization: C1, C2, C3, C11, C13 - o tenant é a fronteira de autorização aqui; RBAC é da Fase 4
+- authorization: C1, C2, C3, C28, C29, C31, C32, C34, C35 - o tenant é a fronteira de autorização aqui; RBAC é da Fase 4
 - concurrency: n/a - o guard é síncrono e sem estado; o mapa de models é montado uma vez na construção e nunca muda
 - data lifecycle: C8, C9 - uma linha nunca muda de tenant
 - dependency failure: C18 - metadado do Prisma ausente ou alterado por upgrade
