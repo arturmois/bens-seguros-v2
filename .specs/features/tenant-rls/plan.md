@@ -63,11 +63,11 @@ error handler existente.
 
 | One-way door | Literal shape | Alternative rejected |
 | --- | --- | --- |
-| 1. role da aplicação sem bypass | role `bens_app` `LOGIN NOSUPERUSER NOBYPASSRLS`, membro de `app_rw` (grants de DML via `ALTER DEFAULT PRIVILEGES`); owner `bens` só para migrations; boot recusa role com `rolsuper` ou `rolbypassrls`; script `docker/postgres/init/01-app-role.sql` (dev e CI) | conectar como owner e fazer `SET LOCAL ROLE` por transação - uma query fora de `withTenant` rodaria como owner e veria tudo (medido no spike) |
+| 1. role da aplicação sem bypass | role `bens_app` `LOGIN NOSUPERUSER NOBYPASSRLS` com DML nas tabelas de `public` (grants + `ALTER DEFAULT PRIVILEGES` para as tabelas futuras); owner `bens` só para migrations; boot recusa role com `rolsuper` ou `rolbypassrls`; script `docker/postgres/init/01-app-role.sql` (dev e CI) | conectar como owner e fazer `SET LOCAL ROLE` por transação - uma query fora de `withTenant` rodaria como owner e veria tudo (medido no spike) |
 | 2. política por tabela | `ALTER TABLE "X" ENABLE ROW LEVEL SECURITY; ALTER TABLE "X" FORCE ROW LEVEL SECURITY; CREATE POLICY tenant_isolation ON "X" USING ("organizationId" = current_setting('app.tenant_id')::uuid) WITH CHECK (mesma expressão);` anexado à migration que cria a tabela | guard sintático no Prisma - 4 rodadas `FAIL`; extensão de query com `$transaction` por operação - ignora a transação interativa (doc do Prisma 7, issue #20678) e quebraria `enqueue(tx)` |
 | 3. tenant por transação | `withTenant(ctx, fn)` = `$transaction(async (tx) => { await tx.$executeRaw\`SELECT set_config('app.tenant_id', ${ctx.organizationId}, true)\`; return fn(tx) })` | `SET` de sessão - vaza para a próxima query que reusar a conexão do pool |
 | 4. `organizationId` por default | `organizationId String @default(dbgenerated("(current_setting('app.tenant_id'))::uuid")) @db.Uuid` | escalar obrigatório no `create` - repete o tenant em todo repository, que é o que esta mudança remove |
-| 5. unicidade inclui o tenant | todo `@@unique`/`@unique` de tabela tenant-scoped contém `organizationId` | unicidade global - checagens de unicidade ignoram RLS e revelariam se um valor existe em outro tenant |
+| 5. unicidade inclui o tenant | todo `@@unique`/`@unique` de tabela tenant-scoped contém `organizationId`; a chave primária não, porque o id é UUID v7 gerado no server e nunca vem do input | unicidade global - checagens de unicidade ignoram RLS e revelariam se um valor existe em outro tenant |
 | 6. pg-boss no role da aplicação | o schema `pgboss` é criado e usado por `bens_app` (`GRANT CREATE ON DATABASE`) | pg-boss com a URL do owner - uma conexão com bypass dentro do processo |
 
 - Nothing else in this change is hard to reverse
@@ -81,8 +81,8 @@ Dentro de `withTenant(A)`, nenhuma query vê ou grava linha de B, qualquer que s
 **Acceptance Criteria**
 
 1. WHILE uma transação `withTenant(A)` está aberta, leituras de tabela tenant-scoped (`findMany` sem `where`, `findUnique` pelo id de uma linha de B, `count`, `aggregate`, `groupBy`, `include`/`_count` a partir de `Organization`, SQL cru) SHALL retornar só linhas de A
-2. IF dentro de `withTenant(A)` uma escrita tenta gravar linha com `organizationId` de B (`create`, `update`/`updateMany` do escalar, `organization.connect`, `upsert` com `create` em B, escrita aninhada com `organizationId` de B) THEN o banco SHALL recusar com Prisma `P2039` (`42501`) e nenhuma linha SHALL mudar
-3. IF dentro de `withTenant(A)` uma operação referencia uma linha de B por id (`connect`, `set`, `connectOrCreate.where`, a partir de `Example` ou de `Organization`) THEN ela SHALL falhar sem ligar nem mover linha (`P2025`, `P2018` ou `P2003`)
+2. IF dentro de `withTenant(A)` uma escrita tenta gravar linha com `organizationId` de B (`create`, `update`/`updateMany` do escalar, `organization.connect`, `upsert` com `create` em B, escrita aninhada com `organizationId` de B) THEN nenhuma linha de B SHALL ser gravada: o banco recusa com Prisma `P2039` (`42501`), ou o Prisma grava a linha aninhada em A por herdar o tenant do pai (`children.create`)
+3. IF dentro de `withTenant(A)` uma operação referencia uma linha de B por id (`connect`, `set`, `connectOrCreate.where`, a partir de `Example` ou de `Organization`) THEN ela SHALL não ligar nem mover linha de B (falha com `P2025`, `P2018`, `P2003` ou `P2039`; `set` e `connectOrCreate` concluem sem tocar em B, porque a linha de B é invisível)
 4. IF uma query acessa tabela tenant-scoped fora de `withTenant` THEN o banco SHALL lançar erro e nenhuma linha SHALL ser lida ou gravada
 5. WHEN `create` é chamado dentro de `withTenant(A)` sem `organizationId` THEN a linha SHALL ser gravada com `organizationId` = A
 6. WHEN uma linha de A se liga a outra de A pela FK escalar (`parentId`) THEN o vínculo SHALL ser gravado; IF a outra linha é de B THEN o banco SHALL recusar com `P2003`

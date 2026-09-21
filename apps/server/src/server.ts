@@ -1,5 +1,6 @@
 import { buildApp } from './app.ts'
 import { closeDependencies, createDependencies } from './dependencies.ts'
+import { RowSecurityBypassError } from './infrastructure/database.ts'
 import { ConfigError, loadConfig } from './shared/config.ts'
 
 function loadConfigOrExit() {
@@ -30,11 +31,17 @@ process.once('SIGINT', shutdown)
 process.once('SIGTERM', shutdown)
 
 try {
+  await deps.db.assertRowSecurityApplies()
   if (config.NODE_ENV !== 'production') await deps.storage.ensureBucket()
   await deps.queue.start()
   // Workers and crons register here, module by module (`<module>.jobs.ts`), from Phase 3 on.
   await app.listen({ host: config.HOST, port: config.PORT })
 } catch (error) {
-  app.log.fatal({ err: error }, 'failed to start')
+  if (error instanceof RowSecurityBypassError) {
+    // Plain stderr, like a config error: this is the environment, not the code.
+    process.stderr.write(`${error.message}\n`)
+  } else {
+    app.log.fatal({ err: error }, 'failed to start')
+  }
   process.exit(1)
 }

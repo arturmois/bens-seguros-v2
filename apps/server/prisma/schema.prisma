@@ -20,11 +20,13 @@ model Organization {
   examples Example[]
 }
 
-// Disposable (Phase 2): exercises the tenant guard, the composite FK and P2002 → 409 until real
+// Disposable (Phase 2): exercises row level security, the composite FK and P2002 → 409 until real
 // tenant-scoped models exist. See docs/roadmap.md ("Remover o módulo exemplo").
+// Tenant-scoped (ADR-004): `organizationId` defaults to the transaction's tenant, and the migration
+// that creates the table enables and forces RLS with the `tenant_isolation` policy.
 model Example {
   id             String   @id @default(uuid(7)) @db.Uuid
-  organizationId String   @db.Uuid
+  organizationId String   @default(dbgenerated("(current_setting('app.tenant_id'::text))::uuid")) @db.Uuid
   name           String
   parentId       String?  @db.Uuid
   createdAt      DateTime @default(now())

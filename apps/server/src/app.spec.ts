@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { buildTestApp } from '../test/app.ts'
-import { createOrganization } from '../test/factories.ts'
+import { contextFor, createOrganization } from '../test/factories.ts'
 import type { App } from './app.ts'
 import { AppError } from './shared/errors.ts'
 
@@ -29,11 +29,17 @@ beforeAll(async () => {
   })
   app.post('/test/duplicate', async () => {
     const organization = await createOrganization(db)
-    const data = { organizationId: organization.id, name: 'duplicado' }
-    await db.example.create({ data })
-    await db.example.create({ data })
+    await db.withTenant(contextFor(organization.id), async (tx) => {
+      await tx.example.create({ data: { name: 'duplicado' } })
+      await tx.example.create({ data: { name: 'duplicado' } })
+    })
   })
-  app.get('/test/tenant-guard', async () => db.example.findMany({ where: { name: 'x' } }))
+  app.post('/test/row-security', async () => {
+    const [own, other] = await Promise.all([createOrganization(db), createOrganization(db)])
+    await db.withTenant(contextFor(own.id), (tx) =>
+      tx.example.create({ data: { organizationId: other.id, name: 'intruso' } }),
+    )
+  })
   app.get('/test/crash', async () => {
     throw new Error('database password is hunter2')
   })
@@ -125,8 +131,8 @@ describe('error handler', () => {
     expect(res.json()).toEqual({ error: { code: 'CONFLICT', message: 'Registro já existe.' } })
   })
 
-  it('surfaces a tenant guard violation as a generic 500', async () => {
-    const res = await app.inject({ method: 'GET', url: '/test/tenant-guard' })
+  it('surfaces a row security violation as a generic 500', async () => {
+    const res = await app.inject({ method: 'POST', url: '/test/row-security' })
 
     expect(res.statusCode).toBe(500)
     expect(res.json()).toEqual({

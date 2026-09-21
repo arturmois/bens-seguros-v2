@@ -16,10 +16,10 @@ Todas as provas rodam em `apps/server` com o Postgres do docker compose no ar (r
 **C1** - Dentro de `withTenant(A)`, cada uma das 8 formas de leitura (`findMany` sem `where`, `findUnique` pelo id de uma linha de B, `count`, `aggregate`, `groupBy`, `organization.findMany` com `include: { examples: true }`, `organization.findMany` com `include: { _count: true }`, SQL cru `SELECT … FROM "Example"`) retorna só linhas de A: nenhum id de B aparece, a contagem de B vem `0` e o `findUnique` de B vem `null` (AC 1)
 Proof: `VT src/infrastructure/database.spec.ts -t "reads only the tenant rows in every read shape"`
 
-**C2** - Dentro de `withTenant(A)`, cada uma das 5 escritas em B (`create` com `organizationId` B, `updateMany` do escalar para B, `update` com `organization.connect` B, `upsert` com `create` em B, `children.create` com `organizationId` B) falha com Prisma `P2039`, e depois as linhas de A e de B têm os mesmos ids e `organizationId` (AC 2)
+**C2** - Dentro de `withTenant(A)`, das 5 escritas em B, `create` com `organizationId` B, `updateMany` do escalar para B, `update` com `organization.connect` B e `upsert` com `create` em B falham com Prisma `P2039`; `children.create` com `organization.connect` B conclui gravando o filho em A (herda o tenant do pai pela FK composta). Depois, as linhas de B são idênticas às de antes e toda linha de A tem `organizationId` A (AC 2) — **corrigido no build: a versão anterior esperava `P2039` também do `children.create`**
 Proof: `VT src/infrastructure/database.spec.ts -t "rejects every write into another tenant"`
 
-**C3** - Dentro de `withTenant(A)`, cada uma das 5 referências a uma linha de B (`parent.connect`, `children.connect`, `children.set`, `children.connectOrCreate` com `where` de B, `organization.update` com `examples.connect` de B) falha com um de `P2025`, `P2018`, `P2003` ou `P2039`, e nenhuma linha de A ou B muda de `organizationId` ou `parentId` (AC 3)
+**C3** - Dentro de `withTenant(A)`, das 5 referências a uma linha de B, `parent.connect`, `children.connect` e `examples.connect` a partir de `Organization` falham com um de `P2025`, `P2018`, `P2003` ou `P2039`; `children.set` e `children.connectOrCreate` concluem sem erro porque a linha de B é invisível (o `set` fica sem filhos, o `connectOrCreate` cria um filho novo em A). Depois, as linhas de B são idênticas, as linhas de A que já existiam mantêm `organizationId` e `parentId`, e toda linha de A tem `organizationId` A (AC 3) — **corrigido no build: a versão anterior esperava erro também do `set` e do `connectOrCreate`**
 Proof: `VT src/infrastructure/database.spec.ts -t "cannot link or move another tenant's row"`
 
 **C4** - Fora de `withTenant`, `db.example.findMany()`, `db.example.count()` e `db.example.create` falham com erro do banco, e a contagem de linhas (medida depois, dentro de `withTenant`) não muda (AC 4)
@@ -53,7 +53,7 @@ Proof: `VT test/schema.spec.ts -t "every tenant table is protected by row securi
 **C12** - O checker de C11 aponta uma tabela sintética com `organizationId` criada sem RLS num schema descartável (AC 11)
 Proof: `VT test/schema.spec.ts -t "flags a tenant table without row security"`
 
-**C13** - No schema do worker, todo índice único de tabela tenant-scoped inclui `organizationId`, e o checker aponta um índice único sintético sem ela (AC 12)
+**C13** - No schema do worker, todo índice único de tabela tenant-scoped inclui `organizationId` (a chave primária fica de fora: ids são UUID v7 gerados no server, nunca vêm do input), e o checker aponta um índice único sintético sem ela (AC 12)
 Proof: `VT test/schema.spec.ts -t "every unique index of a tenant table includes organizationId"`
 
 **C14** - O teste de FK composta continua: passa no `schema.prisma` real e aponta `Item.product` num schema sintético (AC 13)
@@ -119,3 +119,7 @@ Cost: 6 provas de comportamento no banco, 1 no boot, 3 de schema, 1 de arquitetu
 ## Handoff
 
 - S1 + S2 + S3 ≈ 20 arquivos (database, specs, config, server, dependencies, harness, prisma config/schema/migration, compose, init script, CI, docs) ≈ 95 KB ≈ 24k tokens; abaixo do budget de 150k - one builder
+
+- **Boundary:** C1-C16 closed at the commit `feat(server): isolate tenants with row level security` (gate green, 74 passed; `pnpm dev` boots as `bens_app`)
+- **Settled mid-build:** C2 and C3 corrected (Prisma absorbs `children.create` via the parent's tenant, and `set`/`connectOrCreate` against an invisible row finish without error; B is untouched in every case — asserted as an invariant); C13 excludes primary keys (server-generated UUID v7); Landing door 1 literal corrected (grants go straight to `bens_app`, no `app_rw` group role); Prisma 7 `migrate dev` does not run `generate`
+- **Abandoned:** none

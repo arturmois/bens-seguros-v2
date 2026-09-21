@@ -1,12 +1,17 @@
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestDeps } from '../../test/app.ts'
+import { contextFor, createOrganization } from '../../test/factories.ts'
 import { closeDependencies, type Deps } from '../dependencies.ts'
+import type { RequestContext } from '../shared/request-context.ts'
 
 let deps: Deps
+// Jobs are always enqueued inside a tenant transaction (ADR-004, ADR-006).
+let tenant: RequestContext
 
 beforeAll(async () => {
   deps = await createTestDeps()
+  tenant = contextFor((await createOrganization(deps.db)).id)
   await deps.queue.start()
 })
 
@@ -29,7 +34,7 @@ function uniqueQueue(label: string) {
 class Rollback extends Error {}
 
 describe('queue', () => {
-  it('creates the job only when the enqueuing transaction commits', async () => {
+  it('enqueues inside a tenant transaction', async () => {
     const name = uniqueQueue('transactional')
     const processed: number[] = []
     const done = Promise.withResolvers<void>()
@@ -39,7 +44,7 @@ describe('queue', () => {
     })
 
     await deps.db
-      .$transaction(async (tx) => {
+      .withTenant(tenant, async (tx) => {
         await deps.queue.enqueue(tx, name, { n: 1 })
         throw new Rollback()
       })
@@ -48,7 +53,7 @@ describe('queue', () => {
       })
     expect(await jobsIn(name)).toEqual([])
 
-    await deps.db.$transaction(async (tx) => {
+    await deps.db.withTenant(tenant, async (tx) => {
       await deps.queue.enqueue(tx, name, { n: 2 })
     })
     await done.promise
@@ -60,11 +65,11 @@ describe('queue', () => {
     const name = uniqueQueue('dedupe')
     await deps.queue.registerWorker(name, async () => {}, { dedupe: true })
     // Keep the jobs queued: the worker would otherwise consume them before we look.
-    await deps.db.$transaction(async (tx) => {
+    await deps.db.withTenant(tenant, async (tx) => {
       await deps.queue.enqueue(tx, name, { n: 1 }, { singletonKey: 'a', delaySeconds: 3600 })
       await deps.queue.enqueue(tx, name, { n: 2 }, { singletonKey: 'a', delaySeconds: 3600 })
     })
-    await deps.db.$transaction(async (tx) => {
+    await deps.db.withTenant(tenant, async (tx) => {
       await deps.queue.enqueue(tx, name, { n: 3 }, { singletonKey: 'a', delaySeconds: 3600 })
       await deps.queue.enqueue(tx, name, { n: 4 }, { singletonKey: 'b', delaySeconds: 3600 })
     })
@@ -82,7 +87,7 @@ describe('queue', () => {
     await deps.queue.registerWorker(plain, async () => {})
     await deps.queue.registerWorker(dedupe, async () => {}, { dedupe: true })
 
-    await deps.db.$transaction(async (tx) => {
+    await deps.db.withTenant(tenant, async (tx) => {
       await expect(deps.queue.enqueue(tx, plain, {}, { singletonKey: 'k' })).rejects.toThrow(
         /does not deduplicate/,
       )

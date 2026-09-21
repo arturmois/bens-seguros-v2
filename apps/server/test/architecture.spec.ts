@@ -78,6 +78,19 @@ function readSourceTree(root: string): SourceFile[] {
     }))
 }
 
+describe('tenant isolation', () => {
+  it('has no syntactic tenant guard', () => {
+    // Row level security replaced it (ADR-004); a second, partial mechanism would read as a guarantee.
+    const srcRoot = fileURLToPath(new URL('../src', import.meta.url))
+    const leftovers = readSourceTree(srcRoot)
+      .filter((file) => !file.path.startsWith('generated/'))
+      .filter((file) => /\b(createTenantGuard|TenantGuardError|readModels)\b/.test(file.source))
+      .map((file) => file.path)
+
+    expect(leftovers).toEqual([])
+  })
+})
+
 describe('module boundaries', () => {
   it('the source tree has no boundary violations', () => {
     const srcRoot = fileURLToPath(new URL('../src', import.meta.url))
