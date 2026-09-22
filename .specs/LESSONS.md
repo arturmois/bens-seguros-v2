@@ -134,6 +134,30 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: Test policy apps/web/src/lib/auth-client.ts:10 (web-e2e)
 - last seen: 2026-09-22T16:21:04Z
 
+### L-021 - Prove a container image's contents claim by listing what the built image holds, not only by running it
+- signal: `spec_deviation` · recurrence: 1 feature(s) · scope: `deploy` · harmful: 0
+- features: staging
+- evidence: Coverage Landing door 1; apps/server/Dockerfile:26-37 (deploy)
+- last seen: 2026-09-22T17:02:29Z
+
+### L-022 - Give every input branch of a provisioning script a proof, including the one only CI takes
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `deploy` · harmful: 0
+- features: staging
+- evidence: docker/postgres/init/01-app-role.sh:16-17; .github/workflows/ci.yml:57 (deploy)
+- last seen: 2026-09-22T17:02:29Z
+
+### L-023 - Rename every proof command in the checks when the proof script changes name or language
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `specs` · harmful: 0
+- features: staging
+- evidence: checks.md:60 C13 (specs)
+- last seen: 2026-09-22T17:02:29Z
+
+### L-024 - Check a runbook's expected outputs against the artifacts it describes, not only its headings and cited files
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `deploy` · harmful: 0
+- features: staging
+- evidence: C15; docs/runbooks/staging.md:46-47 (deploy)
+- last seen: 2026-09-22T17:02:29Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

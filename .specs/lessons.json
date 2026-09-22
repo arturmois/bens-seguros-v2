@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 21,
+  "next_id": 25,
   "lessons": [
     {
       "id": "L-001",
@@ -365,6 +365,78 @@
       ],
       "created": "2026-09-22T16:21:04Z",
       "last_seen": "2026-09-22T16:21:04Z"
+    },
+    {
+      "id": "L-021",
+      "key": "spec_deviation::prove a container image s contents claim by listing what the built image holds not only by running it",
+      "text": "Prove a container image's contents claim by listing what the built image holds, not only by running it",
+      "signal": "spec_deviation",
+      "scope": "deploy",
+      "status": "candidate",
+      "features": [
+        "staging"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "Coverage Landing door 1; apps/server/Dockerfile:26-37 (deploy)"
+      ],
+      "created": "2026-09-22T17:02:29Z",
+      "last_seen": "2026-09-22T17:02:29Z"
+    },
+    {
+      "id": "L-022",
+      "key": "ac_gap::give every input branch of a provisioning script a proof including the one only ci takes",
+      "text": "Give every input branch of a provisioning script a proof, including the one only CI takes",
+      "signal": "ac_gap",
+      "scope": "deploy",
+      "status": "candidate",
+      "features": [
+        "staging"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "docker/postgres/init/01-app-role.sh:16-17; .github/workflows/ci.yml:57 (deploy)"
+      ],
+      "created": "2026-09-22T17:02:29Z",
+      "last_seen": "2026-09-22T17:02:29Z"
+    },
+    {
+      "id": "L-023",
+      "key": "spec_precision_gap::rename every proof command in the checks when the proof script changes name or language",
+      "text": "Rename every proof command in the checks when the proof script changes name or language",
+      "signal": "spec_precision_gap",
+      "scope": "specs",
+      "status": "candidate",
+      "features": [
+        "staging"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "checks.md:60 C13 (specs)"
+      ],
+      "created": "2026-09-22T17:02:29Z",
+      "last_seen": "2026-09-22T17:02:29Z"
+    },
+    {
+      "id": "L-024",
+      "key": "spec_precision_gap::check a runbook s expected outputs against the artifacts it describes not only its headings and cited files",
+      "text": "Check a runbook's expected outputs against the artifacts it describes, not only its headings and cited files",
+      "signal": "spec_precision_gap",
+      "scope": "deploy",
+      "status": "candidate",
+      "features": [
+        "staging"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "C15; docs/runbooks/staging.md:46-47 (deploy)"
+      ],
+      "created": "2026-09-22T17:02:29Z",
+      "last_seen": "2026-09-22T17:02:29Z"
     }
   ]
 }
