@@ -53,7 +53,7 @@ test.describe('signup gates', () => {
             render(container, params) {
               container.dataset.turnstile = 'widget'
               container.textContent = 'Turnstile'
-              setTimeout(() => params.callback('token-e2e'), 30)
+              window.__turnstileParams = params
               return 'widget-e2e'
             },
             reset() {},
@@ -69,6 +69,12 @@ test.describe('signup gates', () => {
     const submit = page.getByRole('button', { name: 'Criar conta' })
     await expect(page.locator('[data-turnstile="widget"]')).toBeVisible()
     await expect(submit).toBeDisabled()
+    await page.evaluate(() => {
+      const holder = window as Window & {
+        __turnstileParams?: { callback: (token: string) => void }
+      }
+      holder.__turnstileParams?.callback('token-e2e')
+    })
     await expect(submit).toBeEnabled()
 
     await page.getByLabel('Nome').fill(NAME)
