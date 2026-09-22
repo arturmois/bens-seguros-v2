@@ -3,7 +3,7 @@
 Profile: standard
 Plan: `.specs/features/auth-core/plan.md`
 
-39 checks in 8 slices · 8 one-way doors · 0 open
+50 checks in 9 slices · 9 one-way doors · 0 open
 
 Proof command prefix, omitted below: `pnpm --filter @bens/server exec vitest run`. Every proof
 runs against the docker compose Postgres and Mailpit, like the existing suite.
@@ -145,26 +145,63 @@ Proof: `src/infrastructure/realtime.spec.ts -t "rejects a socket without a valid
 **C39** - Socket com cookie válido e `Origin: https://evil.example` não conecta (AC 39)
 Proof: `src/infrastructure/realtime.spec.ts -t "rejects a socket from another origin"`
 
+### S9 - Rodada 2: caminhos que o Verifier abriu · ~10 files · ~40 KB · ~10k
+
+**C42** - Todo `POST`, `PUT`, `PATCH` e `DELETE` sem `Origin` igual a `APP_URL` responde `403 ORIGIN_NOT_ALLOWED` sem executar o handler, qualquer que seja o caminho: `/api/test/write`, `/%61pi/test/write` (percent-encoded) e `/test/write` (fora de `/api`) (AC 32, **rodada 2**: a checagem por prefixo da URL crua deixava `/%61pi/...` passar)
+Proof: `src/app.spec.ts -t "rejects mutating requests from another origin on any path"`
+
+**C43** - Um job `email.send` enfileirado com `reset-password` chega ao Mailpit, pelo worker registrado, com assunto `Redefina sua senha`, e um com `verify-email` com assunto `Confirme seu e-mail` (AC 28, 29, **rodada 2**: F5 sobreviveu porque C28/C29 chamavam o handler direto)
+Proof: `src/emails/send-email.spec.tsx -t "delivers each template through the queue"`
+
+**C44** - O token de reset expira 1 h depois do pedido (`Verification.expiresAt` = pedido + 3600 s ± 60 s) e o link de verificação de e-mail expira 24 h depois do cadastro (`exp − iat` do token = 86 400) (AC 1, 12, **rodada 2**: F4 sobreviveu)
+Proof: `src/modules/auth/password-reset.spec.ts -t "reset token lasts one hour"`
+Proof: `src/modules/auth/sign-up.spec.ts -t "verification link lasts one day"`
+
+**C45** - `sign-up/email` responde `400` com senha de 7 e de 129 caracteres e `200` com 8 e com 128 (AC 1, Landing door 1)
+Proof: `src/modules/auth/sign-up.spec.ts -t "accepts passwords from 8 to 128 characters"`
+
+**C46** - Cada regra de rate limit tem a janela do plano: com o contador no máximo e `lastRequest` a `janela − 5 s` a resposta é `429`; com `lastRequest` a `janela + 1 s` não é — para `/sign-in/email` (900 s, 10), `/sign-up/email` (3600 s, 5), `/request-password-reset` (3600 s, 3), `/send-verification-email` (3600 s, 3), `/two-factor/verify-totp` (900 s, 10) e a regra global em `/get-session` (60 s, 100) (AC 23, 27, **rodada 2**)
+Proof: `src/modules/auth/rate-limit.spec.ts -t "each rule has the planned window"`
+
+**C47** - Socket com cookie de sessão de `expiresAt` no passado recebe `connect_error` `UNAUTHENTICATED`; o handshake HTTP do Socket.IO com `Origin: https://evil.example` responde `403` (AC 38, 39, **rodada 2**)
+Proof: `src/infrastructure/realtime.spec.ts -t "rejects a socket with an expired session"`
+Proof: `src/infrastructure/realtime.spec.ts -t "refuses the handshake from another origin with 403"`
+
+**C48** - `GET /api/auth/get-session` com cookie válido responde `200` com o `user.id` do usuário; sem cookie responde `200` com corpo `null` (Surface, **rodada 2**)
+Proof: `src/modules/auth/sign-in.spec.ts -t "get-session returns the signed-in user"`
+
+**C49** - Dentro de `db.withoutTenant`, ler ou gravar tabela tenant-scoped (`Example`) falha e nada é gravado; tabela de usuário (`User`) é lida normalmente (Landing door 9, **rodada 2**)
+Proof: `src/infrastructure/database.spec.ts -t "withoutTenant reaches user tables but no tenant table"`
+
+**C50** - Com `APP_URL` `http`, o cookie de sessão não tem `Secure` nem o prefixo `__Secure-` (AC 6, na prova do próprio C6, **rodada 2**)
+Proof: `src/modules/auth/sign-in.spec.ts -t "uses a secure prefixed cookie under https"`
+
 ## Coverage
 
 | Set (size) | Member -> proof | Unproven |
 | --- | --- | --- |
-| `POST/GET /api/auth/*` statuses (6) | 200 C5 · 302 C4 · 400 C12 · 401 C7 · 403 C3 · 429 C23 | - |
+| `POST/GET /api/auth/*` statuses (6) | 200 C5, C48 · 302 C4 · 400 C12, C45 · 401 C7 · 403 C3 · 429 C23 | - |
 | `GET /api/v1/me` statuses (2) | 200 C13 · 401 C14 | - |
 | `GET /api/docs` statuses (2) | 200 C35 · 404 C35 | - |
-| socket `/socket.io` handshake outcomes (3) | aceita C37 · `Origin` estranho C39 · `UNAUTHENTICATED` C38 | - |
+| socket `/socket.io` handshake outcomes (3) | aceita C37 · `Origin` estranho (`403`) C39, C47 · `UNAUTHENTICATED` C38 | - |
+| motivos de recusa do socket (3) | sem cookie C38 · revogada C38 · expirada C47 | - |
 | `POST/PUT/PATCH/DELETE /api/*` × Origin inválido (8) | `POST` sem Origin C32 · `POST` estranho C32 · `PUT` sem Origin C32 · `PUT` estranho C32 · `PATCH` sem Origin C32 · `PATCH` estranho C32 · `DELETE` sem Origin C32 · `DELETE` estranho C32 | - |
 | motivos de `401` no `/me` (4) | sem cookie C14 · token inexistente C14 · `expiresAt` passado C14 · `Session` apagada C14 | - |
 | super-admin efetivo (3) | flag+2FA C16 · flag sem 2FA C16 · sem flag C16 | - |
 | campos só do server × rota (4) | `isSuperAdmin` em `sign-up/email` C17 · `isSuperAdmin` em `update-user` C17 · `activeOrganizationId` em `sign-up/email` C17 · `activeOrganizationId` em `update-user` C17 | - |
-| payloads `email.send` (4) | `verify-email` C28 · `reset-password` C29 · template desconhecido C30 · props inválidas C30 | - |
-| regras de rate limit (5) | `/sign-in/email` C23 · `/sign-up/email` C27 · `/request-password-reset` C27 · `/send-verification-email` C27 · `/two-factor/*` C27 | - |
+| payloads `email.send` pelo handler (4) | `verify-email` C28 · `reset-password` C29 · template desconhecido C30 · props inválidas C30 | - |
+| regras de rate limit: máximo (5) | `/sign-in/email` C23 · `/sign-up/email` C27 · `/request-password-reset` C27 · `/send-verification-email` C27 · `/two-factor/*` C27 | - |
+| regras de rate limit: janela (6) | `/sign-in/email` C46 · `/sign-up/email` C46 · `/request-password-reset` C46 · `/send-verification-email` C46 · `/two-factor/*` C46 · global C46 | - |
+| limites de senha (4) | 7 C45 · 8 C45 · 128 C45 · 129 C45 | - |
+| expirações de token (2) | reset 1 h C44 · verificação 24 h C44 | - |
+| caminhos mutáveis × Origin (3) | `/api/...` C42 · `/%61pi/...` C42 · fora de `/api` C42 | - |
 | fonte do IP (2) | `TRUST_PROXY=false` C25 · `TRUST_PROXY=true` C26 | - |
-| tokens de reset inválidos (2) | usado C12 · expirado C12 | - |
-| cookie por esquema de `APP_URL` (2) | `https` C6 · `http` C6 | - |
+| tokens de reset inválidos (2) | usado C12 · expirado C12, C44 | - |
+| templates `email.send` pela fila (2) | `verify-email` C43 · `reset-password` C43 | - |
+| cookie por esquema de `APP_URL` (2) | `https` C6 · `http` C50 | - |
 | tabelas novas sem `organizationId` (6) | `User` C40 · `Session` C40 · `Account` C40 · `Verification` C40 · `TwoFactor` C40 · `RateLimit` C40 | - |
 | startup config: `BETTER_AUTH_SECRET`, `APP_URL`, `TRUST_PROXY` (4 assemblies) | `server.ts` C36 · `test/app.ts` C13 · `scripts/export-openapi.ts` C41 · `boot.spec.ts` C36 | - |
-| Landing doors (8) | 1 mount C5 · 2 tabelas C40 · 3 payload C28 · 4 sessão C15 · 5 contexto C16 · 6 IP C25 · 7 Origin C32 · 8 dependências C34, C35 | - |
+| Landing doors (9) | 1 mount C5, C45 · 2 tabelas C40 · 3 payload C28, C43 · 4 sessão C15 · 5 contexto C16 · 6 IP C25 · 7 Origin C32, C42 · 8 dependências C34, C35 · 9 `withoutTenant` C49 | - |
 
 **C40** - O teste de schema continua verde com as 6 tabelas novas: nenhuma tem `organizationId`, e o catálogo mostra as 6 no schema do worker (Relations, door 2)
 Proof: `test/schema.spec.ts -t "identity tables carry no tenant column"`
@@ -217,4 +254,6 @@ hide behind one happy-path request.
 - **Boundary:** C1-C41 closed at the commit `feat(server): authenticate with better auth` (gate green: lint, typecheck, 120 tests, build; `server.ts` booted with the dev `.env` and delivered the verification e-mail to Mailpit)
 - **Settled mid-build:** C15 simulates "12 h since the last update" through `expiresAt` too (Better Auth derives the session age from it); C17 `update-user` answers `400 FIELD_NOT_ALLOWED` for `isSuperAdmin` and ignores `activeOrganizationId` (a session field); C24 also asserts the `RateLimit` row, because Better Auth's memory store is process-global and would pass a same-process restart; Landing door 9 (`withoutTenant`) added
 - **Abandoned:** none
-
+- **Boundary:** C42-C50 closed at the commit `fix(server): check the origin on every path and prove the auth values` (round 2; gate green, 130 passed)
+- **Settled mid-build:** the Origin hook checks every mutating request, not a prefix of the raw URL (plan Landing 7b, AD-004 updated); the existing `/test/*` POSTs in `app.spec.ts` now send the app origin, as a browser would; AD-003 names `send-email.tsx` instead of a `templates.ts` that never existed
+- **Abandoned:** none

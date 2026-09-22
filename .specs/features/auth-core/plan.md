@@ -84,6 +84,7 @@ gerados pelo Prisma (door 2). No columns and no types here.
 | `GET /api/docs` | — | Swagger UI | `200` fora de produção, `404` em produção |
 | socket `/socket.io` handshake | cookie de sessão, `Origin` | conexão | `101` aceita; handshake `403` com `Origin` estranho; `connect_error` `UNAUTHENTICATED` sem sessão |
 | qualquer `POST/PUT/PATCH/DELETE /api/*` | header `Origin` | — | `403` `ORIGIN_NOT_ALLOWED` quando ausente ou diferente de `APP_URL` |
+| qualquer `POST/PUT/PATCH/DELETE`, em qualquer caminho (rodada 2) | header `Origin` | — | `403` `ORIGIN_NOT_ALLOWED` quando ausente ou diferente de `APP_URL`; webhooks (Fase 5+) entram como exceção explícita |
 
 ## Landing
 
@@ -97,6 +98,7 @@ gerados pelo Prisma (door 2). No columns and no types here.
 | 6. IP do cliente (AD-002) | `Fastify({ trustProxy: config.TRUST_PROXY })`; o mount faz `headers.set('x-forwarded-for', request.ip)` antes de `auth.handler`; `rateLimit: { enabled: true, storage: 'database', window: 60, max: 100, customRules: { '/sign-in/email': { window: 900, max: 10 }, '/sign-up/email': { window: 3600, max: 5 }, '/request-password-reset': { window: 3600, max: 3 }, '/send-verification-email': { window: 3600, max: 3 }, '/two-factor/*': { window: 900, max: 10 } } }` | deixar o Better Auth ler o `x-forwarded-for` do cliente - sem proxy na frente, qualquer um troca de bucket mandando o header |
 | 7. Origin em métodos mutáveis (AD-004) | hook `onRequest` global: `POST/PUT/PATCH/DELETE` em `/api/*` exige `request.headers.origin === new URL(APP_URL).origin`, senão `403 { error: { code: 'ORIGIN_NOT_ALLOWED', message: 'Origem da requisição não permitida.' } }` | confiar só no `SameSite=Lax` - não cobre um subdomínio irmão (same-site); checar `Referer` - pode ser suprimido por política do browser |
 | 8. dependências novas | `better-auth`, `@fastify/helmet`, `@fastify/swagger-ui`, versões estáveis mais recentes que passem no `minimumReleaseAge`; exceções no `pnpm-workspace.yaml` reportadas no resumo | `helmet` do Express - não integra ao ciclo do Fastify |
+| 7b. Origin em qualquer caminho (rodada 2) | o hook `onRequest` checa todo `POST/PUT/PATCH/DELETE`, sem olhar o caminho; exceções (webhooks) serão uma lista explícita de rotas | prefixo `request.url.startsWith('/api/')` (door 7) - a URL crua não é o caminho que o roteador casa: `POST /%61pi/...` chegava ao handler sem checagem (Verifier, rodada 1) |
 | 9. transação sem tenant (achado no build) | `withoutTenant<T>(run: (tx: Transaction) => Promise<T>) { return client.$transaction(run) }` na extensão de `createDatabase`, ao lado de `withTenant`; toda tabela tenant-scoped falha dentro dela, como fora de `withTenant` | `db.$transaction` do client estendido - o `tx` tem outro tipo e não entra em `queue.enqueue(tx)`; expor o client base - abriria um segundo caminho ao banco sem o contrato do ADR-004 |
 
 - Nothing else in this change is hard to reverse
@@ -194,7 +196,7 @@ Nenhuma escrita vem de outra origem; a API tem headers de segurança; a doc só 
 
 **Acceptance Criteria**
 
-32. IF uma request `POST`, `PUT`, `PATCH` ou `DELETE` em `/api/*` chega sem `Origin` ou com `Origin` diferente da origem de `APP_URL` THEN o sistema SHALL responder `403 { error: { code: 'ORIGIN_NOT_ALLOWED', message: 'Origem da requisição não permitida.' } }` sem executar o handler
+32. IF uma request `POST`, `PUT`, `PATCH` ou `DELETE` em qualquer caminho (rodada 2; antes: `/api/*`) chega sem `Origin` ou com `Origin` diferente da origem de `APP_URL` THEN o sistema SHALL responder `403 { error: { code: 'ORIGIN_NOT_ALLOWED', message: 'Origem da requisição não permitida.' } }` sem executar o handler
 33. WHEN uma request `GET` chega sem `Origin` THEN o sistema SHALL processá-la normalmente
 34. The API SHALL responder com os headers do helmet, incluindo `x-content-type-options: nosniff` e `strict-transport-security`
 35. WHERE `NODE_ENV` é `development` ou `test` the system SHALL servir o Swagger UI em `GET /api/docs`; WHEN `NODE_ENV` é `production` THEN `GET /api/docs` SHALL responder `404`

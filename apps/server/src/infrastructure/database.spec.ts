@@ -343,3 +343,22 @@ describe('row level security', () => {
     }
   })
 })
+
+describe('withoutTenant', () => {
+  it('withoutTenant reaches user tables but no tenant table', async () => {
+    const before = await snapshot(tenantA)
+
+    const read = await errorOf(() => deps.db.withoutTenant((tx) => tx.example.findMany()))
+    const write = await errorOf(() =>
+      deps.db.withoutTenant((tx) =>
+        tx.example.create({ data: { organizationId: tenantA.organizationId, name: 'sem tenant' } }),
+      ),
+    )
+    const users = await deps.db.withoutTenant((tx) => tx.user.count())
+
+    expect(read).toBeInstanceOf(Error)
+    expect(write).toBeInstanceOf(Error)
+    expect(await snapshot(tenantA)).toEqual(before)
+    expect(users).toBeGreaterThanOrEqual(0)
+  })
+})

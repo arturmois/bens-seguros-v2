@@ -75,12 +75,9 @@ export function buildApp(deps: Deps) {
 
   app.addHook('onRequest', async (request, reply) => {
     reply.header('x-request-id', request.id)
-    // CSRF (AD-004): writes only from the app's own origin, on top of SameSite=Lax.
-    if (
-      MUTATING_METHODS.has(request.method) &&
-      request.url.startsWith('/api/') &&
-      request.headers.origin !== appOrigin
-    ) {
+    // CSRF (AD-004): writes only from the app's own origin, on top of SameSite=Lax. Every path,
+    // not a prefix of the raw URL: the router matches the decoded path (`/%61pi/...` is `/api/...`).
+    if (MUTATING_METHODS.has(request.method) && request.headers.origin !== appOrigin) {
       throw new AppError(403, 'ORIGIN_NOT_ALLOWED', 'Origem da requisição não permitida.')
     }
   })

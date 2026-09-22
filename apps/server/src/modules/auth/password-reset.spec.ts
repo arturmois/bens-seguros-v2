@@ -82,6 +82,21 @@ describe('password reset', () => {
     expect((await signIn(email, NEW_PASSWORD)).statusCode).toBe(200)
   })
 
+  it('reset token lasts one hour', async () => {
+    const { email } = await signedInUser(new TestClient(app), deps)
+    const requestedAt = Date.now()
+
+    await requestReset(email)
+
+    const token = await resetToken(email)
+    const verification = await deps.db.verification.findFirstOrThrow({
+      where: { identifier: { contains: token } },
+    })
+    expect(Math.abs(verification.expiresAt.getTime() - (requestedAt + 3_600_000))).toBeLessThan(
+      60_000,
+    )
+  })
+
   it('rejects a used or expired token', async () => {
     const used = await signedInUser(new TestClient(app), deps)
     await requestReset(used.email)

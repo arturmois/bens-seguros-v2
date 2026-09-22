@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import { buildTestApp } from '../../../test/app.ts'
 import {
   emailJobsTo,
@@ -74,5 +75,41 @@ describe('POST /api/auth/sign-up/email', () => {
     const me = await client.get('/api/v1/me')
     expect(me.statusCode).toBe(200)
     expect(me.json()).toMatchObject({ email, emailVerified: true })
+  })
+
+  it('verification link lasts one day', async () => {
+    const client = new TestClient(app)
+    const { email } = await signUp(client)
+
+    const url = new URL(await lastEmailUrl(deps, email, 'verify-email'), 'http://localhost')
+    const [, payload = ''] = (url.searchParams.get('token') ?? '').split('.')
+    const claims = z
+      .object({ iat: z.number(), exp: z.number() })
+      .parse(JSON.parse(Buffer.from(payload, 'base64url').toString()))
+
+    expect(claims.exp - claims.iat).toBe(86_400)
+  })
+
+  it('accepts passwords from 8 to 128 characters', async () => {
+    const cases = [
+      { length: 7, status: 400 },
+      { length: 8, status: 200 },
+      { length: 128, status: 200 },
+      { length: 129, status: 400 },
+    ]
+    for (const { length, status } of cases) {
+      const email = uniqueEmail()
+
+      const response = await new TestClient(app).post('/api/auth/sign-up/email', {
+        name: 'Maria Souza',
+        email,
+        password: 'a'.repeat(length),
+      })
+
+      expect(response.statusCode, `${length} characters`).toBe(status)
+      expect(await deps.db.user.count({ where: { email } }), `${length} characters`).toBe(
+        status === 200 ? 1 : 0,
+      )
+    }
   })
 })

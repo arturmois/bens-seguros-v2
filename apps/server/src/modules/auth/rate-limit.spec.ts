@@ -115,4 +115,40 @@ describe('auth rate limit', () => {
       expect(result[limit], path).toBe(429)
     }
   })
+
+  it('each rule has the planned window', async () => {
+    const rules = [
+      { path: '/sign-in/email', window: 900, max: 10 },
+      { path: '/sign-up/email', window: 3600, max: 5 },
+      { path: '/request-password-reset', window: 3600, max: 3 },
+      { path: '/send-verification-email', window: 3600, max: 3 },
+      { path: '/two-factor/verify-totp', window: 900, max: 10 },
+      // Any other path falls under the global rule.
+      { path: '/get-session', window: 60, max: 100 },
+    ]
+    const send = (client: TestClient, path: string) =>
+      path === '/get-session'
+        ? client.get(`/api/auth${path}`)
+        : client.post(`/api/auth${path}`, {
+            name: 'Robô',
+            email: uniqueEmail('janela'),
+            password: 'senha-segura-123',
+            code: '000000',
+          })
+
+    for (const { path, window, max } of rules) {
+      const client = new TestClient(app)
+      const key = `${client.ip}|${path}`
+      const at = (secondsAgo: number) => BigInt(Date.now() - secondsAgo * 1000)
+      await deps.db.rateLimit.create({ data: { key, count: max, lastRequest: at(window - 5) } })
+
+      const inside = await send(client, path)
+
+      await deps.db.rateLimit.update({ where: { key }, data: { lastRequest: at(window + 1) } })
+      const after = await send(client, path)
+
+      expect(inside.statusCode, `${path} inside the window`).toBe(429)
+      expect(after.statusCode, `${path} after the window`).not.toBe(429)
+    }
+  })
 })

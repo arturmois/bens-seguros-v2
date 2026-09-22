@@ -89,6 +89,21 @@ describe('POST /api/auth/sign-out', () => {
   })
 })
 
+describe('GET /api/auth/get-session', () => {
+  it('get-session returns the signed-in user', async () => {
+    const client = new TestClient(app)
+    const { userId } = await signedInUser(client, deps)
+
+    const signedIn = await client.get('/api/auth/get-session')
+    const anonymous = await new TestClient(app).get('/api/auth/get-session')
+
+    expect(signedIn.statusCode).toBe(200)
+    expect(signedIn.json().user.id).toBe(userId)
+    expect(anonymous.statusCode).toBe(200)
+    expect(anonymous.json()).toBeNull()
+  })
+})
+
 describe('session cookie under https', () => {
   let secure: Awaited<ReturnType<typeof buildTestApp>>
 
@@ -113,5 +128,15 @@ describe('session cookie under https', () => {
     expect(cookie).toMatch(/^__Secure-better-auth\.session_token=/)
     expect(cookie).toMatch(/;\s*Secure/i)
     expect(cookie).not.toMatch(/;\s*Domain=/i)
+
+    // The same sign-in under the http APP_URL of the default test app.
+    const { email: plainEmail } = await signedInUser(new TestClient(app), deps)
+    const plain = await new TestClient(app).post('/api/auth/sign-in/email', {
+      email: plainEmail,
+      password: PASSWORD,
+    })
+    const plainCookie = sessionCookieOf(plain.headers['set-cookie'])
+    expect(plainCookie).toMatch(/^better-auth\.session_token=/)
+    expect(plainCookie).not.toMatch(/;\s*Secure/i)
   })
 })

@@ -45,14 +45,16 @@ beforeAll(async () => {
   app.get('/test/crash', async () => {
     throw new Error('database password is hunter2')
   })
-  app.route({
-    method: ['POST', 'PUT', 'PATCH', 'DELETE'],
-    url: '/api/test/write',
-    handler: async () => {
-      writes++
-      return { ok: true }
-    },
-  })
+  for (const url of ['/api/test/write', '/test/write']) {
+    app.route({
+      method: ['POST', 'PUT', 'PATCH', 'DELETE'],
+      url,
+      handler: async () => {
+        writes++
+        return { ok: true }
+      },
+    })
+  }
 
   await app.ready()
 })
@@ -78,6 +80,7 @@ describe('error handler', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/test/validated',
+      headers: { origin: TEST_APP_URL },
       payload: { name: 'a', extra: true },
     })
 
@@ -97,7 +100,7 @@ describe('error handler', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/test/validated',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', origin: TEST_APP_URL },
       payload: '{"name":',
     })
 
@@ -135,14 +138,22 @@ describe('error handler', () => {
   })
 
   it('maps a unique constraint violation (Prisma P2002) to 409', async () => {
-    const res = await app.inject({ method: 'POST', url: '/test/duplicate' })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/test/duplicate',
+      headers: { origin: TEST_APP_URL },
+    })
 
     expect(res.statusCode).toBe(409)
     expect(res.json()).toEqual({ error: { code: 'CONFLICT', message: 'Registro já existe.' } })
   })
 
   it('surfaces a row security violation as a generic 500', async () => {
-    const res = await app.inject({ method: 'POST', url: '/test/row-security' })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/test/row-security',
+      headers: { origin: TEST_APP_URL },
+    })
 
     expect(res.statusCode).toBe(500)
     expect(res.json()).toEqual({
@@ -197,6 +208,30 @@ describe('origin check (CSRF)', () => {
       expect(res.statusCode, method).toBe(200)
     }
     expect(writes).toBe(4)
+  })
+
+  it('rejects mutating requests from another origin on any path', async () => {
+    const paths = ['/api/test/write', '/%61pi/test/write', '/test/write']
+    writes = 0
+
+    for (const url of paths) {
+      for (const method of ['POST', 'PUT', 'PATCH', 'DELETE'] as const) {
+        const res = await app.inject({ method, url })
+
+        expect(res.statusCode, `${method} ${url}`).toBe(403)
+        expect(res.json().error.code).toBe('ORIGIN_NOT_ALLOWED')
+      }
+    }
+    expect(writes).toBe(0)
+
+    // The encoded path is the same route: with the app's origin it reaches the handler.
+    const allowed = await app.inject({
+      method: 'POST',
+      url: '/%61pi/test/write',
+      headers: { origin: TEST_APP_URL },
+    })
+    expect(allowed.statusCode).toBe(200)
+    expect(writes).toBe(1)
   })
 
   it('accepts reads without an origin', async () => {

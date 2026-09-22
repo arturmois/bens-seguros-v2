@@ -86,6 +86,40 @@ describe('email.send', () => {
     expect(await inbox(missingUrl)).toEqual([])
   })
 
+  it('delivers each template through the queue', async () => {
+    const queued = await createTestDeps()
+    await queued.queue.start()
+    await registerWorkers(queued)
+    const cases = [
+      { template: 'verify-email' as const, subject: 'Confirme seu e-mail', to: recipient() },
+      { template: 'reset-password' as const, subject: 'Redefina sua senha', to: recipient() },
+    ]
+
+    try {
+      await queued.db.withoutTenant(async (tx) => {
+        for (const { template, to } of cases) {
+          await enqueueEmail(queued.queue, tx, {
+            template,
+            to,
+            props: { name: 'Maria', url: `https://app.bens.test/${template}` },
+          })
+        }
+      })
+
+      for (const { to, subject, template } of cases) {
+        await expect
+          .poll(async () => (await inbox(to)).map((item) => item.Subject), { timeout: 15_000 })
+          .toEqual([subject])
+        const [summary] = await inbox(to)
+        expect((await message(summary?.ID ?? '')).Text).toContain(
+          `https://app.bens.test/${template}`,
+        )
+      }
+    } finally {
+      await closeDependencies(queued)
+    }
+  })
+
   it('retries a failed send', async () => {
     // Nothing listens on port 1: every SMTP attempt fails.
     const failing = await createTestDeps({ SMTP_URL: 'smtp://127.0.0.1:1' })

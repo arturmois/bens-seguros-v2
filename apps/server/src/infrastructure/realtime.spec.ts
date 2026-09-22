@@ -62,6 +62,30 @@ describe('realtime', () => {
     revoked.disconnect()
   })
 
+  it('rejects a socket with an expired session', async () => {
+    const { cookie, userId } = await sessionCookie()
+    await testApp.deps.db.session.updateMany({
+      where: { userId },
+      data: { expiresAt: new Date(Date.now() - 1000) },
+    })
+    const socket = open({ cookie, origin: TEST_APP_URL })
+
+    expect(await outcome(socket)).toEqual({ error: 'UNAUTHENTICATED' })
+    socket.disconnect()
+  })
+
+  it('refuses the handshake from another origin with 403', async () => {
+    const { cookie } = await sessionCookie()
+    const handshake = (origin: string) =>
+      fetch(`${baseUrl}/socket.io/?EIO=4&transport=polling`, { headers: { cookie, origin } })
+
+    const foreign = await handshake('https://evil.example')
+    const own = await handshake(TEST_APP_URL)
+
+    expect(foreign.status).toBe(403)
+    expect(own.status).toBe(200)
+  })
+
   it('rejects a socket from another origin', async () => {
     const { cookie } = await sessionCookie()
     const socket = open({ cookie, origin: 'https://evil.example' })
