@@ -24,7 +24,7 @@ os três bloqueios respondem no mesmo formato de erro que o client de auth já t
 
 1. `POST /api/auth/sign-up/email` → mount (exists, `auth-core`) → rate limit do Better Auth (exists)
 2. → `hooks.before` do Better Auth (door 1): `SIGNUP_MODE=closed` → `403 SIGNUP_CLOSED`; domínio descartável → `403 EMAIL_DOMAIN_NOT_ALLOWED`
-3. → plugin `captcha` (door 2), registrado só quando há `TURNSTILE_SECRET_KEY` e o cadastro está aberto: valida `x-captcha-response` no `siteverify` da Cloudflare → `403` sem token ou com token recusado; indisponível → erro (fail-closed)
+3. → plugin `captcha` (door 2), registrado só quando há `TURNSTILE_SECRET_KEY` e o cadastro está aberto. O `onRequest` do plugin corre antes do `hooks.before`: sem `x-captcha-response` → `400 MISSING_RESPONSE` (não chama o `siteverify`); token recusado → `403 VERIFICATION_FAILED`; `siteverify` inacessível → `500 UNKNOWN_ERROR` (fail-closed). Com o token aceito, o hook ainda recusa domínio descartável.
 4. → cadastro normal (exists)
 5. web: `/register` → `GET /api/public/signup-config` (door 3) → cadastro fechado mostra aviso; com `turnstileSiteKey` renderiza o widget e manda o token no header `x-captcha-response`
 
@@ -46,7 +46,7 @@ None - no stored-data shape change
 
 | Route | In | Out | Status |
 | --- | --- | --- | --- |
-| `POST /api/auth/sign-up/email` (muda) | + header `x-captcha-response` quando o Turnstile está ligado | inalterado | + `403` (`SIGNUP_CLOSED`, `EMAIL_DOMAIN_NOT_ALLOWED`, captcha ausente/inválido) |
+| `POST /api/auth/sign-up/email` (muda) | + header `x-captcha-response` quando o Turnstile está ligado | inalterado | + `403` (`SIGNUP_CLOSED`, `EMAIL_DOMAIN_NOT_ALLOWED`, `VERIFICATION_FAILED`), `400` (`MISSING_RESPONSE`), `500` (`UNKNOWN_ERROR`) |
 | `GET /api/public/signup-config` | — | `signupMode` · `turnstileSiteKey` (texto ou `null`) | `200` |
 
 ## Landing
@@ -54,7 +54,7 @@ None - no stored-data shape change
 | One-way door | Literal shape | Alternative rejected |
 | --- | --- | --- |
 | 1. regras de cadastro no Better Auth | `hooks: { before: createAuthMiddleware(async (ctx) => { if (ctx.path !== '/sign-up/email') return; if (config.SIGNUP_MODE === 'closed') throw new APIError('FORBIDDEN', { code: 'SIGNUP_CLOSED', message: 'O cadastro está fechado. Peça um convite à sua corretora.' }); if (isDisposableEmail(ctx.body.email)) throw new APIError('FORBIDDEN', { code: 'EMAIL_DOMAIN_NOT_ALLOWED', message: 'E-mails descartáveis não são permitidos. Use um e-mail pessoal ou corporativo.' }) }) }`; lista de `disposable-email-domains-js` | preHandler do Fastify como no legado - responderia no formato `{ error }` da API enquanto o resto de `/api/auth/*` responde no formato do Better Auth, e o client teria dois caminhos de erro |
-| 2. Turnstile pelo plugin `captcha` | `captcha({ provider: 'cloudflare-turnstile', secretKey: TURNSTILE_SECRET_KEY, endpoints: ['/sign-up/email'] })`, token em `x-captcha-response`; o teste aponta `siteVerifyURLOverride` para um servidor HTTP local | middleware próprio com fail-open (legado) - código a manter e um robô passa sempre que a Cloudflare oscila |
+| 2. Turnstile pelo plugin `captcha` | `captcha({ provider: 'cloudflare-turnstile', secretKey: TURNSTILE_SECRET_KEY, endpoints: ['/sign-up/email'] })`, token em `x-captcha-response`; o teste aponta `siteVerifyURLOverride` para um servidor HTTP local. Status do plugin 1.7: token ausente `400 MISSING_RESPONSE`, recusado `403 VERIFICATION_FAILED`, `siteverify` fora `500 UNKNOWN_ERROR` | middleware próprio com fail-open (legado) - código a manter e um robô passa sempre que a Cloudflare oscila |
 | 3. config pública do cadastro | `GET /api/public/signup-config` → `{ signupMode: 'closed' \| 'self_serve', turnstileSiteKey: string \| null }`, `operationId: 'getSignupConfig'`, sem sessão | site key em variável `VITE_*` no build - a mesma imagem do web não serviria staging e produção com chaves diferentes, e o web não saberia do `SIGNUP_MODE` |
 | 4. dependências novas | `disposable-email-domains-js` (server; mesma lista upstream do legado, publicada continuamente), `@marsidev/react-turnstile` (web) | `disposable-email-domains` do legado - sem publicação desde 2022 |
 
@@ -86,10 +86,10 @@ None - no stored-data shape change
 
 **Acceptance Criteria**
 
-7. WHERE `TURNSTILE_SECRET_KEY` está definido, IF `POST /api/auth/sign-up/email` chega sem `x-captcha-response` THEN o sistema SHALL responder `403` e SHALL não criar `User` nem chamar o `siteverify`
-8. WHERE `TURNSTILE_SECRET_KEY` está definido, IF o `siteverify` responde `success: false` THEN o sistema SHALL responder `403` e SHALL não criar `User`
+7. WHERE `TURNSTILE_SECRET_KEY` está definido, IF `POST /api/auth/sign-up/email` chega sem `x-captcha-response` THEN o sistema SHALL responder `400` com `code: 'MISSING_RESPONSE'` e SHALL não criar `User` nem chamar o `siteverify`
+8. WHERE `TURNSTILE_SECRET_KEY` está definido, IF o `siteverify` responde `success: false` THEN o sistema SHALL responder `403` com `code: 'VERIFICATION_FAILED'` e SHALL não criar `User`
 9. WHERE `TURNSTILE_SECRET_KEY` está definido, WHEN o `siteverify` responde `success: true` THEN o cadastro SHALL seguir normalmente, e o `siteverify` SHALL ter recebido o `secret` e o token enviado
-10. IF o `siteverify` está inacessível THEN o sistema SHALL recusar o cadastro (status ≥ `400`) e SHALL não criar `User`
+10. IF o `siteverify` está inacessível THEN o sistema SHALL responder `500` com `code: 'UNKNOWN_ERROR'` e SHALL não criar `User`
 11. WHERE `TURNSTILE_SECRET_KEY` não está definido the system SHALL aceitar o cadastro sem `x-captcha-response`
 12. The Turnstile SHALL não ser exigido em `sign-in/email` nem em `request-password-reset`
 13. IF `NODE_ENV=production` e `SIGNUP_MODE=self_serve` sem `TURNSTILE_SECRET_KEY` ou sem `TURNSTILE_SITE_KEY` THEN o server SHALL sair com código 1 no boot citando a variável
@@ -122,7 +122,8 @@ None - no stored-data shape change
 | --- | --- | --- | --- |
 | Cloudflare fora do ar | **fail-closed** (plugin do Better Auth): o cadastro para enquanto o `siteverify` não responde | o legado era fail-open; fechar é o comportamento do plugin e o mais seguro; indisponibilidade da Cloudflare é rara e só afeta cadastro novo. **Diverge do legado — confirmar** | n |
 | padrão de `SIGNUP_MODE` | `self_serve` | paridade com o legado | n |
-| ordem dos bloqueios | rate limit → cadastro fechado → e-mail descartável → Turnstile | o mais barato primeiro; com o cadastro fechado o plugin nem é registrado | n |
+| ordem dos bloqueios | rate limit → (cadastro fechado e e-mail descartável no `hooks.before`) e, com o Turnstile ligado, o `onRequest` do plugin antes do hook | o plugin `captcha` 1.7 corre em `onRequest`, antes de `hooks.before`; com o cadastro fechado o plugin nem é registrado. Com os dois ligados, token ausente responde `MISSING_RESPONSE` antes do domínio; token aceito ainda passa pelo hook e um domínio descartável recebe `EMAIL_DOMAIN_NOT_ALLOWED` | y |
+| status do captcha | `400 MISSING_RESPONSE`, `403 VERIFICATION_FAILED`, `500 UNKNOWN_ERROR` | contrato do plugin `captcha` do Better Auth 1.7.5; o rascunho dizia `403` também para token ausente, o que exigiria um middleware próprio e contradiz a door 2 | y |
 
 **Open questions:** none - all resolved or logged above.
 
