@@ -74,6 +74,36 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: verification.md tenant-rls round 1 - test/schema.spec.ts:17 (tests) (+1 more)
 - last seen: 2026-09-21T22:18:51Z
 
+### L-011 - Match a path-prefix guard against the path the router resolves, not the raw request URL, and test a percent-encoded variant
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `routes` · harmful: 0
+- features: auth-core
+- evidence: C32 - apps/server/src/app.ts:81 (POST /%61pi/test/write ran the handler) (routes)
+- last seen: 2026-09-22T13:17:42Z
+
+### L-012 - Prove a configured expiry by moving time to just inside and just outside the bound, not by setting the expiry to the past
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `auth` · harmful: 0
+- features: auth-core
+- evidence: F4 - apps/server/src/modules/auth/auth.ts:39; C12 password-reset.spec.ts:107 (auth)
+- last seen: 2026-09-22T13:17:42Z
+
+### L-013 - Prove a job's behaviour by enqueuing it and observing the side effect, not by calling the handler function directly
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `jobs` · harmful: 0
+- features: auth-core
+- evidence: F5 - apps/server/src/emails/send-email.tsx:44; C28-C29 send-email.spec.tsx:43,57 (jobs)
+- last seen: 2026-09-22T13:17:42Z
+
+### L-014 - Give every configured library value named in the plan a check that observes it at the boundary
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `auth` · harmful: 0
+- features: auth-core
+- evidence: Coverage 'Better Auth configured values' - auth.ts:37-38,52,85-91 (auth)
+- last seen: 2026-09-22T13:17:42Z
+
+### L-015 - Give every member an acceptance criterion enumerates its own case in the check, even when a sibling transport already covers it
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `specs` · harmful: 0
+- features: auth-core
+- evidence: Coverage AC 38 - realtime.spec.ts:53-63 (expired session untested over the socket) (specs)
+- last seen: 2026-09-22T13:17:42Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

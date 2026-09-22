@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 11,
+  "next_id": 16,
   "lessons": [
     {
       "id": "L-001",
@@ -185,6 +185,96 @@
       ],
       "created": "2026-09-21T22:07:49Z",
       "last_seen": "2026-09-21T22:18:51Z"
+    },
+    {
+      "id": "L-011",
+      "key": "ac_gap::match a path prefix guard against the path the router resolves not the raw request url and test a percent encoded variant",
+      "text": "Match a path-prefix guard against the path the router resolves, not the raw request URL, and test a percent-encoded variant",
+      "signal": "ac_gap",
+      "scope": "routes",
+      "status": "candidate",
+      "features": [
+        "auth-core"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "C32 - apps/server/src/app.ts:81 (POST /%61pi/test/write ran the handler) (routes)"
+      ],
+      "created": "2026-09-22T13:17:42Z",
+      "last_seen": "2026-09-22T13:17:42Z"
+    },
+    {
+      "id": "L-012",
+      "key": "surviving_mutant::prove a configured expiry by moving time to just inside and just outside the bound not by setting the expiry to the past",
+      "text": "Prove a configured expiry by moving time to just inside and just outside the bound, not by setting the expiry to the past",
+      "signal": "surviving_mutant",
+      "scope": "auth",
+      "status": "candidate",
+      "features": [
+        "auth-core"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "F4 - apps/server/src/modules/auth/auth.ts:39; C12 password-reset.spec.ts:107 (auth)"
+      ],
+      "created": "2026-09-22T13:17:42Z",
+      "last_seen": "2026-09-22T13:17:42Z"
+    },
+    {
+      "id": "L-013",
+      "key": "surviving_mutant::prove a job s behaviour by enqueuing it and observing the side effect not by calling the handler function directly",
+      "text": "Prove a job's behaviour by enqueuing it and observing the side effect, not by calling the handler function directly",
+      "signal": "surviving_mutant",
+      "scope": "jobs",
+      "status": "candidate",
+      "features": [
+        "auth-core"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "F5 - apps/server/src/emails/send-email.tsx:44; C28-C29 send-email.spec.tsx:43,57 (jobs)"
+      ],
+      "created": "2026-09-22T13:17:42Z",
+      "last_seen": "2026-09-22T13:17:42Z"
+    },
+    {
+      "id": "L-014",
+      "key": "spec_precision_gap::give every configured library value named in the plan a check that observes it at the boundary",
+      "text": "Give every configured library value named in the plan a check that observes it at the boundary",
+      "signal": "spec_precision_gap",
+      "scope": "auth",
+      "status": "candidate",
+      "features": [
+        "auth-core"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "Coverage 'Better Auth configured values' - auth.ts:37-38,52,85-91 (auth)"
+      ],
+      "created": "2026-09-22T13:17:42Z",
+      "last_seen": "2026-09-22T13:17:42Z"
+    },
+    {
+      "id": "L-015",
+      "key": "ac_gap::give every member an acceptance criterion enumerates its own case in the check even when a sibling transport already covers it",
+      "text": "Give every member an acceptance criterion enumerates its own case in the check, even when a sibling transport already covers it",
+      "signal": "ac_gap",
+      "scope": "specs",
+      "status": "candidate",
+      "features": [
+        "auth-core"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "Coverage AC 38 - realtime.spec.ts:53-63 (expired session untested over the socket) (specs)"
+      ],
+      "created": "2026-09-22T13:17:42Z",
+      "last_seen": "2026-09-22T13:17:42Z"
     }
   ]
 }
