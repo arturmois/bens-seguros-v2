@@ -1,0 +1,33 @@
+import { twoFactorClient } from 'better-auth/client/plugins'
+import { createAuthClient } from 'better-auth/react'
+
+// The only door to /api/auth (ADR-003): login, sign-up, e-mail, password reset and 2FA screens.
+// Same origin, so no baseURL. Everything else about the user comes from GET /api/v1/me.
+export const authClient = createAuthClient({ plugins: [twoFactorClient()] })
+
+type AuthError = { status: number; code?: string | undefined }
+
+const MESSAGES: Record<string, string> = {
+  INVALID_EMAIL_OR_PASSWORD: 'E-mail ou senha incorretos.',
+  EMAIL_NOT_VERIFIED: 'Confirme seu e-mail para entrar.',
+  INVALID_TOKEN: 'Link inválido ou expirado.',
+  TOKEN_EXPIRED: 'Link inválido ou expirado.',
+  INVALID_CODE: 'Código inválido.',
+  INVALID_BACKUP_CODE: 'Código inválido.',
+  INVALID_PASSWORD: 'Senha incorreta.',
+  PASSWORD_TOO_SHORT: 'A senha precisa ter pelo menos 8 caracteres.',
+  PASSWORD_TOO_LONG: 'A senha pode ter no máximo 128 caracteres.',
+  ACCOUNT_TEMPORARILY_LOCKED: 'Muitas tentativas. Aguarde alguns minutos e tente de novo.',
+}
+
+// Better Auth answers in English with a stable `code`; the screens show pt-BR.
+export function authErrorMessage(error: AuthError) {
+  if (error.status === 429) return 'Muitas tentativas. Aguarde alguns minutos e tente de novo.'
+  return (error.code && MESSAGES[error.code]) || 'Não foi possível concluir. Tente de novo.'
+}
+
+// Where to go after signing in: only a path of this app, never another origin.
+export function safeRedirect(value: string | undefined) {
+  if (value?.startsWith('/') && !value.startsWith('//') && !value.startsWith('/\\')) return value
+  return '/dashboard'
+}

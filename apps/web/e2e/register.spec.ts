@@ -1,0 +1,70 @@
+import { emailLink, expect, inbox, NAME, PASSWORD, signUp, test, uniqueEmail } from './support'
+
+test.describe('cadastro e verificação', () => {
+  test('registers and asks to confirm the e-mail', async ({ page, api: _api }) => {
+    const email = uniqueEmail()
+    await page.goto('/register')
+
+    await page.getByLabel('Nome').fill(NAME)
+    await page.getByLabel('E-mail').fill(email)
+    await page.getByLabel('Senha').fill(PASSWORD)
+    await page.getByRole('button', { name: 'Criar conta' }).click()
+
+    await expect(page).toHaveURL(`/verify-email?email=${encodeURIComponent(email)}`)
+    await expect(page.getByText(`Enviamos um link de confirmação para ${email}.`)).toBeVisible()
+    await expect
+      .poll(async () => (await inbox(email)).map((m) => m.Subject))
+      .toEqual(['Confirme seu e-mail'])
+  })
+
+  test('validates the form before calling the api', async ({ page, api: _api }) => {
+    const calls: string[] = []
+    page.on('request', (request) => {
+      if (request.url().includes('/api/auth/sign-up/email')) calls.push(request.url())
+    })
+    await page.goto('/register')
+
+    await page.getByLabel('E-mail').fill('invalido')
+    await page.getByLabel('Senha').fill('1234567')
+    await page.getByRole('button', { name: 'Criar conta' }).click()
+
+    await expect(page.getByText('Informe seu nome.')).toBeVisible()
+    await expect(page.getByText('Informe um e-mail válido.')).toBeVisible()
+    await expect(page.getByText('A senha precisa ter pelo menos 8 caracteres.')).toBeVisible()
+    expect(calls).toEqual([])
+  })
+
+  test('resends the verification e-mail', async ({ page, api }) => {
+    const { email } = await signUp(api)
+    await page.goto(`/verify-email?email=${encodeURIComponent(email)}`)
+
+    await page.getByRole('button', { name: 'Reenviar e-mail' }).click()
+    await expect(page.getByText('E-mail reenviado.')).toBeVisible()
+
+    await page.route('**/api/auth/send-verification-email', (route) =>
+      route.fulfill({ status: 429, json: { message: 'Too many requests.' } }),
+    )
+    await page.getByRole('button', { name: 'Reenviar e-mail' }).click()
+    await expect(
+      page.getByText('Muitas tentativas. Aguarde alguns minutos e tente de novo.'),
+    ).toBeVisible()
+  })
+
+  test('the e-mail link signs in', async ({ page, api }) => {
+    const { email } = await signUp(api)
+
+    await page.goto(await emailLink(email, 'Confirme seu e-mail'))
+
+    await expect(page).toHaveURL('/dashboard')
+    await expect(page.getByRole('heading', { name: `Olá, ${NAME}` })).toBeVisible()
+  })
+
+  test('an invalid e-mail link lands on login', async ({ page, api: _api }) => {
+    await page.goto('/api/auth/verify-email?token=invalido&callbackURL=%2Flogin')
+
+    await expect(page).toHaveURL(/\/login\?error=/)
+    await expect(
+      page.getByText('Link inválido ou expirado. Faça login para receber outro.'),
+    ).toBeVisible()
+  })
+})

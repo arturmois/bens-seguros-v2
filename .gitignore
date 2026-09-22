@@ -9,3 +9,5 @@ coverage/
 *.log
 .playwright-mcp/
 apps/server/src/generated/
+test-results/
+playwright-report/

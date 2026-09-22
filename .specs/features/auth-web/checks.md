@@ -95,7 +95,7 @@ Proof: `pnpm e2e`
 Proof: `python3 .specs/features/auth-web/ci-e2e-check.py`
 
 **C25** - O web não chama `/api/auth/*` fora de `lib/auth-client.ts` e o `_app` usa o hook gerado de `getMe` (Landing doors 1 e 2)
-Proof: `rg -n "/api/auth" apps/web/src --glob '!src/lib/auth-client.ts'` sem saída e `rg -n "getGetMeQueryOptions" apps/web/src/routes/_app.tsx` com saída
+Proof: `rg -n "/api/auth" apps/web/src --glob '!**/lib/auth-client.ts'` sem saída e `rg -n "getGetMeQueryOptions" apps/web/src/routes/_app.tsx` com saída
 
 ## Coverage
 
@@ -150,3 +150,7 @@ Cost: 25 e2e cases. Without these rows, the redirect sanitizer would be proven b
 ## Handoff
 
 - S1–S5 ≈ 145 KB de arquivos novos no web (rotas, formulários, componentes, e2e, CI) ÷ 4 ≈ 37k tokens; abaixo do budget de 150k - one builder
+- **Boundary:** C1-C25 closed at the commit `feat(web): add the authentication screens` (gate green, 130 server tests; `pnpm e2e` 23 passed against `pnpm dev`; C24 structural check ok, the job itself runs on the first push to `main`)
+- **Settled mid-build:** the post-reset login flag is `?reset=true` (TanStack Router serializes search values as JSON; `'1'` became `%221%22`); the e2e clears the `RateLimit` table before each test because every browser request shares one client address; the shadcn CLI resolved `cn` to an npm package of that name - replaced by `@/lib/utils` and `@base-ui/react` added; plan Landing 1b (2FA redirect handled by the login form)
+- **Abandoned:** `onTwoFactorRedirect` in the auth client (circular import; see Landing 1b)
+

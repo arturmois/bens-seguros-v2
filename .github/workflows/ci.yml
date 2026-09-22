@@ -75,3 +75,90 @@ jobs:
             || (echo "::error::Run 'pnpm api:generate' and commit the result." && exit 1)
 
       - run: pnpm build
+
+  # End-to-end on main only (ADR-008): the built server and the built web against the same
+  # Postgres and Mailpit, like a deploy. PRs keep to the fast job above.
+  e2e:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: bens
+          POSTGRES_PASSWORD: bens
+          POSTGRES_DB: bens
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bens -d bens"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      mailpit:
+        image: axllent/mailpit:v1.31.2
+        ports:
+          - 1025:1025
+          - 8025:8025
+
+    env:
+      NODE_ENV: production
+      LOG_LEVEL: warn
+      PORT: '3001'
+      APP_URL: http://localhost:3000
+      BETTER_AUTH_SECRET: ci-e2e-secret-with-at-least-32-characters
+      DATABASE_URL: postgresql://bens_app:bens_app@localhost:5432/bens
+      MIGRATION_DATABASE_URL: postgresql://bens:bens@localhost:5432/bens
+      # Nothing in the e2e touches storage; the client only needs a configuration.
+      S3_ENDPOINT: http://localhost:9000
+      S3_BUCKET: bens-e2e
+      S3_ACCESS_KEY_ID: bens
+      S3_SECRET_ACCESS_KEY: bens-minio
+      SMTP_URL: smtp://localhost:1025
+      EMAIL_FROM: Bens Seguros <nao-responda@bensseguros.local>
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Create the application database role
+        run: psql postgresql://bens:bens@localhost:5432/bens -v ON_ERROR_STOP=1 -f docker/postgres/init/01-app-role.sql
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Apply the migrations
+        run: pnpm --filter @bens/server exec prisma migrate deploy
+
+      - run: pnpm build
+
+      - name: Install Chromium
+        run: pnpm --filter @bens/web exec playwright install --with-deps chromium
+
+      # `vite preview` keeps the dev proxy (/api and /socket.io → :3001), so the app is same-origin.
+      - name: Start the server and the web app
+        run: |
+          (cd apps/server && node dist/server.js > ../../server.log 2>&1 &)
+          (pnpm --filter @bens/web preview --port 3000 --strictPort > web.log 2>&1 &)
+          curl --silent --fail --retry 30 --retry-delay 1 --retry-all-errors \
+            http://localhost:3000/api/health
+
+      - run: pnpm e2e
+
+      - name: Logs and traces
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e
+          path: |
+            server.log
+            web.log
+            apps/web/test-results

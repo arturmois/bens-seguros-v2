@@ -13,7 +13,8 @@
     "typecheck": "pnpm --recursive typecheck",
     "test": "pnpm --recursive --if-present test",
     "build": "pnpm --recursive build",
-    "api:generate": "pnpm --filter @bens/server openapi:export && pnpm --filter @bens/web api:generate"
+    "api:generate": "pnpm --filter @bens/server openapi:export && pnpm --filter @bens/web api:generate",
+    "e2e": "pnpm --filter @bens/web e2e"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

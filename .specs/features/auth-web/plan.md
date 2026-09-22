@@ -32,7 +32,8 @@ existentes; nenhuma chamada de auth é escrita à mão com `fetch`.
 | --- | --- |
 | domain | novo termo: **`_app`** — layout de toda rota autenticada; a arquitetura (§9) já o previa; toda tela das Fases 4+ nasce sob ele |
 | domain | novo termo: **destino pós-login** — search param `redirect`, aceito só se for caminho interno (começa com `/` e não com `//`) |
-| web | dependências novas: `better-auth` (client), `react-hook-form`, `@hookform/resolvers`, `react-qr-code`; dev: `@playwright/test`. Componentes shadcn (button, input, label, card, alert) entram em `components/ui` |
+| web | dependências novas: `better-auth` (client), `react-hook-form`, `@hookform/resolvers`, `react-qr-code`, `@base-ui/react` (base dos componentes shadcn `base-nova`); dev: `@playwright/test`, `pg` (o e2e zera o contador de rate limit entre testes). Componentes shadcn (button, input, label, card, alert) entram em `components/ui`; o `Label` exige `htmlFor` |
+| web | o QueryClient só repete query em erro de rede ou 5xx: um `401` redireciona na hora |
 | web | `src/api/` ganha o hook de `getMe` (gerado) |
 | CI | ganha o job de e2e em push para `main` (ADR-008) |
 | stored data | nada |
@@ -62,6 +63,7 @@ Rotas do web (consumidas pelo navegador e pelos links dos e-mails):
 | 1. client de auth | `export const authClient = createAuthClient({ plugins: [twoFactorClient({ onTwoFactorRedirect: () => router.navigate({ to: '/two-factor' }) })] })` sem `baseURL` (mesma origem) em `lib/auth-client.ts`, com `authErrorMessage(code)` → pt-BR | chamar `/api/auth/*` pelo Orval - as rotas do Better Auth são `hide: true` no OpenAPI e o contrato é dele |
 | 2. guard das rotas autenticadas | `createFileRoute('/_app')({ beforeLoad: async ({ context, location }) => { try { await context.queryClient.ensureQueryData(getGetMeQueryOptions()) } catch (e) { if (e instanceof ApiError && e.status === 401) throw redirect({ to: '/login', search: { redirect: location.href } }); throw e } } })` | checar `authClient.useSession()` no componente - pisca a tela protegida antes de redirecionar e duplica a fonte de verdade do `/me` (ADR-003) |
 | 3. e2e | `@playwright/test` em `apps/web/e2e/`, `baseURL` de `E2E_BASE_URL` (padrão `http://localhost:3000`), lendo e-mails pela API do Mailpit (`E2E_MAILPIT_URL`, padrão `http://localhost:8025`); `pnpm e2e` na raiz; no CI só em push para `main` | Cypress - segunda ferramenta de browser no repo, e o ADR-008 já nomeia o Playwright |
+| 1b. redirecionamento do 2FA no login (achado no build) | `twoFactorClient()` sem opções; o formulário de `/login` lê `data.twoFactorRedirect` e navega para `/two-factor` com o mesmo `redirect` | `onTwoFactorRedirect` no client (door 1) - o client importaria o router, que importa as rotas, que importam o client: import circular, e o `redirect` do search se perderia |
 
 - Nothing else in this change is hard to reverse
 
