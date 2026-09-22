@@ -44,7 +44,7 @@ O serviço `migrate` aplica as migrations como owner e termina; o `server` só s
 ## Verificar
 
 1. `docker compose -f docker-compose.prod.yml --env-file .env ps`: `migrate` com `exited (0)`,
-   `server`, `postgres` e `caddy` `running (healthy)`.
+   `server` e `postgres` `running (healthy)`, `caddy` `running` (sem healthcheck: o passo 2 passa por ele).
 2. `curl https://staging.<domínio>/api/health` devolve `{"status":"ok"}`.
 3. `curl -I http://staging.<domínio>/` devolve `308` para `https://`.
 4. No navegador: criar conta, confirmar pelo e-mail, entrar e sair.

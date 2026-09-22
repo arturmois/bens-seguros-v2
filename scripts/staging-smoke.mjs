@@ -345,6 +345,23 @@ const steps = {
       assert(run('senha-y').status === 0, 'a second run with senha-y exits 0')
       assert(login('senha-y'), 'bens_app logs in with senha-y')
       assert(!login('senha-x'), 'senha-x is refused')
+
+      // The branch CI and the runbook use: the owner's URL instead of the initdb connection.
+      const byUrl = spawnSync(
+        'docker',
+        [
+          'exec',
+          '-e',
+          'APP_DB_PASSWORD=senha-z',
+          '-e',
+          `PROVISION_DATABASE_URL=postgresql://postgres:owner@${ip}/postgres`,
+          name,
+          '/provision/01-app-role.sh',
+        ],
+        { encoding: 'utf8' },
+      )
+      assert(byUrl.status === 0, `PROVISION_DATABASE_URL run exits ${byUrl.status}`)
+      assert(login('senha-z'), 'bens_app logs in with senha-z')
     } finally {
       docker(['stop', name])
     }
@@ -458,6 +475,33 @@ const steps = {
       outcome === 'connected',
       `wss://localhost:${env.HTTPS_PORT}/socket.io with the session cookie: ${outcome}`,
     )
+  },
+
+  // C17
+  async image() {
+    // Tools and optional peers that production code never loads (plan Landing 1 and 1b).
+    const forbidden = [
+      'prisma',
+      'next',
+      '@next+swc-linux-x64-gnu',
+      'playwright',
+      'playwright-core',
+      'typescript',
+      '@prisma+studio-core',
+      'vitest',
+    ]
+    const store = compose('exec', '-T', 'server', 'ls', '/repo/node_modules/.pnpm').split('\n')
+    for (const name of forbidden) {
+      const present = store.filter((entry) => entry.startsWith(`${name}@`))
+      assert(
+        present.length === 0,
+        `the runtime image has no ${name} (${present.join(', ') || 'none'})`,
+      )
+    }
+    const size = compose('exec', '-T', 'server', 'du', '-sm', '/repo/node_modules').split(/\s/)[0]
+    assert(Number(size) < 400, `runtime node_modules is ${size} MB (< 400)`)
+    const health = await fetch(`${BASE}/api/health`)
+    assert(health.status === 200, `the pruned server answers /api/health -> ${health.status}`)
   },
 
   // C15

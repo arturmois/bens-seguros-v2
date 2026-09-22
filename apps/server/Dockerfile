@@ -27,6 +27,10 @@ FROM base AS prod-deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/server/package.json apps/server/
 RUN pnpm install --frozen-lockfile --prod --ignore-scripts --filter @bens/server
+# pnpm also links the optional peers of production packages (the prisma CLI, next, vitest…);
+# keep only what the server can load.
+COPY apps/server/scripts/prune-runtime.mjs /tmp/prune-runtime.mjs
+RUN node /tmp/prune-runtime.mjs /repo/apps/server
 
 FROM node:24.21.0-slim AS runtime
 ENV NODE_ENV=production

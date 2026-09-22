@@ -70,6 +70,7 @@ None - no stored-data shape change
 | 3. provisionamento do role da aplicação | `docker/postgres/init/01-app-role.sh`: `psql -v ON_ERROR_STOP=1 -v app_password="$APP_DB_PASSWORD"` com o SQL atual, trocando a senha literal por `:'app_password'`; falha se `APP_DB_PASSWORD` estiver vazio; idempotente (`CREATE` se não existe, senão `ALTER ROLE … PASSWORD`) | senha literal no SQL - a de produção iria para o git; provisionar à mão no psql - não reprodutível |
 | 4. compose de produção | serviços `caddy` (portas `80` e `443`, volumes `caddy_data`/`caddy_config`), `server` (sem `ports`, `restart: unless-stopped`, healthcheck em `/api/health`), `migrate` (one-shot, `depends_on: postgres healthy`), `postgres:18-alpine` (volume, sem `ports`); `server` depende de `migrate: service_completed_successfully`; segredos só por `.env` (`env_file`) | publicar a porta do server ou do Postgres - `TRUST_PROXY=true` só é seguro se ninguém além do Caddy alcança o server |
 | 5. headers da SPA no Caddy | `Strict-Transport-Security: max-age=31536000; includeSubDomains`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: DENY`, `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'` (a exceção de `/embed/*` e o domínio do Turnstile entram nas features que precisarem) | CSP no `index.html` via meta - não cobre `frame-ancestors` |
+| 1b. poda da imagem de runtime (rodada 2, escolha do usuário) | depois de `pnpm install --prod --ignore-scripts`, `node apps/server/scripts/prune-runtime.mjs` apaga de `node_modules/.pnpm` todo pacote que não é alcançável a partir das `dependencies` do server (seguindo `dependencies`, `optionalDependencies` e peers obrigatórios) e os links que ficam soltos | lista escrita à mão dos peers opcionais - fica desatualizada a cada dependência nova; `autoInstallPeers: false` - não muda o install `--prod` (peers resolvidos contra as devDependencies do mesmo pacote); bundle com esbuild - mais risco agora (react-email, WASM do Prisma) |
 | 4b. portas configuráveis (achado no build) | `http_port {$HTTP_PORT:80}` / `https_port {$HTTPS_PORT:443}` no `Caddyfile` e `ports: '${HTTP_PORT:-80}:${HTTP_PORT:-80}'`, `'${HTTPS_PORT:-443}:${HTTPS_PORT:-443}'` (+ `/udp`) no compose | portas fixas 80/443 (door 4) - a validação local não sobe numa máquina com a 443 ocupada; mapear 8443→443 só no host faria o Caddy anunciar a porta errada |
 
 - Nothing else in this change is hard to reverse
@@ -100,7 +101,7 @@ None - no stored-data shape change
 11. WHEN `GET https://localhost/api/docs` é pedido THEN a resposta SHALL ser `404` (`NODE_ENV=production`)
 12. WHEN uma página da SPA é servida THEN a resposta SHALL ter os headers do door 5 com os valores literais
 
-**Independent test:** script `scripts/staging-smoke.sh` com `curl -k` checando 8 a 12.
+**Independent test:** `node scripts/staging-smoke.mjs` com os passos de 8 a 12.
 
 ### S3: O ciclo de login passa em HTTPS (P1)
 
@@ -149,7 +150,7 @@ None - no stored-data shape change
 | --- | --- | --- |
 | comando `docker compose … up` | o que acontece quando falha no meio | AC 1 (`migrate` falho impede o `server`) |
 | comando script de provisionamento | exit codes e saída ao falhar | AC 6, 7 |
-| comando `scripts/staging-smoke.sh` | saída e exit code | AC 8–12: imprime cada verificação e sai ≠ 0 na primeira falha |
+| comando `node scripts/staging-smoke.mjs` | saída e exit code | AC 8–12: imprime cada verificação e sai ≠ 0 na primeira falha |
 | documento `docs/runbooks/staging.md` | estrutura e próximo passo | AC 15 |
 | API via Caddy | error shape | existing - do server; `502` do Caddy com o server fora |
 | SPA via Caddy | rate limit, versionamento | n/a - estático; rate limit é do server (`auth-core`) |

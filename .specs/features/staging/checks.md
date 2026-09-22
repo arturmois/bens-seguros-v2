@@ -3,11 +3,11 @@
 Profile: standard
 Plan: `.specs/features/staging/plan.md`
 
-15 checks in 4 slices · 5 one-way doors · 1 open (blocks go-live: VPS access and domain)
+17 checks in 4 slices · 5 one-way doors · 1 open (blocks go-live: VPS access and domain)
 
 Every proof runs against the local stack:
 `docker compose -f docker-compose.prod.yml -f docker-compose.staging-local.yml --env-file .env.staging-local up -d --build`
-(`.env.staging-local` is generated from `.env.prod.example` by `scripts/staging-smoke.sh up`). The
+(`.env.staging-local` is generated from `.env.prod.example` by `node scripts/staging-smoke.mjs up`). The
 smoke script takes one step name per check and exits non-zero on the first failed assertion.
 Locally the site is `https://localhost:8443` and `http://localhost:8080` (`HTTPS_PORT`/`HTTP_PORT`);
 `https://localhost` below means that site.
@@ -37,6 +37,12 @@ Proof: `node scripts/staging-smoke.mjs provision`
 **C7** - Rodar o script de novo com `APP_DB_PASSWORD=y` sai com código 0; o login com `y` funciona e com `x` falha (AC 7)
 Proof: `node scripts/staging-smoke.mjs provision`
 
+**C16** - O script de provisionamento rodado com `PROVISION_DATABASE_URL` (a URL do owner, como no CI) sai com código 0 e deixa `bens_app` logando com a senha dada (ramo usado pelo CI e pelo runbook, **rodada 2**)
+Proof: `node scripts/staging-smoke.mjs provision`
+
+**C17** - A imagem de runtime do server não contém o Prisma CLI, `next`, `@next/swc`, `playwright`, `playwright-core`, `typescript`, `@prisma/studio-core` nem `vitest`, tem menos de 400 MB de `node_modules`, e o server podado responde `200` em `/api/health` (Landing 1 e 1b, **rodada 2**: a imagem tinha 866 MB com esses peers opcionais)
+Proof: `node scripts/staging-smoke.mjs image`
+
 ### S2 - Cookie, Origin e IP atrás do Caddy · ~4 files · ~15 KB · ~4k
 
 **C8** - O login por `https://localhost` devolve `set-cookie` `__Secure-better-auth.session_token=…` com `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/` e sem `Domain` (AC 8)
@@ -57,7 +63,7 @@ Proof: `node scripts/staging-smoke.mjs headers`
 ### S3 - O ciclo de login em HTTPS · ~2 files · ~5 KB · ~2k
 
 **C13** - `E2E_BASE_URL=https://localhost E2E_DATABASE_URL=<Postgres do override> pnpm e2e` termina com código 0 (cadastro, verificação, login, logout, reset e 2FA de `auth-web`) (AC 13)
-Proof: `scripts/staging-smoke.sh e2e`
+Proof: `node scripts/staging-smoke.mjs e2e`
 
 **C14** - Um cliente Socket.IO com o cookie de um login feito por `https://localhost` conecta em `wss://localhost/socket.io` (transporte `websocket`) com `Origin: https://localhost` (AC 14)
 Proof: `node scripts/staging-smoke.mjs socket`
@@ -76,10 +82,10 @@ Proof: `node scripts/staging-smoke.mjs runbook`
 | Surface statuses (5) | `200` SPA C2 · `200` assets C2 · `404` assets C2 · `308` C3 · `502` com o server fora C1 | - |
 | headers do door 5 (5) | HSTS C12 · nosniff C12 · Referrer-Policy C12 · X-Frame-Options C12 · CSP C12 | - |
 | atributos do cookie (6) | prefixo C8 · `Secure` C8 · `HttpOnly` C8 · `SameSite=Lax` C8 · `Path=/` C8 · sem `Domain` C8 | - |
-| provisionamento (3) | cria C6 · senha vazia C6 · troca de senha C7 | - |
+| provisionamento (4) | cria C6 · senha vazia C6 · troca de senha C7 · por `PROVISION_DATABASE_URL` C16 | - |
 | portas não publicadas (2) | `server` C4 · `postgres` C4 | - |
 | startup config do server em produção (2 assemblies) | `docker-compose.prod.yml` C1 · CI e2e job (feature `auth-web`) C13 | - |
-| Landing doors (5) | 1 imagem do server C1, C5 · 2 imagem do web C2 · 3 provisionamento C6, C7 · 4 compose C1, C4 · 5 headers C12 | - |
+| Landing doors (6) | 1 imagem do server C1, C5, C17 · 1b poda C17 · 2 imagem do web C2 · 3 provisionamento C6, C7 · 4 compose C1, C4 · 5 headers C12 | - |
 
 - Claims naming a status code or header: every proof crosses the Caddy boundary with `curl -k` or a real client
 - `404` de assets e `502` com o server fora: C2 pede um asset inexistente; C1 para o `server`, espera `502` em `/api/health` e sobe de novo
@@ -97,7 +103,7 @@ There is no house rule for deployment artifacts. These rows are the bar.
 Evidence:
 
 - `Caddyfile`: 3 routing branches + 1 header block -> decides, proven per branch
-- `docker/postgres/init/01-app-role.sh`: 2 branches (missing password, create vs alter) -> decides
+- `docker/postgres/init/01-app-role.sh`: 3 branches (missing password, create vs alter, URL vs initdb connection) -> decides
 - Dockerfiles: no conditionals -> instrumentation, proven by the running stack
 
 ## Swept
@@ -119,4 +125,7 @@ Evidence:
 - **Boundary:** C1-C15 closed at the commit `build: add the production stack and validate it locally` (`node scripts/staging-smoke.mjs all` exit 0: 48 assertions, `pnpm e2e` 29 passed over `https://localhost:8443`; repo gate green, 130 tests)
 - **Settled mid-build:** the local stack listens on 8080/8443 (another container holds 443 here), so Caddy's ports are configurable (plan Landing 4b); the HTTP redirect goes to the standard HTTPS port, `https://localhost/`, which is AC 3's literal value and what the VPS does on 443; the smoke script is Node (`.mjs`) rather than bash - JSON, cookies and the Socket.IO client; `pg_hba` of the official image trusts 127.0.0.1, so the provisioning proof logs in over the container address; `health` recreates `migrate` and `server` to observe their order on a fresh start
 - **Abandoned:** `SITE_ADDRESS=localhost:8443` (Caddy still redirected to the default port)
+- **Boundary:** C16-C17 closed at the commit `build: prune optional peers from the server image and prove the url provisioning` (round 2; `node scripts/staging-smoke.mjs all` exit 0, `pnpm e2e` 29 passed over HTTPS; repo gate green)
+- **Settled mid-build:** the user chose to prune in the Dockerfile (2026-09-22); instead of a hand list, `apps/server/scripts/prune-runtime.mjs` keeps what is reachable from the server's production dependencies and required peers (866 MB -> 260 MB); `autoInstallPeers: false` in the workspace changed nothing in the `--prod` install and was reverted; the runbook no longer claims a Caddy healthcheck
+- **Abandoned:** `autoInstallPeers: false` (no effect on the image, changes the whole lockfile)
 
