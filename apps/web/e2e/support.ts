@@ -86,12 +86,18 @@ export async function signUp(api: APIRequestContext, email = uniqueEmail()) {
 }
 
 // A user whose e-mail link was already opened (by the API context, not the page).
-export async function verifiedUser(api: APIRequestContext) {
+export async function verifiedUser(api: APIRequestContext, options: { terms?: boolean } = {}) {
   const user = await signUp(api)
   const verify = await api.get(await emailLink(user.email, 'Confirme seu e-mail'), {
     maxRedirects: 0,
   })
   expect(verify.status()).toBe(302)
+  if (options.terms !== false) {
+    const acceptance = await api.post('/api/v1/me/terms-acceptance', {
+      data: { termsVersion: '1.0', privacyVersion: '1.0' },
+    })
+    expect(acceptance.status()).toBe(200)
+  }
   return user
 }
 

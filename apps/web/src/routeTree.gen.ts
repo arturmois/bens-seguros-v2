@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
+import { Route as TermsAcceptanceRouteImport } from './routes/terms-acceptance'
 import { Route as authForgotPasswordRouteImport } from './routes/(auth)/forgot-password'
 import { Route as authLoginRouteImport } from './routes/(auth)/login'
 import { Route as authRegisterRouteImport } from './routes/(auth)/register'
@@ -18,11 +19,18 @@ import { Route as authTwoFactorRouteImport } from './routes/(auth)/two-factor'
 import { Route as authVerifyEmailRouteImport } from './routes/(auth)/verify-email'
 import { Route as publicIndexRouteImport } from './routes/(public)/index'
 import { Route as publicExampleRouteImport } from './routes/(public)/example'
+import { Route as publicPrivacyRouteImport } from './routes/(public)/privacy'
+import { Route as publicTermsRouteImport } from './routes/(public)/terms'
 import { Route as AppDashboardRouteImport } from './routes/_app/dashboard'
 import { Route as AppSettingsSecurityRouteImport } from './routes/_app/settings/security'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermsAcceptanceRoute = TermsAcceptanceRouteImport.update({
+  id: '/terms-acceptance',
+  path: '/terms-acceptance',
   getParentRoute: () => rootRouteImport,
 } as any)
 const authForgotPasswordRoute = authForgotPasswordRouteImport.update({
@@ -65,6 +73,16 @@ const publicExampleRoute = publicExampleRouteImport.update({
   path: '/example',
   getParentRoute: () => rootRouteImport,
 } as any)
+const publicPrivacyRoute = publicPrivacyRouteImport.update({
+  id: '/(public)/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const publicTermsRoute = publicTermsRouteImport.update({
+  id: '/(public)/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppDashboardRoute = AppDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -78,6 +96,7 @@ const AppSettingsSecurityRoute = AppSettingsSecurityRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof publicIndexRoute
+  '/terms-acceptance': typeof TermsAcceptanceRoute
   '/forgot-password': typeof authForgotPasswordRoute
   '/login': typeof authLoginRoute
   '/register': typeof authRegisterRoute
@@ -85,11 +104,14 @@ export interface FileRoutesByFullPath {
   '/two-factor': typeof authTwoFactorRoute
   '/verify-email': typeof authVerifyEmailRoute
   '/example': typeof publicExampleRoute
+  '/privacy': typeof publicPrivacyRoute
+  '/terms': typeof publicTermsRoute
   '/dashboard': typeof AppDashboardRoute
   '/settings/security': typeof AppSettingsSecurityRoute
 }
 export interface FileRoutesByTo {
   '/': typeof publicIndexRoute
+  '/terms-acceptance': typeof TermsAcceptanceRoute
   '/forgot-password': typeof authForgotPasswordRoute
   '/login': typeof authLoginRoute
   '/register': typeof authRegisterRoute
@@ -97,12 +119,15 @@ export interface FileRoutesByTo {
   '/two-factor': typeof authTwoFactorRoute
   '/verify-email': typeof authVerifyEmailRoute
   '/example': typeof publicExampleRoute
+  '/privacy': typeof publicPrivacyRoute
+  '/terms': typeof publicTermsRoute
   '/dashboard': typeof AppDashboardRoute
   '/settings/security': typeof AppSettingsSecurityRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
+  '/terms-acceptance': typeof TermsAcceptanceRoute
   '/(auth)/forgot-password': typeof authForgotPasswordRoute
   '/(auth)/login': typeof authLoginRoute
   '/(auth)/register': typeof authRegisterRoute
@@ -110,6 +135,8 @@ export interface FileRoutesById {
   '/(auth)/two-factor': typeof authTwoFactorRoute
   '/(auth)/verify-email': typeof authVerifyEmailRoute
   '/(public)/example': typeof publicExampleRoute
+  '/(public)/privacy': typeof publicPrivacyRoute
+  '/(public)/terms': typeof publicTermsRoute
   '/_app/dashboard': typeof AppDashboardRoute
   '/(public)/': typeof publicIndexRoute
   '/_app/settings/security': typeof AppSettingsSecurityRoute
@@ -118,6 +145,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/terms-acceptance'
     | '/forgot-password'
     | '/login'
     | '/register'
@@ -125,11 +153,14 @@ export interface FileRouteTypes {
     | '/two-factor'
     | '/verify-email'
     | '/example'
+    | '/privacy'
+    | '/terms'
     | '/dashboard'
     | '/settings/security'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/terms-acceptance'
     | '/forgot-password'
     | '/login'
     | '/register'
@@ -137,11 +168,14 @@ export interface FileRouteTypes {
     | '/two-factor'
     | '/verify-email'
     | '/example'
+    | '/privacy'
+    | '/terms'
     | '/dashboard'
     | '/settings/security'
   id:
     | '__root__'
     | '/_app'
+    | '/terms-acceptance'
     | '/(auth)/forgot-password'
     | '/(auth)/login'
     | '/(auth)/register'
@@ -149,6 +183,8 @@ export interface FileRouteTypes {
     | '/(auth)/two-factor'
     | '/(auth)/verify-email'
     | '/(public)/example'
+    | '/(public)/privacy'
+    | '/(public)/terms'
     | '/_app/dashboard'
     | '/(public)/'
     | '/_app/settings/security'
@@ -156,6 +192,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
+  TermsAcceptanceRoute: typeof TermsAcceptanceRoute
   authForgotPasswordRoute: typeof authForgotPasswordRoute
   authLoginRoute: typeof authLoginRoute
   authRegisterRoute: typeof authRegisterRoute
@@ -163,6 +200,8 @@ export interface RootRouteChildren {
   authTwoFactorRoute: typeof authTwoFactorRoute
   authVerifyEmailRoute: typeof authVerifyEmailRoute
   publicExampleRoute: typeof publicExampleRoute
+  publicPrivacyRoute: typeof publicPrivacyRoute
+  publicTermsRoute: typeof publicTermsRoute
   publicIndexRoute: typeof publicIndexRoute
 }
 
@@ -173,6 +212,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terms-acceptance': {
+      id: '/terms-acceptance'
+      path: '/terms-acceptance'
+      fullPath: '/terms-acceptance'
+      preLoaderRoute: typeof TermsAcceptanceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/(auth)/forgot-password': {
@@ -231,6 +277,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof publicExampleRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/(public)/privacy': {
+      id: '/(public)/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof publicPrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/(public)/terms': {
+      id: '/(public)/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof publicTermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_app/dashboard': {
       id: '/_app/dashboard'
       path: '/dashboard'
@@ -262,6 +322,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
+  TermsAcceptanceRoute: TermsAcceptanceRoute,
   authForgotPasswordRoute: authForgotPasswordRoute,
   authLoginRoute: authLoginRoute,
   authRegisterRoute: authRegisterRoute,
@@ -269,6 +330,8 @@ const rootRouteChildren: RootRouteChildren = {
   authTwoFactorRoute: authTwoFactorRoute,
   authVerifyEmailRoute: authVerifyEmailRoute,
   publicExampleRoute: publicExampleRoute,
+  publicPrivacyRoute: publicPrivacyRoute,
+  publicTermsRoute: publicTermsRoute,
   publicIndexRoute: publicIndexRoute,
 }
 export const routeTree = rootRouteImport

@@ -6,6 +6,8 @@ import { meOutput } from './me.schema.ts'
 import { getMe } from './me.ts'
 import { currentUser, headersOf, requireSession } from './session-context.ts'
 import { signupConfigOutput } from './signup.schema.ts'
+import { termsAcceptanceInput, termsAcceptanceOutput } from './terms.schema.ts'
+import { acceptTerms } from './terms.ts'
 
 export type AuthRoutesDeps = { auth: Auth; config: Config; db: Database }
 
@@ -60,6 +62,20 @@ export function authRoutes(deps: AuthRoutesDeps): FastifyPluginAsyncZod {
         preHandler: [requireSession(deps.auth)],
       },
       (request) => getMe(deps, currentUser(request)),
+    )
+
+    app.post(
+      '/api/v1/me/terms-acceptance',
+      {
+        schema: {
+          body: termsAcceptanceInput,
+          response: { 200: termsAcceptanceOutput },
+          tags: ['Me'],
+          operationId: 'acceptTerms',
+        },
+        preHandler: [requireSession(deps.auth)],
+      },
+      (request) => acceptTerms(deps, currentUser(request), request.body, request.ip),
     )
   }
 }

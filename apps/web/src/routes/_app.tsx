@@ -19,7 +19,10 @@ import { ApiError } from '@/lib/http'
 export const Route = createFileRoute('/_app')({
   beforeLoad: async ({ context, location }) => {
     try {
-      await context.queryClient.ensureQueryData(getGetMeQueryOptions())
+      const me = await context.queryClient.ensureQueryData(getGetMeQueryOptions())
+      if (me.terms.pending) {
+        throw redirect({ to: '/terms-acceptance', search: { redirect: location.href } })
+      }
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
         throw redirect({ to: '/login', search: { redirect: location.href } })

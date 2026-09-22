@@ -5,9 +5,12 @@
  * OpenAPI spec version: 1.0.0
  */
 
+export * from './acceptTerms200';
+export * from './acceptTermsBody';
 export * from './getHealth200';
 export * from './getHealth200Status';
 export * from './getMe200';
+export * from './getMe200Terms';
 export * from './getSignupConfig200';
 export * from './getSignupConfig200SignupMode';
 export * from './previewExampleCommission200';

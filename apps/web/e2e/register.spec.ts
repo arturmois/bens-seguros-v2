@@ -74,6 +74,8 @@ test.describe('cadastro e verificação', () => {
 
     await page.goto(await emailLink(email, 'Confirme seu e-mail'))
 
+    await expect(page).toHaveURL(/\/terms-acceptance/)
+    await page.getByRole('button', { name: 'Li e aceito' }).click()
     await expect(page).toHaveURL('/dashboard')
     await expect(page.getByRole('heading', { name: `Olá, ${NAME}` })).toBeVisible()
   })

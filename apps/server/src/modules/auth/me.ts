@@ -2,6 +2,7 @@ import type { Database } from '../../infrastructure/database.ts'
 import type { UserContext } from '../../shared/request-context.ts'
 import type { MeOutput } from './me.schema.ts'
 import { unauthenticated } from './session-context.ts'
+import { termsState } from './terms.ts'
 
 // Identity tables are user-level (no tenant), so they are read outside `withTenant`.
 export async function getMe(deps: { db: Database }, user: UserContext): Promise<MeOutput> {
@@ -20,5 +21,6 @@ export async function getMe(deps: { db: Database }, user: UserContext): Promise<
     ...session.user,
     isSuperAdmin: user.isSuperAdmin,
     activeOrganizationId: session.activeOrganizationId,
+    terms: await termsState(deps, session.user.id),
   }
 }

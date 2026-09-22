@@ -51,6 +51,7 @@ describe('GET /api/v1/me', () => {
       twoFactorEnabled: false,
       isSuperAdmin: false,
       activeOrganizationId: null,
+      terms: { pending: true, termsVersion: '1.0', privacyVersion: '1.0' },
     })
   })
 

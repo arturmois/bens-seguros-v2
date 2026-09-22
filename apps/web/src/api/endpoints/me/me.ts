@@ -5,21 +5,27 @@
  * OpenAPI spec version: 1.0.0
  */
 import {
+  useMutation,
   useQuery
 } from '@tanstack/react-query';
 import type {
   DataTag,
   DefinedInitialDataOptions,
   DefinedUseQueryResult,
+  MutationFunction,
   QueryClient,
   QueryFunction,
   QueryKey,
   UndefinedInitialDataOptions,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult
 } from '@tanstack/react-query';
 
 import type {
+  AcceptTerms200,
+  AcceptTermsBody,
   GetMe200
 } from '../../model';
 
@@ -140,3 +146,84 @@ export function useGetMe<TData = Awaited<ReturnType<typeof getMe>>, TError = Err
 
 
 
+export const getAcceptTermsUrl = () => {
+
+
+
+
+  return `/api/v1/me/terms-acceptance`
+}
+
+export const acceptTerms = async (acceptTermsBody: AcceptTermsBody, options?: Parameters<typeof http>[1]): Promise<AcceptTerms200> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return http<AcceptTerms200>(getAcceptTermsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(acceptTermsBody)
+  }
+);}
+
+
+
+
+
+export const getAcceptTermsMutationKey = () => ['acceptTerms'] as const;
+
+export const getAcceptTermsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acceptTerms>>, TError,AcceptTermsMutationVariables, TContext>, request?: SecondParameter<typeof http>}
+): UseMutationOptions<Awaited<ReturnType<typeof acceptTerms>>, TError,AcceptTermsMutationVariables, TContext> => {
+
+const mutationKey = getAcceptTermsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof acceptTerms>>, AcceptTermsMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  acceptTerms(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AcceptTermsMutationResult = NonNullable<Awaited<ReturnType<typeof acceptTerms>>>
+    export type AcceptTermsMutationBody = AcceptTermsBody
+    export type AcceptTermsMutationError = ErrorType<unknown>
+    export type AcceptTermsMutationVariables = {data: AcceptTermsBody}
+
+    export const useAcceptTerms = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acceptTerms>>, TError,AcceptTermsMutationVariables, TContext>, request?: SecondParameter<typeof http>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof acceptTerms>>,
+        TError,
+        AcceptTermsMutationVariables,
+        TContext
+      > => {
+      return useMutation(getAcceptTermsMutationOptions(options), queryClient);
+    }
