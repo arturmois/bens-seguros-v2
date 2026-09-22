@@ -1,0 +1,16 @@
+**/node_modules
+**/dist
+**/test-results
+**/playwright-report
+apps/server/src/generated
+.git
+.env
+.env.*
+!.env.example
+!.env.prod.example
+*.log
+.specs
+docs
+prompts
+.agents
+.claude

@@ -44,7 +44,8 @@ flowchart LR
 | --- | --- |
 | domain | novo termo: **staging** — o mesmo `docker-compose.prod.yml` numa VPS com outro `SITE_ADDRESS`; nada no código distingue staging de produção além do `.env` |
 | infra | `docker/postgres/init/01-app-role.sql` vira script parametrizado por `APP_DB_PASSWORD`; `docker-compose.yml` (dev) e o CI passam a senha `bens_app` explicitamente |
-| infra | arquivos novos: `apps/server/Dockerfile`, `apps/web/Dockerfile`, `Caddyfile`, `docker-compose.prod.yml`, `.env.prod.example`, `docker-compose.staging-local.yml` (validação local com Mailpit), `docs/runbooks/staging.md` |
+| infra | arquivos novos: `apps/server/Dockerfile`, `apps/web/Dockerfile`, `Caddyfile`, `docker-compose.prod.yml`, `.env.prod.example`, `docker-compose.staging-local.yml` (validação local: Mailpit do host e Postgres em `127.0.0.1:55432`), `.dockerignore`, `scripts/staging-smoke.mjs` (um passo por check), `docs/runbooks/staging.md` |
+| infra | as portas do Caddy vêm de `HTTP_PORT`/`HTTPS_PORT` (padrão 80/443); a validação local usa 8080/8443, porque a 443 desta máquina está ocupada por outro container |
 | stored data | nada a migrar; em produção o volume nasce vazio |
 
 ## Relations
@@ -69,6 +70,7 @@ None - no stored-data shape change
 | 3. provisionamento do role da aplicação | `docker/postgres/init/01-app-role.sh`: `psql -v ON_ERROR_STOP=1 -v app_password="$APP_DB_PASSWORD"` com o SQL atual, trocando a senha literal por `:'app_password'`; falha se `APP_DB_PASSWORD` estiver vazio; idempotente (`CREATE` se não existe, senão `ALTER ROLE … PASSWORD`) | senha literal no SQL - a de produção iria para o git; provisionar à mão no psql - não reprodutível |
 | 4. compose de produção | serviços `caddy` (portas `80` e `443`, volumes `caddy_data`/`caddy_config`), `server` (sem `ports`, `restart: unless-stopped`, healthcheck em `/api/health`), `migrate` (one-shot, `depends_on: postgres healthy`), `postgres:18-alpine` (volume, sem `ports`); `server` depende de `migrate: service_completed_successfully`; segredos só por `.env` (`env_file`) | publicar a porta do server ou do Postgres - `TRUST_PROXY=true` só é seguro se ninguém além do Caddy alcança o server |
 | 5. headers da SPA no Caddy | `Strict-Transport-Security: max-age=31536000; includeSubDomains`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: DENY`, `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'` (a exceção de `/embed/*` e o domínio do Turnstile entram nas features que precisarem) | CSP no `index.html` via meta - não cobre `frame-ancestors` |
+| 4b. portas configuráveis (achado no build) | `http_port {$HTTP_PORT:80}` / `https_port {$HTTPS_PORT:443}` no `Caddyfile` e `ports: '${HTTP_PORT:-80}:${HTTP_PORT:-80}'`, `'${HTTPS_PORT:-443}:${HTTPS_PORT:-443}'` (+ `/udp`) no compose | portas fixas 80/443 (door 4) - a validação local não sobe numa máquina com a 443 ocupada; mapear 8443→443 só no host faria o Caddy anunciar a porta errada |
 
 - Nothing else in this change is hard to reverse
 

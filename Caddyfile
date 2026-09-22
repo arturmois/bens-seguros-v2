@@ -1,0 +1,40 @@
+# Production and staging entry point (ADR-008): TLS, the static SPA and a same-origin proxy to the
+# API. The site and its ports come from the environment (docker-compose.prod.yml).
+{
+	http_port {$HTTP_PORT:80}
+	https_port {$HTTPS_PORT:443}
+}
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	# The API and the socket. Caddy sets X-Forwarded-For to the client address and ignores the one a
+	# client sends, so the server can trust it (TRUST_PROXY, AD-002).
+	@api path /api/* /socket.io/*
+	handle @api {
+		reverse_proxy server:3001
+	}
+
+	# Hashed build output: cached forever, and a missing file is a 404, not the SPA.
+	handle /assets/* {
+		root * /srv
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+
+	# Every other path is the SPA; the client router decides.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "DENY"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		-Server
+	}
+}

@@ -1,0 +1,11 @@
+# Local validation of docker-compose.prod.yml (feature `staging`), never used on the VPS:
+#   scripts/staging-smoke.mjs up
+# E-mail goes to the dev Mailpit on the host (docker compose up -d mailpit), and Postgres is
+# published on 127.0.0.1 only, for the e2e to reset the auth rate limit between tests.
+services:
+  server:
+    extra_hosts:
+      - host.docker.internal:host-gateway
+  postgres:
+    ports:
+      - 127.0.0.1:${STAGING_LOCAL_DB_PORT:-55432}:5432

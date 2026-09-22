@@ -16,7 +16,7 @@ export function ownerDatabaseUrl() {
   return process.env.MIGRATION_DATABASE_URL ?? 'postgresql://bens:bens@localhost:5432/bens'
 }
 
-// Application role (docker/postgres/init/01-app-role.sql): what the app and the tests use.
+// Application role (docker/postgres/init/01-app-role.sh): what the app and the tests use.
 export function appDatabaseUrl() {
   return process.env.DATABASE_URL ?? `postgresql://${APP_ROLE}:${APP_ROLE}@localhost:5432/bens`
 }

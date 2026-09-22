@@ -8,6 +8,8 @@ services:
       POSTGRES_USER: bens
       POSTGRES_PASSWORD: bens
       POSTGRES_DB: bens
+      # Password of the application role created by docker/postgres/init on a fresh volume.
+      APP_DB_PASSWORD: bens_app
     ports:
       - '5432:5432'
     volumes:

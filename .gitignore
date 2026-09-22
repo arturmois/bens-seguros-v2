@@ -11,3 +11,4 @@ coverage/
 apps/server/src/generated/
 test-results/
 playwright-report/
+!.env.prod.example

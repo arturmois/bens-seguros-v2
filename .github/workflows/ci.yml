@@ -56,7 +56,7 @@ jobs:
 
       # The application role the server and the tests connect as (ADR-004). The runner ships psql.
       - name: Create the application database role
-        run: psql postgresql://bens:bens@localhost:5432/bens -v ON_ERROR_STOP=1 -f docker/postgres/init/01-app-role.sql
+        run: APP_DB_PASSWORD=bens_app PROVISION_DATABASE_URL=postgresql://bens:bens@localhost:5432/bens docker/postgres/init/01-app-role.sh
 
       # Also runs `prisma generate` (apps/server postinstall).
       - run: pnpm install --frozen-lockfile
@@ -131,7 +131,7 @@ jobs:
           cache: pnpm
 
       - name: Create the application database role
-        run: psql postgresql://bens:bens@localhost:5432/bens -v ON_ERROR_STOP=1 -f docker/postgres/init/01-app-role.sql
+        run: APP_DB_PASSWORD=bens_app PROVISION_DATABASE_URL=postgresql://bens:bens@localhost:5432/bens docker/postgres/init/01-app-role.sh
 
       - run: pnpm install --frozen-lockfile
 

@@ -9,48 +9,50 @@ Every proof runs against the local stack:
 `docker compose -f docker-compose.prod.yml -f docker-compose.staging-local.yml --env-file .env.staging-local up -d --build`
 (`.env.staging-local` is generated from `.env.prod.example` by `scripts/staging-smoke.sh up`). The
 smoke script takes one step name per check and exits non-zero on the first failed assertion.
+Locally the site is `https://localhost:8443` and `http://localhost:8080` (`HTTPS_PORT`/`HTTP_PORT`);
+`https://localhost` below means that site.
 
 ## Checks
 
 ### S1 - A pilha sobe em HTTPS · ~9 files · ~30 KB · ~8k
 
 **C1** - Com a pilha no ar, `migrate` terminou com código 0 antes de `server` iniciar (o `State.FinishedAt` do `migrate` é anterior ao `State.StartedAt` do `server`), e `curl -k https://localhost/api/health` responde `200 {"status":"ok"}` (AC 1)
-Proof: `scripts/staging-smoke.sh health`
+Proof: `node scripts/staging-smoke.mjs health`
 
 **C2** - `https://localhost/login` responde `200` com o `index.html` da SPA (contém `<div id="root">`), e `/assets/<arquivo com hash>` responde com `Cache-Control: public, max-age=31536000, immutable` (AC 2, Surface)
-Proof: `scripts/staging-smoke.sh spa`
+Proof: `node scripts/staging-smoke.mjs spa`
 
 **C3** - `http://localhost/` responde `308` com `Location: https://localhost/` (AC 3)
-Proof: `scripts/staging-smoke.sh redirect`
+Proof: `node scripts/staging-smoke.mjs redirect`
 
 **C4** - `docker compose port server 3001` e `docker compose port postgres 5432` não publicam nada no `docker-compose.prod.yml` sozinho (o override local publica o Postgres só em `127.0.0.1` para o e2e) (AC 4)
-Proof: `scripts/staging-smoke.sh ports`
+Proof: `node scripts/staging-smoke.mjs ports`
 
 **C5** - `docker compose exec server id -u` imprime um uid diferente de `0` (AC 5)
-Proof: `scripts/staging-smoke.sh non-root`
+Proof: `node scripts/staging-smoke.mjs non-root`
 
 **C6** - Num Postgres novo, o script de provisionamento com `APP_DB_PASSWORD=x` cria `bens_app` com `rolsuper = false`, `rolbypassrls = false` e login com `x`; com `APP_DB_PASSWORD` vazio sai com código ≠ 0 e o role não existe (AC 6)
-Proof: `scripts/staging-smoke.sh provision`
+Proof: `node scripts/staging-smoke.mjs provision`
 
 **C7** - Rodar o script de novo com `APP_DB_PASSWORD=y` sai com código 0; o login com `y` funciona e com `x` falha (AC 7)
-Proof: `scripts/staging-smoke.sh provision`
+Proof: `node scripts/staging-smoke.mjs provision`
 
 ### S2 - Cookie, Origin e IP atrás do Caddy · ~4 files · ~15 KB · ~4k
 
 **C8** - O login por `https://localhost` devolve `set-cookie` `__Secure-better-auth.session_token=…` com `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/` e sem `Domain` (AC 8)
-Proof: `scripts/staging-smoke.sh cookie`
+Proof: `node scripts/staging-smoke.mjs cookie`
 
 **C9** - `POST https://localhost/api/auth/sign-in/email` com `Origin: https://evil.example` responde `403` (AC 9)
-Proof: `scripts/staging-smoke.sh origin`
+Proof: `node scripts/staging-smoke.mjs origin`
 
 **C10** - 11 logins errados com `X-Forwarded-For` diferente em cada um: os 10 primeiros não são `429` e o 11º é `429` (AC 10)
-Proof: `scripts/staging-smoke.sh forwarded-for`
+Proof: `node scripts/staging-smoke.mjs forwarded-for`
 
 **C11** - `GET https://localhost/api/docs` responde `404` (AC 11)
-Proof: `scripts/staging-smoke.sh docs`
+Proof: `node scripts/staging-smoke.mjs docs`
 
 **C12** - `GET https://localhost/login` traz exatamente os headers do door 5: `Strict-Transport-Security`, `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options` e `Content-Security-Policy` com os valores literais do plano (AC 12)
-Proof: `scripts/staging-smoke.sh headers`
+Proof: `node scripts/staging-smoke.mjs headers`
 
 ### S3 - O ciclo de login em HTTPS · ~2 files · ~5 KB · ~2k
 
@@ -58,12 +60,12 @@ Proof: `scripts/staging-smoke.sh headers`
 Proof: `scripts/staging-smoke.sh e2e`
 
 **C14** - Um cliente Socket.IO com o cookie de um login feito por `https://localhost` conecta em `wss://localhost/socket.io` (transporte `websocket`) com `Origin: https://localhost` (AC 14)
-Proof: `scripts/staging-smoke.sh socket`
+Proof: `node scripts/staging-smoke.mjs socket`
 
 ### S4 - Runbook · ~1 file · ~5 KB · ~1k
 
 **C15** - `docs/runbooks/staging.md` tem, nesta ordem, as seções DNS, `.env`, subir a pilha, verificar e rollback, e cada comando da seção "subir" existe no repo (arquivos citados existem) (AC 15)
-Proof: `scripts/staging-smoke.sh runbook`
+Proof: `node scripts/staging-smoke.mjs runbook`
 
 ## Coverage
 
@@ -113,3 +115,8 @@ Evidence:
 ## Handoff
 
 - S1–S4 ≈ 14 arquivos novos/alterados (Dockerfiles, compose, Caddyfile, env examples, script de provisionamento, smoke script, runbook, CI, compose de dev) ≈ 60 KB ≈ 15k tokens; abaixo do budget de 150k - one builder
+
+- **Boundary:** C1-C15 closed at the commit `build: add the production stack and validate it locally` (`node scripts/staging-smoke.mjs all` exit 0: 48 assertions, `pnpm e2e` 29 passed over `https://localhost:8443`; repo gate green, 130 tests)
+- **Settled mid-build:** the local stack listens on 8080/8443 (another container holds 443 here), so Caddy's ports are configurable (plan Landing 4b); the HTTP redirect goes to the standard HTTPS port, `https://localhost/`, which is AC 3's literal value and what the VPS does on 443; the smoke script is Node (`.mjs`) rather than bash - JSON, cookies and the Socket.IO client; `pg_hba` of the official image trusts 127.0.0.1, so the provisioning proof logs in over the container address; `health` recreates `migrate` and `server` to observe their order on a fresh start
+- **Abandoned:** `SITE_ADDRESS=localhost:8443` (Caddy still redirected to the default port)
+
