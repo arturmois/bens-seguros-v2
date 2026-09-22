@@ -104,6 +104,36 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: Coverage AC 38 - realtime.spec.ts:53-63 (expired session untested over the socket) (specs)
 - last seen: 2026-09-22T13:17:42Z
 
+### L-016 - Prove a client-side cache clear with in-app navigation, never with a full page reload that discards the cache anyway
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `web-e2e` · harmful: 0
+- features: auth-web
+- evidence: F3 apps/web/src/routes/_app.tsx:69 (web-e2e)
+- last seen: 2026-09-22T16:21:04Z
+
+### L-017 - Give every behavioural claim in plan Impact a check whose assertion fails when the behaviour is slowed or removed, not just broken
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `web-e2e` · harmful: 0
+- features: auth-web
+- evidence: F4 apps/web/src/main.tsx:14 (web-e2e)
+- last seen: 2026-09-22T16:21:04Z
+
+### L-018 - Prove a never-renders claim by recording the element during the whole navigation, not by one end-state count
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `web-e2e` · harmful: 0
+- features: auth-web
+- evidence: C10 apps/web/e2e/login.spec.ts:69 (web-e2e)
+- last seen: 2026-09-22T16:21:04Z
+
+### L-019 - Drive e-mail link flows from the screen that sends them, not from an API helper that supplies its own callback
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `web-e2e` · harmful: 0
+- features: auth-web
+- evidence: C4 apps/web/src/routes/(auth)/register.tsx:30 (web-e2e)
+- last seen: 2026-09-22T16:21:04Z
+
+### L-020 - Enumerate every row of an error-message table in the checks and assert each through a screen
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `web-e2e` · harmful: 0
+- features: auth-web
+- evidence: Test policy apps/web/src/lib/auth-client.ts:10 (web-e2e)
+- last seen: 2026-09-22T16:21:04Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

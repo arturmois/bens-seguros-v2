@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 16,
+  "next_id": 21,
   "lessons": [
     {
       "id": "L-001",
@@ -275,6 +275,96 @@
       ],
       "created": "2026-09-22T13:17:42Z",
       "last_seen": "2026-09-22T13:17:42Z"
+    },
+    {
+      "id": "L-016",
+      "key": "surviving_mutant::prove a client side cache clear with in app navigation never with a full page reload that discards the cache anyway",
+      "text": "Prove a client-side cache clear with in-app navigation, never with a full page reload that discards the cache anyway",
+      "signal": "surviving_mutant",
+      "scope": "web-e2e",
+      "status": "candidate",
+      "features": [
+        "auth-web"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "F3 apps/web/src/routes/_app.tsx:69 (web-e2e)"
+      ],
+      "created": "2026-09-22T16:21:04Z",
+      "last_seen": "2026-09-22T16:21:04Z"
+    },
+    {
+      "id": "L-017",
+      "key": "surviving_mutant::give every behavioural claim in plan impact a check whose assertion fails when the behaviour is slowed or removed not just broken",
+      "text": "Give every behavioural claim in plan Impact a check whose assertion fails when the behaviour is slowed or removed, not just broken",
+      "signal": "surviving_mutant",
+      "scope": "web-e2e",
+      "status": "candidate",
+      "features": [
+        "auth-web"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "F4 apps/web/src/main.tsx:14 (web-e2e)"
+      ],
+      "created": "2026-09-22T16:21:04Z",
+      "last_seen": "2026-09-22T16:21:04Z"
+    },
+    {
+      "id": "L-018",
+      "key": "spec_precision_gap::prove a never renders claim by recording the element during the whole navigation not by one end state count",
+      "text": "Prove a never-renders claim by recording the element during the whole navigation, not by one end-state count",
+      "signal": "spec_precision_gap",
+      "scope": "web-e2e",
+      "status": "candidate",
+      "features": [
+        "auth-web"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "C10 apps/web/e2e/login.spec.ts:69 (web-e2e)"
+      ],
+      "created": "2026-09-22T16:21:04Z",
+      "last_seen": "2026-09-22T16:21:04Z"
+    },
+    {
+      "id": "L-019",
+      "key": "ac_gap::drive e mail link flows from the screen that sends them not from an api helper that supplies its own callback",
+      "text": "Drive e-mail link flows from the screen that sends them, not from an API helper that supplies its own callback",
+      "signal": "ac_gap",
+      "scope": "web-e2e",
+      "status": "candidate",
+      "features": [
+        "auth-web"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "C4 apps/web/src/routes/(auth)/register.tsx:30 (web-e2e)"
+      ],
+      "created": "2026-09-22T16:21:04Z",
+      "last_seen": "2026-09-22T16:21:04Z"
+    },
+    {
+      "id": "L-020",
+      "key": "ac_gap::enumerate every row of an error message table in the checks and assert each through a screen",
+      "text": "Enumerate every row of an error-message table in the checks and assert each through a screen",
+      "signal": "ac_gap",
+      "scope": "web-e2e",
+      "status": "candidate",
+      "features": [
+        "auth-web"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "Test policy apps/web/src/lib/auth-client.ts:10 (web-e2e)"
+      ],
+      "created": "2026-09-22T16:21:04Z",
+      "last_seen": "2026-09-22T16:21:04Z"
     }
   ]
 }
