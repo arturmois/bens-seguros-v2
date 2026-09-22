@@ -158,6 +158,7 @@ describe('GET /api/v1/me', () => {
 
   it('only an effective super-admin is a super-admin', async () => {
     const cases = [
+      { isSuperAdmin: false, twoFactorEnabled: false, expected: false },
       { isSuperAdmin: true, twoFactorEnabled: false, expected: false },
       { isSuperAdmin: true, twoFactorEnabled: true, expected: true },
       { isSuperAdmin: false, twoFactorEnabled: true, expected: false },
