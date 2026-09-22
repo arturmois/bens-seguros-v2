@@ -82,6 +82,35 @@ function withProbeSchema<T>(label: string, run: (client: pg.Client, probe: strin
 beforeAll(() => prepareTestDatabase())
 
 describe('tenant tables', () => {
+  it('has no Example table', async () => {
+    const { rows } = await withOwnerClient((client) =>
+      client.query<{ name: string }>(
+        `SELECT c.relname AS name
+           FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = $1 AND c.relname = 'Example'`,
+        [workerSchema()],
+      ),
+    )
+
+    expect(rows).toEqual([])
+  })
+
+  it('protects Organization with tenant_isolation', async () => {
+    const { rows } = await withOwnerClient((client) =>
+      client.query<{ protected: boolean }>(
+        `SELECT c.relrowsecurity AND c.relforcerowsecurity AND EXISTS (
+            SELECT 1 FROM pg_policies p
+             WHERE p.schemaname = n.nspname AND p.tablename = c.relname
+               AND p.policyname = 'tenant_isolation') AS protected
+           FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = $1 AND c.relname = 'Organization'`,
+        [workerSchema()],
+      ),
+    )
+
+    expect(rows).toEqual([{ protected: true }])
+  })
+
   it('every tenant table is protected by row security', async () => {
     const unprotected = await withOwnerClient((client) =>
       findUnprotectedTenantTables(client, workerSchema()),
@@ -228,11 +257,6 @@ describe('tenant-scoped relations', () => {
   it('every relation between tenant-scoped models uses a composite foreign key', () => {
     const schema = readFileSync(new URL('../prisma/schema.prisma', import.meta.url), 'utf8')
 
-    expect(
-      parseModels(schema)
-        .get('Example')
-        ?.some((f) => f.name === 'parent'),
-    ).toBe(true)
     expect(findSimpleTenantRelations(schema)).toEqual([])
   })
 

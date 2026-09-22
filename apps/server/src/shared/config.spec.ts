@@ -24,7 +24,12 @@ describe('loadConfig', () => {
       S3_FORCE_PATH_STYLE: false,
       TRUST_PROXY: false,
       SIGNUP_MODE: 'self_serve',
+      MAX_ORGS_PER_USER: 3,
     })
+  })
+
+  it('defaults max orgs per user to 3', () => {
+    expect(loadConfig(required).MAX_ORGS_PER_USER).toBe(3)
   })
 
   it('coerces numbers and booleans from environment strings', () => {

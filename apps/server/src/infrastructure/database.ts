@@ -40,6 +40,14 @@ export function createDatabase(databaseUrl: string) {
         })
       },
 
+      // Membership lookup before a tenant is chosen (AD-006). Transaction-local, same as the tenant.
+      withUser<T>(userId: string, run: (tx: Transaction) => Promise<T>): Promise<T> {
+        return client.$transaction(async (tx) => {
+          await tx.$executeRaw`SELECT set_config('app.user_id', ${userId}, true)`
+          return run(tx)
+        })
+      },
+
       // A transaction with no tenant, for user-level tables (identity) and the queue: every
       // tenant-scoped table fails inside it, as outside `withTenant`.
       withoutTenant<T>(run: (tx: Transaction) => Promise<T>): Promise<T> {

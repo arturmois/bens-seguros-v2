@@ -1,9 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import type { Database } from '../src/infrastructure/database.ts'
+import { uuidv7 } from '../src/shared/id.ts'
+import { permissionsFor } from '../src/shared/permissions.ts'
 import type { RequestContext } from '../src/shared/request-context.ts'
 
 export async function createOrganization(db: Database, name = `Corretora ${randomUUID()}`) {
-  return db.organization.create({ data: { name } })
+  const id = uuidv7()
+  return db.withTenant({ organizationId: id }, (tx) =>
+    tx.organization.create({ data: { id, name, slug: id } }),
+  )
 }
 
 export function contextFor(organizationId: string): RequestContext {
@@ -13,6 +18,8 @@ export function contextFor(organizationId: string): RequestContext {
     sessionId: randomUUID(),
     isSuperAdmin: false,
     organizationId,
+    role: 'OWNER',
+    permissions: permissionsFor('OWNER'),
   }
 }
 

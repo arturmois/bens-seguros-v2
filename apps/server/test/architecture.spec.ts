@@ -98,7 +98,7 @@ function filesCitingTenantSetting(files: SourceFile[]) {
     .filter(
       (file) => file.path !== 'infrastructure/database.ts' && !file.path.startsWith('generated/'),
     )
-    .filter((file) => file.source.includes('app.tenant_id'))
+    .filter((file) => file.source.includes('app.tenant_id') || file.source.includes('app.user_id'))
     .map((file) => file.path)
 }
 

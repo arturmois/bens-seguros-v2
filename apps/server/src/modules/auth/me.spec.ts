@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { buildTestApp } from '../../../test/app.ts'
 import {
+  acceptCurrentTerms,
   lastEmailUrl,
   PASSWORD,
   signedInUser,
@@ -11,6 +12,7 @@ import {
 import { createOrganization } from '../../../test/factories.ts'
 import type { App } from '../../app.ts'
 import type { Deps } from '../../dependencies.ts'
+import { permissionsFor, type Role } from '../../shared/permissions.ts'
 import { currentUser, requireSession } from './session-context.ts'
 
 let app: App
@@ -51,7 +53,43 @@ describe('GET /api/v1/me', () => {
       twoFactorEnabled: false,
       isSuperAdmin: false,
       activeOrganizationId: null,
+      role: null,
+      permissions: [],
       terms: { pending: true, termsVersion: '1.0', privacyVersion: '1.0' },
+    })
+  })
+
+  it('reports role and permissions for the active membership', async () => {
+    const client = new TestClient(app)
+    const { userId } = await signedInUser(client, deps)
+    await acceptCurrentTerms(client)
+    const created = await client.post('/api/v1/onboarding', { name: 'Meu Papel' })
+    const organizationId = created.json().id as string
+    const roles: Role[] = ['OWNER', 'ADMIN', 'MANAGER', 'COMMERCIAL', 'VIEWER']
+
+    for (const role of roles) {
+      await deps.db.withTenant({ organizationId }, (tx) =>
+        tx.member.update({
+          where: { organizationId_userId: { organizationId, userId } },
+          data: { role },
+        }),
+      )
+      const response = await client.get('/api/v1/me')
+      expect(response.statusCode, role).toBe(200)
+      expect(response.json(), role).toMatchObject({
+        role,
+        permissions: [...permissionsFor(role)],
+        activeOrganizationId: organizationId,
+      })
+    }
+
+    await deps.db.session.updateMany({ where: { userId }, data: { activeOrganizationId: null } })
+    const cleared = await client.get('/api/v1/me')
+    expect(cleared.statusCode).toBe(200)
+    expect(cleared.json()).toMatchObject({
+      role: null,
+      permissions: [],
+      activeOrganizationId: null,
     })
   })
 

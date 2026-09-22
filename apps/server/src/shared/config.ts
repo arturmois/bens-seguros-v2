@@ -37,6 +37,9 @@ const configSchema = z
     TURNSTILE_SITE_KEY: z.string().min(1).optional(),
     // Tests point the captcha plugin at a local siteverify. Ignored outside `test`.
     TURNSTILE_SITEVERIFY_URL: z.url().optional(),
+
+    // Memberships one user may hold. Onboarding past this answers 422 ORG_LIMIT_REACHED.
+    MAX_ORGS_PER_USER: z.coerce.number().int().min(1).default(3),
   })
   .superRefine((value, ctx) => {
     if (value.NODE_ENV !== 'production' || value.SIGNUP_MODE !== 'self_serve') return

@@ -13,7 +13,11 @@ import { z } from 'zod'
 import type { Deps } from './dependencies.ts'
 import { createRealtime, type Realtime } from './infrastructure/realtime.ts'
 import { authRoutes, headersOf, resolveSession } from './modules/auth/index.ts'
-import { exampleRoutes } from './modules/examples/index.ts'
+import {
+  assertRouteDeclaresPermission,
+  loadTenant,
+  organizationRoutes,
+} from './modules/organizations/index.ts'
 import { AppError, errorHandler, notFoundHandler } from './shared/errors.ts'
 
 z.config(z.locales.ptBR())
@@ -45,6 +49,7 @@ export function buildApp(deps: Deps) {
   app.setErrorHandler(errorHandler)
   app.setNotFoundHandler(notFoundHandler)
   app.decorateRequest('user', null)
+  app.decorateRequest('ctx', null)
 
   app.register(fastifyHelmet, {
     // The API returns JSON; the SPA's CSP is set by Caddy. Swagger UI (dev only) needs inline code.
@@ -65,8 +70,16 @@ export function buildApp(deps: Deps) {
 
   const realtime = createRealtime(app.server, {
     allowedOrigin: appOrigin,
-    authenticate: async (request) =>
-      (await resolveSession(deps.auth, headersOf(request)))?.context ?? null,
+    authenticate: async (request) => {
+      const session = await resolveSession(deps.auth, headersOf(request))
+      if (!session) return null
+      const user = { requestId: '', ...session.context }
+      const ctx = await loadTenant(deps, user)
+      return {
+        ...session.context,
+        organizationId: ctx instanceof AppError ? null : ctx.organizationId,
+      }
+    },
   })
   app.decorate('realtime', realtime)
   app.addHook('preClose', async () => {
@@ -82,6 +95,8 @@ export function buildApp(deps: Deps) {
     }
   })
 
+  app.addHook('onRoute', assertRouteDeclaresPermission)
+
   // Routes go through `register` so @fastify/swagger (loaded first) sees them.
   app.register(async (api) => {
     api.get(
@@ -93,7 +108,7 @@ export function buildApp(deps: Deps) {
     )
   })
   app.register(authRoutes(deps))
-  app.register(exampleRoutes)
+  app.register(organizationRoutes(deps))
 
   return app
 }

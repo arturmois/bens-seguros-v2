@@ -38,7 +38,7 @@ export class TestClient {
     return [...this.cookies].map(([name, value]) => `${name}=${value}`).join('; ')
   }
 
-  async request(method: 'GET' | 'POST', url: string, options: RequestOptions = {}) {
+  async request(method: 'GET' | 'POST' | 'PATCH', url: string, options: RequestOptions = {}) {
     const response = await this.app.inject({
       method,
       url,
@@ -68,6 +68,20 @@ export class TestClient {
   post(url: string, payload: unknown = {}, options: Omit<RequestOptions, 'payload'> = {}) {
     return this.request('POST', url, { ...options, payload })
   }
+
+  patch(url: string, payload: unknown = {}, options: Omit<RequestOptions, 'payload'> = {}) {
+    return this.request('PATCH', url, { ...options, payload })
+  }
+}
+
+export async function acceptCurrentTerms(client: TestClient) {
+  const me = await client.get('/api/v1/me')
+  if (me.statusCode !== 200) throw new Error(`me failed: ${me.body}`)
+  const terms = z
+    .object({ terms: z.object({ termsVersion: z.string(), privacyVersion: z.string() }) })
+    .parse(me.json())
+  const accepted = await client.post('/api/v1/me/terms-acceptance', terms.terms)
+  if (accepted.statusCode !== 200) throw new Error(`terms failed: ${accepted.body}`)
 }
 
 export function setCookies(header: string | string[] | undefined): string[] {

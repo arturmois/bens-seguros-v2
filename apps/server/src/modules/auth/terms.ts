@@ -19,6 +19,10 @@ export type TermsState = {
 
 type TermsDeps = { db: Database }
 
+export async function termsArePending(db: Database, userId: string) {
+  return (await termsState({ db }, userId)).pending
+}
+
 export async function termsState(deps: TermsDeps, userId: string): Promise<TermsState> {
   const rows = await deps.db.termsAcceptance.findMany({
     where: { userId, OR: CURRENT.map((item) => ({ ...item })) },

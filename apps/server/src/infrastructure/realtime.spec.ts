@@ -2,7 +2,7 @@ import type { AddressInfo } from 'node:net'
 import { io as connect, type Socket } from 'socket.io-client'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { buildTestApp, TEST_APP_URL } from '../../test/app.ts'
-import { signedInUser, TestClient } from '../../test/auth.ts'
+import { acceptCurrentTerms, signedInUser, TestClient } from '../../test/auth.ts'
 
 let testApp: Awaited<ReturnType<typeof buildTestApp>>
 let baseUrl: string
@@ -47,6 +47,38 @@ describe('realtime', () => {
     const serverSockets = await testApp.app.realtime.io.fetchSockets()
     const serverSide = serverSockets.find((candidate) => candidate.id === socket.id)
     expect(serverSide?.data.user.userId).toBe(userId)
+    socket.disconnect()
+  })
+
+  it('joins the user and org rooms when the tenant context exists', async () => {
+    const client = new TestClient(testApp.app)
+    const { userId, cookie } = await (async () => {
+      const user = await signedInUser(client, testApp.deps)
+      await acceptCurrentTerms(client)
+      const created = await client.post('/api/v1/onboarding', { name: 'Sala' })
+      return { ...user, cookie: client.cookieHeader, organizationId: created.json().id as string }
+    })()
+    const organizationId = (await client.get('/api/v1/me')).json().activeOrganizationId as string
+    const socket = open({ cookie, origin: TEST_APP_URL })
+
+    expect(await outcome(socket)).toEqual({ connected: true })
+    const serverSockets = await testApp.app.realtime.io.fetchSockets()
+    const serverSide = serverSockets.find((candidate) => candidate.id === socket.id)
+    expect(serverSide?.rooms.has(`user:${userId}`)).toBe(true)
+    expect(serverSide?.rooms.has(`org:${organizationId}`)).toBe(true)
+    socket.disconnect()
+  })
+
+  it('joins only the user room without an active organization', async () => {
+    const { cookie, userId } = await sessionCookie()
+    const socket = open({ cookie, origin: TEST_APP_URL })
+
+    expect(await outcome(socket)).toEqual({ connected: true })
+    const serverSockets = await testApp.app.realtime.io.fetchSockets()
+    const serverSide = serverSockets.find((candidate) => candidate.id === socket.id)
+    const rooms = [...(serverSide?.rooms ?? [])]
+    expect(rooms).toContain(`user:${userId}`)
+    expect(rooms.some((room) => room.startsWith('org:'))).toBe(false)
     socket.disconnect()
   })
 

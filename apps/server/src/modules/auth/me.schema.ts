@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { PERMISSIONS, ROLES } from '../../shared/permissions.ts'
 import { termsStateOutput } from './terms.schema.ts'
 
 export const meOutput = z.object({
@@ -9,6 +10,8 @@ export const meOutput = z.object({
   twoFactorEnabled: z.boolean(),
   isSuperAdmin: z.boolean(),
   activeOrganizationId: z.uuid().nullable(),
+  role: z.enum(ROLES).nullable(),
+  permissions: z.array(z.enum(PERMISSIONS)),
   terms: termsStateOutput,
 })
 

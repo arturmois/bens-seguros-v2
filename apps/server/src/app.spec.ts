@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { buildTestApp, TEST_APP_URL } from '../test/app.ts'
@@ -31,15 +32,21 @@ beforeAll(async () => {
   })
   app.post('/test/duplicate', async () => {
     const organization = await createOrganization(db)
+    const user = await db.user.create({
+      data: { name: 'Dup', email: `dup-${randomUUID()}@example.com` },
+    })
     await db.withTenant(contextFor(organization.id), async (tx) => {
-      await tx.example.create({ data: { name: 'duplicado' } })
-      await tx.example.create({ data: { name: 'duplicado' } })
+      await tx.member.create({ data: { userId: user.id, role: 'VIEWER' } })
+      await tx.member.create({ data: { userId: user.id, role: 'VIEWER' } })
     })
   })
   app.post('/test/row-security', async () => {
     const [own, other] = await Promise.all([createOrganization(db), createOrganization(db)])
+    const user = await db.user.create({
+      data: { name: 'Intruso', email: `intruso-${randomUUID()}@example.com` },
+    })
     await db.withTenant(contextFor(own.id), (tx) =>
-      tx.example.create({ data: { organizationId: other.id, name: 'intruso' } }),
+      tx.member.create({ data: { userId: user.id, organizationId: other.id, role: 'VIEWER' } }),
     )
   })
   app.get('/test/crash', async () => {
@@ -254,11 +261,36 @@ describe('security headers and docs', () => {
     expect(docs.statusCode).toBe(200)
     expect(docs.headers['content-type']).toContain('text/html')
 
-    const production = await buildTestApp({ env: { NODE_ENV: 'production' } })
+    const production = await buildTestApp({
+      env: {
+        NODE_ENV: 'production',
+        TURNSTILE_SECRET_KEY: 'turnstile-secret',
+        TURNSTILE_SITE_KEY: 'turnstile-site',
+      },
+    })
     await production.app.ready()
     const hidden = await production.app.inject({ method: 'GET', url: '/api/docs' })
     await production.close()
 
     expect(hidden.statusCode).toBe(404)
+  })
+})
+
+describe('api v1 permission gate', () => {
+  it('fails startup when an api v1 route omits requirePermission', async () => {
+    const started = await buildTestApp()
+    try {
+      expect(() => {
+        started.app.get('/api/v1/bare', async () => ({ ok: true }))
+      }).toThrow(/requirePermission/)
+    } finally {
+      await started.close()
+    }
+  })
+
+  it('does not mount the example commission route', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/v1/examples/commission-preview' })
+
+    expect(res.statusCode).toBe(404)
   })
 })

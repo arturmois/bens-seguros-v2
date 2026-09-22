@@ -3,7 +3,12 @@ import { Server } from 'socket.io'
 
 export type Realtime = ReturnType<typeof createRealtime>
 
-export type SocketUser = { userId: string; sessionId: string; isSuperAdmin: boolean }
+export type SocketUser = {
+  userId: string
+  sessionId: string
+  isSuperAdmin: boolean
+  organizationId: string | null
+}
 
 export type RealtimeOptions = {
   // Only this origin may open a socket (the handshake carries the session cookie).
@@ -19,7 +24,8 @@ declare module 'socket.io' {
 }
 
 // Socket.IO on the API's own HTTP server (same origin, no adapter: one instance, ADR-006).
-// The `org:*`, `user:*` and `conversation:*` rooms come with tenancy (Phase 4).
+// `conversation:*` arrives with the chat. `user:*` is every authenticated socket; `org:*` only when
+// `requireTenant` would build a context.
 export function createRealtime(httpServer: HttpServer, options: RealtimeOptions) {
   const io = new Server(httpServer, {
     path: '/socket.io',
@@ -28,6 +34,12 @@ export function createRealtime(httpServer: HttpServer, options: RealtimeOptions)
     allowRequest: (request, callback) => {
       callback(null, request.headers.origin === options.allowedOrigin)
     },
+  })
+
+  io.on('connection', (socket) => {
+    const user = socket.data.user
+    void socket.join(`user:${user.userId}`)
+    if (user.organizationId) void socket.join(`org:${user.organizationId}`)
   })
 
   io.use((socket, next) => {

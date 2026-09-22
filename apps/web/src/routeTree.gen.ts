@@ -18,7 +18,6 @@ import { Route as authResetPasswordRouteImport } from './routes/(auth)/reset-pas
 import { Route as authTwoFactorRouteImport } from './routes/(auth)/two-factor'
 import { Route as authVerifyEmailRouteImport } from './routes/(auth)/verify-email'
 import { Route as publicIndexRouteImport } from './routes/(public)/index'
-import { Route as publicExampleRouteImport } from './routes/(public)/example'
 import { Route as publicPrivacyRouteImport } from './routes/(public)/privacy'
 import { Route as publicTermsRouteImport } from './routes/(public)/terms'
 import { Route as AppDashboardRouteImport } from './routes/_app/dashboard'
@@ -68,11 +67,6 @@ const publicIndexRoute = publicIndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const publicExampleRoute = publicExampleRouteImport.update({
-  id: '/(public)/example',
-  path: '/example',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const publicPrivacyRoute = publicPrivacyRouteImport.update({
   id: '/(public)/privacy',
   path: '/privacy',
@@ -103,7 +97,6 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof authResetPasswordRoute
   '/two-factor': typeof authTwoFactorRoute
   '/verify-email': typeof authVerifyEmailRoute
-  '/example': typeof publicExampleRoute
   '/privacy': typeof publicPrivacyRoute
   '/terms': typeof publicTermsRoute
   '/dashboard': typeof AppDashboardRoute
@@ -118,7 +111,6 @@ export interface FileRoutesByTo {
   '/reset-password': typeof authResetPasswordRoute
   '/two-factor': typeof authTwoFactorRoute
   '/verify-email': typeof authVerifyEmailRoute
-  '/example': typeof publicExampleRoute
   '/privacy': typeof publicPrivacyRoute
   '/terms': typeof publicTermsRoute
   '/dashboard': typeof AppDashboardRoute
@@ -134,7 +126,6 @@ export interface FileRoutesById {
   '/(auth)/reset-password': typeof authResetPasswordRoute
   '/(auth)/two-factor': typeof authTwoFactorRoute
   '/(auth)/verify-email': typeof authVerifyEmailRoute
-  '/(public)/example': typeof publicExampleRoute
   '/(public)/privacy': typeof publicPrivacyRoute
   '/(public)/terms': typeof publicTermsRoute
   '/_app/dashboard': typeof AppDashboardRoute
@@ -152,7 +143,6 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/two-factor'
     | '/verify-email'
-    | '/example'
     | '/privacy'
     | '/terms'
     | '/dashboard'
@@ -167,7 +157,6 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/two-factor'
     | '/verify-email'
-    | '/example'
     | '/privacy'
     | '/terms'
     | '/dashboard'
@@ -182,7 +171,6 @@ export interface FileRouteTypes {
     | '/(auth)/reset-password'
     | '/(auth)/two-factor'
     | '/(auth)/verify-email'
-    | '/(public)/example'
     | '/(public)/privacy'
     | '/(public)/terms'
     | '/_app/dashboard'
@@ -199,7 +187,6 @@ export interface RootRouteChildren {
   authResetPasswordRoute: typeof authResetPasswordRoute
   authTwoFactorRoute: typeof authTwoFactorRoute
   authVerifyEmailRoute: typeof authVerifyEmailRoute
-  publicExampleRoute: typeof publicExampleRoute
   publicPrivacyRoute: typeof publicPrivacyRoute
   publicTermsRoute: typeof publicTermsRoute
   publicIndexRoute: typeof publicIndexRoute
@@ -270,13 +257,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof publicIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/(public)/example': {
-      id: '/(public)/example'
-      path: '/example'
-      fullPath: '/example'
-      preLoaderRoute: typeof publicExampleRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/(public)/privacy': {
       id: '/(public)/privacy'
       path: '/privacy'
@@ -329,7 +309,6 @@ const rootRouteChildren: RootRouteChildren = {
   authResetPasswordRoute: authResetPasswordRoute,
   authTwoFactorRoute: authTwoFactorRoute,
   authVerifyEmailRoute: authVerifyEmailRoute,
-  publicExampleRoute: publicExampleRoute,
   publicPrivacyRoute: publicPrivacyRoute,
   publicTermsRoute: publicTermsRoute,
   publicIndexRoute: publicIndexRoute,

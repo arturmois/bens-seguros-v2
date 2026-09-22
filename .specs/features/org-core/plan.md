@@ -18,7 +18,8 @@ flowchart TD
     IN --> SW["POST /api/v1/me/active-organization (new)"]
     IN --> RT["requireTenant (new)"]
     OB --> ORG["organizations (new)"]
-    ORG --> ROW["Organization + Member OWNER + Subscription TRIALING (door 4)"]
+    ORG --> BILL["billing.startTrial (new)"]
+    BILL --> ROW["Organization + Member OWNER + Subscription TRIALING (door 4)"]
     ROW --> SESS["Session.activeOrganizationId (exists)"]
     SW --> MEM["Member do usuário (door 5)"]
     MEM --> SESS
@@ -28,7 +29,7 @@ flowchart TD
     CTX --> DATA["withTenant (exists)"]
 ```
 
-1. `POST /api/v1/onboarding` entra com a sessão → `organizations` grava organização, membro OWNER e assinatura `TRIALING` na mesma transação → grava `Session.activeOrganizationId` → `200`
+1. `POST /api/v1/onboarding` entra com a sessão → `organizations` grava organização e membro OWNER, chama `billing.startTrial` (new) na mesma transação → grava `Session.activeOrganizationId` → `200`
 2. `POST /api/v1/me/active-organization` entra com a sessão → lê o `Member` ativo daquele usuário e daquela organização (door 5) → atualiza `Session.activeOrganizationId` → `200`; sem membro, `404`
 3. rota com `requireTenant` → termos pendentes, `403` → sem organização ativa, `403` → membro ausente ou inativo, `404` → `request.ctx` com `organizationId`, papel e permissões → `withTenant` (exists)
 4. handshake do Socket.IO (exists) usa a mesma resolução: sala `user:<userId>` sempre; sala `org:<organizationId>` só quando o passo 3 montaria o contexto

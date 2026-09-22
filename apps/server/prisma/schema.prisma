@@ -10,36 +10,75 @@ datasource db {
   provider = "postgresql"
 }
 
-// Tenant root. Owned by the organizations module (Phase 4), which adds slug, logo, members and settings.
+// Tenant root. No `organizationId` of its own: visibility is the `tenant_isolation` policy in
+// AD-006 (the id matches the transaction tenant, or the caller has a Member row).
 model Organization {
   id        String   @id @default(uuid(7)) @db.Uuid
   name      String
+  slug      String   @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  examples Example[]
-  sessions Session[]
+  members      Member[]
+  subscription Subscription?
+  sessions     Session[]
 }
 
-// Disposable (Phase 2): exercises row level security, the composite FK and P2002 → 409 until real
-// tenant-scoped models exist. See docs/roadmap.md ("Remover o módulo exemplo").
-// Tenant-scoped (ADR-004): `organizationId` defaults to the transaction's tenant, and the migration
-// that creates the table enables and forces RLS with the `tenant_isolation` policy.
-model Example {
-  id             String   @id @default(uuid(7)) @db.Uuid
-  organizationId String   @default(dbgenerated("(current_setting('app.tenant_id'::text))::uuid")) @db.Uuid
-  name           String
-  parentId       String?  @db.Uuid
-  createdAt      DateTime @default(now())
+enum Role {
+  OWNER
+  ADMIN
+  MANAGER
+  COMMERCIAL
+  VIEWER
+}
 
-  // RESTRICT: a cascade runs as the table owner and would skip row security (ADR-004).
+// Tenant-scoped (ADR-004, AD-006). `organizationId` defaults to the transaction tenant.
+// One OWNER per organization is a partial unique index in the migration (`Member_one_owner`).
+model Member {
+  id                String   @id @default(uuid(7)) @db.Uuid
+  organizationId    String   @default(dbgenerated("(current_setting('app.tenant_id'::text))::uuid")) @db.Uuid
+  userId            String   @db.Uuid
+  role              Role
+  active            Boolean  @default(true)
+  commissionSplitBp Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  // Composite FK: the database rejects a parent from another tenant.
-  parent       Example?     @relation("ExampleTree", fields: [parentId, organizationId], references: [id, organizationId])
-  children     Example[]    @relation("ExampleTree")
+  user         User         @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([id, organizationId])
-  @@unique([organizationId, name])
+  @@unique([organizationId, userId])
+}
+
+// Catalog, no tenant. The onboarding seed is the single `trial` row.
+model Plan {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  code      String   @unique
+  name      String
+  maxUsers  Int
+  createdAt DateTime @default(now())
+
+  subscriptions Subscription[]
+}
+
+enum SubscriptionStatus {
+  TRIALING
+}
+
+model Subscription {
+  id             String             @id @default(uuid(7)) @db.Uuid
+  organizationId String             @unique @default(dbgenerated("(current_setting('app.tenant_id'::text))::uuid")) @db.Uuid
+  planId         String             @db.Uuid
+  status         SubscriptionStatus
+  trialEndsAt    DateTime
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  plan         Plan         @relation(fields: [planId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([id, organizationId])
 }
 
 // Identity (Better Auth, ADR-003). User-level tables: no `organizationId`, so no row level security
@@ -57,10 +96,11 @@ model User {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  sessions        Session[]
-  accounts        Account[]
-  twoFactors      TwoFactor[]
+  sessions         Session[]
+  accounts         Account[]
+  twoFactors       TwoFactor[]
   termsAcceptances TermsAcceptance[]
+  memberships      Member[]
 }
 
 model Session {

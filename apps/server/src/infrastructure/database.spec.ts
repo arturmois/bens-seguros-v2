@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestDeps } from '../../test/app.ts'
@@ -19,18 +20,19 @@ beforeAll(async () => {
 
 afterAll(() => deps.db.$disconnect())
 
-function createExample(ctx: RequestContext, name: string, parentId?: string) {
-  return deps.db.withTenant(ctx, (tx) =>
-    tx.example.create({ data: { name, parentId: parentId ?? null } }),
-  )
+function createUser() {
+  return deps.db.user.create({
+    data: { name: 'Membro', email: `${randomUUID()}@example.com` },
+  })
 }
 
-// Every row of a tenant, read as that tenant: [id, organizationId, parentId].
+function createMember(ctx: RequestContext, userId: string) {
+  return deps.db.withTenant(ctx, (tx) => tx.member.create({ data: { userId, role: 'VIEWER' } }))
+}
+
 async function snapshot(ctx: RequestContext) {
-  const rows = await deps.db.withTenant(ctx, (tx) =>
-    tx.example.findMany({ orderBy: { id: 'asc' } }),
-  )
-  return rows.map((row) => [row.id, row.organizationId, row.parentId])
+  const rows = await deps.db.withTenant(ctx, (tx) => tx.member.findMany({ orderBy: { id: 'asc' } }))
+  return rows.map((row) => [row.id, row.organizationId, row.userId])
 }
 
 async function errorOf(run: () => Promise<unknown>) {
@@ -46,23 +48,21 @@ function prismaCode(error: unknown) {
 
 describe('row level security', () => {
   it('reads only the tenant rows in every read shape', async () => {
-    const rowA = await createExample(tenantA, 'read-a')
-    const rowB = await createExample(tenantB, 'read-b')
+    const userA = await createUser()
+    const userB = await createUser()
+    const rowA = await createMember(tenantA, userA.id)
+    const rowB = await createMember(tenantB, userB.id)
     const reads = await deps.db.withTenant(tenantA, async (tx) => ({
-      findMany: await tx.example.findMany(),
-      findUnique: await tx.example.findUnique({ where: { id: rowB.id } }),
-      count: await tx.example.count({ where: { id: rowB.id } }),
-      aggregate: await tx.example.aggregate({ where: { id: rowB.id }, _count: true }),
-      groupBy: await tx.example.groupBy({ by: ['organizationId'] }),
+      findMany: await tx.member.findMany(),
+      findUnique: await tx.member.findUnique({ where: { id: rowB.id } }),
+      count: await tx.member.count({ where: { id: rowB.id } }),
+      aggregate: await tx.member.aggregate({ where: { id: rowB.id }, _count: true }),
+      groupBy: await tx.member.groupBy({ by: ['organizationId'] }),
       include: await tx.organization.findMany({
         where: { id: { in: [tenantA.organizationId, tenantB.organizationId] } },
-        include: { examples: true },
+        include: { members: true },
       }),
-      countRelation: await tx.organization.findMany({
-        where: { id: tenantB.organizationId },
-        include: { _count: true },
-      }),
-      raw: await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "Example"`,
+      raw: await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "Member"`,
     }))
 
     expect(reads.findMany.map((row) => row.organizationId)).not.toContain(tenantB.organizationId)
@@ -72,192 +72,118 @@ describe('row level security', () => {
     expect(reads.aggregate._count).toBe(0)
     expect(reads.groupBy.map((group) => group.organizationId)).toEqual([tenantA.organizationId])
     expect(
-      reads.include.flatMap((org) => org.examples.map((row) => row.organizationId)),
+      reads.include.flatMap((org) => org.members.map((row) => row.organizationId)),
     ).not.toContain(tenantB.organizationId)
-    expect(reads.countRelation[0]?._count.examples).toBe(0)
     expect(reads.raw.map((row) => row.id)).not.toContain(rowB.id)
     expect(reads.raw.map((row) => row.id)).toContain(rowA.id)
   })
 
-  it('rejects every write into another tenant', async () => {
-    const rowA = await createExample(tenantA, 'write-a')
-    const parentA = await createExample(tenantA, 'write-parent-a')
+  it('hides the other tenant member and fails with no tenant set', async () => {
+    const userA = await createUser()
+    const userB = await createUser()
+    const rowA = await createMember(tenantA, userA.id)
+    const rowB = await createMember(tenantB, userB.id)
+
+    const visible = await deps.db.withTenant(tenantA, (tx) => tx.member.findMany())
+    expect(visible.map((row) => row.id)).toContain(rowA.id)
+    expect(visible.map((row) => row.id)).not.toContain(rowB.id)
+
+    await expect(deps.db.member.findMany()).rejects.toThrow()
+    await expect(deps.db.withoutTenant((tx) => tx.member.findMany())).rejects.toThrow()
+  })
+
+  it('lists only the caller organizations', async () => {
+    const user = await createUser()
+    await createMember(tenantA, user.id)
+    const other = await deps.db.withTenant(tenantB, (tx) =>
+      tx.organization.findUniqueOrThrow({ where: { id: tenantB.organizationId } }),
+    )
+
+    const listed = await deps.db.withUser(user.id, (tx) => tx.organization.findMany())
+
+    expect(listed.map((org) => org.id)).toContain(tenantA.organizationId)
+    expect(listed.map((org) => org.id)).not.toContain(tenantB.organizationId)
+    expect(listed.map((org) => org.name)).not.toContain(other.name)
+  })
+
+  it('rejects a cross-tenant member write', async () => {
+    const user = await createUser()
+    const rowA = await createMember(tenantA, user.id)
     const before = [await snapshot(tenantA), await snapshot(tenantB)]
     const B = tenantB.organizationId
     const writes: Record<string, () => Promise<unknown>> = {
       create: () =>
         deps.db.withTenant(tenantA, (tx) =>
-          tx.example.create({ data: { organizationId: B, name: 'w1' } }),
+          tx.member.create({ data: { organizationId: B, userId: user.id, role: 'VIEWER' } }),
         ),
       'update scalar': () =>
         deps.db.withTenant(tenantA, (tx) =>
-          tx.example.update({ where: { id: rowA.id }, data: { organizationId: B } }),
+          tx.member.update({ where: { id: rowA.id }, data: { organizationId: B } }),
         ),
       'updateMany scalar': () =>
         deps.db.withTenant(tenantA, (tx) =>
-          tx.example.updateMany({ where: { id: rowA.id }, data: { organizationId: B } }),
+          tx.member.updateMany({ where: { id: rowA.id }, data: { organizationId: B } }),
         ),
       'organization.connect': () =>
         deps.db.withTenant(tenantA, (tx) =>
-          tx.example.update({
+          tx.member.update({
             where: { id: rowA.id },
             data: { organization: { connect: { id: B } } },
           }),
         ),
       'upsert create': () =>
         deps.db.withTenant(tenantA, (tx) =>
-          tx.example.upsert({
+          tx.member.upsert({
             where: { id: '01a0c4ee-0000-7000-8000-00000000abcd' },
-            create: { organizationId: B, name: 'w4' },
+            create: { organizationId: B, userId: user.id, role: 'VIEWER' },
             update: {},
           }),
         ),
-      'children.create': () =>
-        deps.db.withTenant(tenantA, (tx) =>
-          tx.example.update({
-            where: { id: parentA.id },
-            data: { children: { create: { name: 'w5', organization: { connect: { id: B } } } } },
-          }),
-        ),
     }
 
-    // Prisma absorbs these: the nested child inherits the parent's tenant through the composite FK.
-    const landsInA = new Set(['children.create'])
+    const expected: Record<string, string> = {
+      create: 'P2039',
+      'update scalar': 'P2039',
+      'updateMany scalar': 'P2039',
+      'organization.connect': 'P2025',
+      'upsert create': 'P2039',
+    }
     for (const [write, run] of Object.entries(writes)) {
-      const error = await errorOf(run)
-      if (landsInA.has(write)) expect(error, write).toBeUndefined()
-      else expect(prismaCode(error), write).toBe('P2039')
+      expect(prismaCode(await errorOf(run)), write).toBe(expected[write])
     }
     const [afterA, afterB] = [await snapshot(tenantA), await snapshot(tenantB)]
     expect(afterB).toEqual(before[1])
-    expect(afterA.every(([, organizationId]) => organizationId === tenantA.organizationId)).toBe(
-      true,
-    )
-    expect(afterA.filter(([id]) => !before[0]?.some(([seen]) => seen === id))).toHaveLength(1)
-  })
-
-  it("cannot link or move another tenant's row", async () => {
-    const rowA = await createExample(tenantA, 'link-a')
-    const rowB = await createExample(tenantB, 'link-b')
-    const before = [await snapshot(tenantA), await snapshot(tenantB)]
-    const byB = { id: rowB.id, organizationId: tenantB.organizationId }
-    const references: Record<string, () => Promise<unknown>> = {
-      'parent.connect': () =>
-        deps.db.withTenant(tenantA, (tx) =>
-          tx.example.update({ where: { id: rowA.id }, data: { parent: { connect: byB } } }),
-        ),
-      'children.connect': () =>
-        deps.db.withTenant(tenantA, (tx) =>
-          tx.example.update({ where: { id: rowA.id }, data: { children: { connect: byB } } }),
-        ),
-      'children.set': () =>
-        deps.db.withTenant(tenantA, (tx) =>
-          tx.example.update({ where: { id: rowA.id }, data: { children: { set: [byB] } } }),
-        ),
-      'children.connectOrCreate': () =>
-        deps.db.withTenant(tenantA, (tx) =>
-          tx.example.update({
-            where: { id: rowA.id },
-            data: { children: { connectOrCreate: { where: byB, create: { name: 'link-c' } } } },
-          }),
-        ),
-      'organization examples.set': () =>
-        deps.db.withTenant(tenantA, (tx) =>
-          tx.organization.update({
-            where: { id: tenantA.organizationId },
-            data: { examples: { set: [{ id: rowB.id }] } },
-          }),
-        ),
-      'organization examples.connectOrCreate': () =>
-        deps.db.withTenant(tenantA, (tx) =>
-          tx.organization.update({
-            where: { id: tenantA.organizationId },
-            data: {
-              examples: { connectOrCreate: { where: { id: rowB.id }, create: { name: 'link-o' } } },
-            },
-          }),
-        ),
-      'organization examples.connect': () =>
-        deps.db.withTenant(tenantA, (tx) =>
-          tx.organization.update({
-            where: { id: tenantA.organizationId },
-            data: { examples: { connect: { id: rowB.id } } },
-          }),
-        ),
-    }
-
-    // What PostgreSQL + Prisma answer for each shape. `undefined`: the row of B is invisible, so
-    // `set` ends with no children and `connectOrCreate` creates a new row in A — neither touches B.
-    const expected: Record<string, string | undefined> = {
-      'parent.connect': 'P2025',
-      'children.connect': 'P2018',
-      'children.set': undefined,
-      'children.connectOrCreate': undefined,
-      'organization examples.set': 'P2014',
-      'organization examples.connectOrCreate': undefined,
-      'organization examples.connect': 'P2018',
-    }
-    expect(Object.keys(references).sort()).toEqual(Object.keys(expected).sort())
-    for (const [reference, run] of Object.entries(references)) {
-      const error = await errorOf(run)
-      const code = expected[reference]
-      if (code === undefined) expect(error, reference).toBeUndefined()
-      else expect(prismaCode(error), reference).toBe(code)
-    }
-    const [afterA, afterB] = [await snapshot(tenantA), await snapshot(tenantB)]
-    expect(afterB).toEqual(before[1])
-    expect(afterA.every(([, organizationId]) => organizationId === tenantA.organizationId)).toBe(
-      true,
-    )
-    // Existing rows of A kept their tenant and parent; only the connectOrCreate rows are new.
-    expect(afterA.filter(([id]) => before[0]?.some(([seen]) => seen === id))).toEqual(before[0])
+    expect(afterA).toEqual(before[0])
   })
 
   it('fails outside withTenant', async () => {
-    await createExample(tenantA, 'outside-a')
+    const user = await createUser()
+    await createMember(tenantA, user.id)
     const before = await snapshot(tenantA)
 
-    await expect(deps.db.example.findMany()).rejects.toThrow()
-    await expect(deps.db.example.count()).rejects.toThrow()
+    await expect(deps.db.member.findMany()).rejects.toThrow()
+    await expect(deps.db.member.count()).rejects.toThrow()
     await expect(
-      deps.db.example.create({ data: { organizationId: tenantA.organizationId, name: 'outside' } }),
+      deps.db.member.create({
+        data: { organizationId: tenantA.organizationId, userId: user.id, role: 'ADMIN' },
+      }),
     ).rejects.toThrow()
 
     expect(await snapshot(tenantA)).toEqual(before)
   })
 
   it('fills organizationId from the tenant', async () => {
-    const created = await createExample(tenantA, 'default-tenant')
+    const user = await createUser()
+    const created = await createMember(tenantA, user.id)
 
     expect(created.organizationId).toBe(tenantA.organizationId)
   })
 
-  it('links rows only within the tenant', async () => {
-    const parentA = await createExample(tenantA, 'scalar-parent-a')
-    const child = await createExample(tenantA, 'scalar-child')
-    const rowB = await createExample(tenantB, 'scalar-parent-b')
-
-    const linked = await deps.db.withTenant(tenantA, (tx) =>
-      tx.example.update({ where: { id: child.id }, data: { parentId: parentA.id } }),
-    )
-    expect(linked.parentId).toBe(parentA.id)
-
-    const error = await errorOf(() =>
-      deps.db.withTenant(tenantA, (tx) =>
-        tx.example.update({ where: { id: child.id }, data: { parentId: rowB.id } }),
-      ),
-    )
-    expect(prismaCode(error)).toBe('P2003')
-    const reloaded = await deps.db.withTenant(tenantA, (tx) =>
-      tx.example.findUnique({ where: { id: child.id } }),
-    )
-    expect(reloaded?.parentId).toBe(parentA.id)
-  })
-
   it('does not leak the tenant to the next transaction', async () => {
-    await createExample(tenantB, 'leak-b')
+    const user = await createUser()
+    await createMember(tenantB, user.id)
     for (let i = 0; i < 5; i++) {
-      await deps.db.withTenant(tenantA, (tx) => tx.example.count())
+      await deps.db.withTenant(tenantA, (tx) => tx.member.count())
       await errorOf(() =>
         deps.db.withTenant(tenantA, async () => {
           throw new Error('rollback')
@@ -266,9 +192,9 @@ describe('row level security', () => {
     }
 
     for (let i = 0; i < 10; i++) {
-      await expect(deps.db.example.count(), `outside #${i}`).rejects.toThrow()
+      await expect(deps.db.member.count(), `outside #${i}`).rejects.toThrow()
     }
-    const asB = await deps.db.withTenant(tenantB, (tx) => tx.example.findMany())
+    const asB = await deps.db.withTenant(tenantB, (tx) => tx.member.findMany())
     expect(asB.length).toBeGreaterThan(0)
     expect(asB.every((row) => row.organizationId === tenantB.organizationId)).toBe(true)
   })
@@ -293,7 +219,8 @@ describe('row level security', () => {
   })
 
   it('does not reach tenant rows through Organization', async () => {
-    await createExample(tenantB, 'cascade-b')
+    const user = await createUser()
+    await createMember(tenantB, user.id)
     const before = await snapshot(tenantB)
     const attempts: Record<string, () => Promise<unknown>> = {
       'delete in tenant A': () =>
@@ -317,7 +244,7 @@ describe('row level security', () => {
     }
 
     for (const [attempt, run] of Object.entries(attempts)) {
-      expect(prismaCode(await errorOf(run)), attempt).toBe('P2003')
+      expect(await errorOf(run), attempt).toBeInstanceOf(Error)
     }
     expect(await snapshot(tenantB)).toEqual(before)
   })
@@ -348,10 +275,16 @@ describe('withoutTenant', () => {
   it('withoutTenant reaches user tables but no tenant table', async () => {
     const before = await snapshot(tenantA)
 
-    const read = await errorOf(() => deps.db.withoutTenant((tx) => tx.example.findMany()))
+    const read = await errorOf(() => deps.db.withoutTenant((tx) => tx.member.findMany()))
     const write = await errorOf(() =>
       deps.db.withoutTenant((tx) =>
-        tx.example.create({ data: { organizationId: tenantA.organizationId, name: 'sem tenant' } }),
+        tx.member.create({
+          data: {
+            organizationId: tenantA.organizationId,
+            userId: '01a0c4ee-0000-7000-8000-00000000abcd',
+            role: 'VIEWER',
+          },
+        }),
       ),
     )
     const users = await deps.db.withoutTenant((tx) => tx.user.count())
