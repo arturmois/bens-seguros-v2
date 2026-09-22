@@ -16,6 +16,12 @@ const MESSAGES: Record<string, string> = {
   INVALID_BACKUP_CODE: 'Código inválido.',
   INVALID_PASSWORD: 'Senha incorreta.',
   ACCOUNT_TEMPORARILY_LOCKED: 'Muitas tentativas. Aguarde alguns minutos e tente de novo.',
+  SIGNUP_CLOSED: 'O cadastro está fechado. Peça um convite à sua corretora.',
+  EMAIL_DOMAIN_NOT_ALLOWED:
+    'E-mails descartáveis não são permitidos. Use um e-mail pessoal ou corporativo.',
+  MISSING_RESPONSE: 'Não foi possível confirmar que você não é um robô. Tente de novo.',
+  VERIFICATION_FAILED: 'Não foi possível confirmar que você não é um robô. Tente de novo.',
+  UNKNOWN_ERROR: 'Não foi possível confirmar que você não é um robô. Tente de novo.',
 }
 
 // Better Auth answers in English with a stable `code`; the screens show pt-BR.

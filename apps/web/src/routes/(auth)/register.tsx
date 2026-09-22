@@ -1,7 +1,9 @@
 import { zodResolver } from '@hookform/resolvers/zod'
+import { Turnstile, type TurnstileInstance } from '@marsidev/react-turnstile'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
+import { useGetSignupConfig } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { AuthCard } from '@/features/auth/components/auth-card'
 import { Field } from '@/features/auth/components/field'
@@ -15,20 +17,65 @@ export const Route = createFileRoute('/(auth)/register')({
   component: Register,
 })
 
+const CAPTCHA_CODES = new Set(['MISSING_RESPONSE', 'VERIFICATION_FAILED', 'UNKNOWN_ERROR'])
+
 function Register() {
+  const config = useGetSignupConfig()
+
+  if (config.isPending) {
+    return (
+      <AuthCard title="Criar conta" description="Cadastre-se para usar a Bens Seguros.">
+        <p className="text-muted-foreground text-sm">Carregando o cadastro…</p>
+      </AuthCard>
+    )
+  }
+
+  if (config.isError || !config.data) {
+    return (
+      <AuthCard title="Criar conta" description="Cadastre-se para usar a Bens Seguros.">
+        <p className="text-sm">Não foi possível carregar o cadastro.</p>
+        <Button type="button" variant="outline" onClick={() => config.refetch()}>
+          Tentar de novo
+        </Button>
+      </AuthCard>
+    )
+  }
+
+  if (config.data.signupMode === 'closed') {
+    return (
+      <AuthCard title="Criar conta">
+        <p>O cadastro está fechado. Peça um convite à sua corretora.</p>
+      </AuthCard>
+    )
+  }
+
+  return <RegisterForm siteKey={config.data.turnstileSiteKey} />
+}
+
+function RegisterForm({ siteKey }: { siteKey: string | null }) {
   const navigate = useNavigate()
+  const turnstile = useRef<TurnstileInstance>(undefined)
+  const [token, setToken] = useState<string>()
   const [failure, setFailure] = useState<string>()
   const form = useForm({
     resolver: zodResolver(registerSchema),
     defaultValues: { name: '', email: '', password: '' },
   })
   const { errors, isSubmitting } = form.formState
+  const waitingForToken = siteKey !== null && token === undefined
 
   const onSubmit = form.handleSubmit(async (values) => {
     setFailure(undefined)
-    // The e-mail link lands on /login, which sends the now signed-in user to the app.
-    const { error } = await authClient.signUp.email({ ...values, callbackURL: '/login' })
+    const { error } = await authClient.signUp.email({
+      ...values,
+      callbackURL: '/login',
+      fetchOptions: token ? { headers: { 'x-captcha-response': token } } : undefined,
+    })
     if (error) {
+      if (error.code && CAPTCHA_CODES.has(error.code)) {
+        setToken(undefined)
+        turnstile.current?.reset()
+      }
       setFailure(authErrorMessage(error))
       return
     }
@@ -73,7 +120,16 @@ function Register() {
           error={errors.password?.message}
           {...form.register('password')}
         />
-        <Button type="submit" disabled={isSubmitting}>
+        {siteKey && (
+          <Turnstile
+            ref={turnstile}
+            siteKey={siteKey}
+            options={{ language: 'pt-br' }}
+            onSuccess={setToken}
+            onExpire={() => setToken(undefined)}
+          />
+        )}
+        <Button type="submit" disabled={isSubmitting || waitingForToken}>
           {isSubmitting ? 'Aguarde…' : 'Criar conta'}
         </Button>
       </form>

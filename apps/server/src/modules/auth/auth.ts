@@ -1,6 +1,8 @@
 import { betterAuth } from 'better-auth'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
-import { twoFactor } from 'better-auth/plugins'
+import { APIError, createAuthMiddleware } from 'better-auth/api'
+import { captcha, twoFactor } from 'better-auth/plugins'
+import { isDisposableEmail } from 'disposable-email-domains-js'
 import { type EmailPayload, enqueueEmail } from '../../emails/send-email.tsx'
 import type { Database } from '../../infrastructure/database.ts'
 import type { Queue } from '../../infrastructure/queue.ts'
@@ -97,8 +99,47 @@ export function createAuth(deps: AuthDeps) {
       ipAddress: { ipAddressHeaders: ['x-forwarded-for'] },
     },
 
-    plugins: [twoFactor({ issuer: 'Bens Seguros' })],
+    hooks: {
+      before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path !== '/sign-up/email') return
+        if (config.SIGNUP_MODE === 'closed') {
+          throw new APIError('FORBIDDEN', {
+            code: 'SIGNUP_CLOSED',
+            message: 'O cadastro está fechado. Peça um convite à sua corretora.',
+          })
+        }
+        const email = emailOf(ctx.body)
+        if (email !== undefined && isDisposableEmail(email)) {
+          throw new APIError('FORBIDDEN', {
+            code: 'EMAIL_DOMAIN_NOT_ALLOWED',
+            message:
+              'E-mails descartáveis não são permitidos. Use um e-mail pessoal ou corporativo.',
+          })
+        }
+      }),
+    },
+
+    plugins: [
+      twoFactor({ issuer: 'Bens Seguros' }),
+      ...(config.TURNSTILE_SECRET_KEY && config.SIGNUP_MODE === 'self_serve'
+        ? [
+            captcha({
+              provider: 'cloudflare-turnstile',
+              secretKey: config.TURNSTILE_SECRET_KEY,
+              endpoints: ['/sign-up/email'],
+              ...(config.NODE_ENV === 'test' && config.TURNSTILE_SITEVERIFY_URL
+                ? { siteVerifyURLOverride: config.TURNSTILE_SITEVERIFY_URL }
+                : {}),
+            }),
+          ]
+        : []),
+    ],
   })
+}
+
+function emailOf(body: unknown): string | undefined {
+  if (typeof body !== 'object' || body === null || !('email' in body)) return undefined
+  return typeof body.email === 'string' ? body.email : undefined
 }
 
 export type Auth = ReturnType<typeof createAuth>

@@ -23,6 +23,7 @@ describe('loadConfig', () => {
       S3_REGION: 'auto',
       S3_FORCE_PATH_STYLE: false,
       TRUST_PROXY: false,
+      SIGNUP_MODE: 'self_serve',
     })
   })
 

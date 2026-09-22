@@ -5,6 +5,7 @@ import type { Auth } from './auth.ts'
 import { meOutput } from './me.schema.ts'
 import { getMe } from './me.ts'
 import { currentUser, headersOf, requireSession } from './session-context.ts'
+import { signupConfigOutput } from './signup.schema.ts'
 
 export type AuthRoutesDeps = { auth: Auth; config: Config; db: Database }
 
@@ -36,6 +37,21 @@ export function authRoutes(deps: AuthRoutesDeps): FastifyPluginAsyncZod {
         return reply.send(await response.text())
       },
     })
+
+    app.get(
+      '/api/public/signup-config',
+      {
+        schema: {
+          response: { 200: signupConfigOutput },
+          tags: ['Public'],
+          operationId: 'getSignupConfig',
+        },
+      },
+      () => ({
+        signupMode: deps.config.SIGNUP_MODE,
+        turnstileSiteKey: deps.config.TURNSTILE_SITE_KEY ?? null,
+      }),
+    )
 
     app.get(
       '/api/v1/me',

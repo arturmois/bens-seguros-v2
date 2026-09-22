@@ -40,6 +40,46 @@
         }
       }
     },
+    "/api/public/signup-config": {
+      "get": {
+        "operationId": "getSignupConfig",
+        "tags": [
+          "Public"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "signupMode": {
+                      "type": "string",
+                      "enum": [
+                        "closed",
+                        "self_serve"
+                      ]
+                    },
+                    "turnstileSiteKey": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "signupMode",
+                    "turnstileSiteKey"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/me": {
       "get": {
         "operationId": "getMe",

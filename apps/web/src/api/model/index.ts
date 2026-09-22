@@ -8,5 +8,7 @@
 export * from './getHealth200';
 export * from './getHealth200Status';
 export * from './getMe200';
+export * from './getSignupConfig200';
+export * from './getSignupConfig200SignupMode';
 export * from './previewExampleCommission200';
 export * from './previewExampleCommissionParams';
