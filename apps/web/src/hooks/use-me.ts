@@ -1,10 +1,9 @@
-import { useSuspenseQuery } from '@tanstack/react-query'
-import { getGetMeQueryKey, getMe } from '@/api/endpoints'
+import { useGetMe } from '@/api/endpoints'
 
-// The signed-in user. Only under `_app`, whose beforeLoad already loaded it (or redirected).
+// The signed-in user. Only under `_app`, whose beforeLoad already put it in the query cache (or
+// redirected), so the data is there on the first render.
 export function useMe() {
-  return useSuspenseQuery({
-    queryKey: getGetMeQueryKey(),
-    queryFn: ({ signal }) => getMe({ signal }),
-  }).data
+  const { data } = useGetMe()
+  if (!data) throw new Error('useMe outside _app: the user was not loaded')
+  return data
 }

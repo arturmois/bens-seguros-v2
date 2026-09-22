@@ -3,7 +3,7 @@
 Profile: standard
 Plan: `.specs/features/auth-web/plan.md`
 
-25 checks in 5 slices · 3 one-way doors · 0 open
+34 checks in 6 slices · 4 one-way doors · 0 open
 
 Proof command prefix, omitted below: `pnpm --filter @bens/web exec playwright test`. The e2e runs
 against `E2E_BASE_URL` (default `http://localhost:3000`, `pnpm dev`) with the docker compose
@@ -97,21 +97,57 @@ Proof: `python3 .specs/features/auth-web/ci-e2e-check.py`
 **C25** - O web não chama `/api/auth/*` fora de `lib/auth-client.ts` e o `_app` usa o hook gerado de `getMe` (Landing doors 1 e 2)
 Proof: `rg -n "/api/auth" apps/web/src --glob '!**/lib/auth-client.ts'` sem saída e `rg -n "getGetMeQueryOptions" apps/web/src/routes/_app.tsx` com saída
 
+### S6 - Rodada 2: o que o Verifier abriu · ~10 files · ~30 KB · ~8k
+
+**C26** - Depois de "Sair", voltar para `/dashboard` pelo histórico do navegador (navegação dentro da SPA, sem recarregar) termina em `/login?redirect=%2Fdashboard` sem mostrar "Olá," (AC 12, **rodada 2**: F3 sobreviveu porque C12 recarregava a página)
+Proof: `e2e/login.spec.ts -g "sign-out clears the cached account"`
+
+**C27** - Abrir `/dashboard` sem sessão faz exatamente 2 requests a `/api/v1/me` até a tela de login aparecer — uma do guard de `_app`, uma do guard de `/login` — ou seja, nenhum `401` é repetido, e o texto "Olá," não aparece em nenhum momento no documento (observado por um `MutationObserver` desde o carregamento) (AC 10, Impact, **rodada 2**: F4 sobreviveu; C10 só olhava o estado final)
+Proof: `e2e/login.spec.ts -g "redirects on the first 401 without rendering the page"`
+
+**C28** - Login com `redirect=/settings/security` de um usuário com 2FA passa por `/two-factor` e, com o código correto, termina em `/settings/security` (Landing 1b, **rodada 2**)
+Proof: `e2e/two-factor.spec.ts -g "keeps the redirect through the second factor"`
+
+**C29** - Cada linha do mapa de erros aparece na tela: código de backup errado → "Código inválido."; senha errada ao ativar e ao desativar o 2FA → "Senha incorreta."; código errado ao confirmar a ativação → "Código inválido."; conta bloqueada (`ACCOUNT_TEMPORARILY_LOCKED`, resposta simulada) → "Muitas tentativas. Aguarde alguns minutos e tente de novo."; erro sem código conhecido (cadastro respondendo `500`, simulado) → "Não foi possível concluir. Tente de novo." (AC 2, 20, 22, **rodada 2**; o mapa perde `TOKEN_EXPIRED`, `INVALID_TOKEN`, `PASSWORD_TOO_SHORT` e `PASSWORD_TOO_LONG`, que nenhuma tela mostra: o reset mostra texto fixo e o formulário valida o tamanho antes)
+Proof: `e2e/two-factor.spec.ts -g "shows each two-factor error"`
+Proof: `e2e/register.spec.ts -g "shows a generic message for an unknown error"`
+
+**C30** - O cadastro por `/register` envia `callbackURL: '/login'`, e "Reenviar e-mail" envia `callbackURL: '/login'` (corpo das requests observado no navegador) (AC 1, 3, **rodada 2**)
+Proof: `e2e/register.spec.ts -g "registers and asks to confirm the e-mail"`
+Proof: `e2e/register.spec.ts -g "resends the verification e-mail"`
+
+**C31** - Com `redirect=/\evil.example`, o login termina em `/dashboard` na mesma origem (AC 6, **rodada 2**)
+Proof: `e2e/login.spec.ts -g "ignores an external redirect"`
+
+**C32** - Enquanto o login espera a resposta, o botão mostra "Aguarde…" e fica desabilitado (Observable, **rodada 2**)
+Proof: `e2e/login.spec.ts -g "disables the button while signing in"`
+
+**C33** - O QR code de `/settings/security` é um `svg` (AC 18, **rodada 2**)
+Proof: `e2e/two-factor.spec.ts -g "shows the qr code, the key and the backup codes"`
+
+**C34** - `useMe` usa o hook gerado pelo Orval (`useGetMe`), sem query escrita à mão (CLAUDE.md "dados via hooks gerados", **rodada 2**)
+Proof: `rg -n "useGetMe\(\)" apps/web/src/hooks/use-me.ts` com saída e `rg -n "useSuspenseQuery|queryFn" apps/web/src/hooks/use-me.ts` sem saída
+
 ## Coverage
 
 | Set (size) | Member -> proof | Unproven |
 | --- | --- | --- |
 | rotas `(auth)` (6) | `/login` C5 · `/register` C1 · `/verify-email` C3 · `/forgot-password` C14 · `/reset-password` C15 · `/two-factor` C20 | - |
 | rotas `_app` (2) | `/dashboard` C10 · `/settings/security` C18 | - |
-| estados de `_app` (4) | carregando C13 · erro C13 · sem sessão C10 · sucesso C5 | - |
-| mensagens de erro do login (3) | credenciais C7 · e-mail não confirmado C8 · `429` C9 | - |
-| `redirect` inválido (3) | absoluto C6 · `//` C6 · sem barra C6 | - |
+| estados de `_app` (4) | carregando C13 · erro C13 · sem sessão C10, C27 · sucesso C5 | - |
+| estado de envio dos formulários (1) | "Aguarde…" + desabilitado C32 | - |
+| mapa `authErrorMessage` (8) | `INVALID_EMAIL_OR_PASSWORD` C7 · `EMAIL_NOT_VERIFIED` C8 · `429` C9 · `INVALID_CODE` C20, C29 · `INVALID_BACKUP_CODE` C29 · `INVALID_PASSWORD` C29 · `ACCOUNT_TEMPORARILY_LOCKED` C29 · fallback C29 | - |
+| falhas de `/settings/security` (3) | senha errada ao ativar C29 · senha errada ao desativar C29 · código errado na ativação C29 | - |
+| efeitos do "Sair" (3) | `sign-out` C12 · cache limpo C26 · navega para `/login` C12 | - |
+| `callbackURL` enviados (2) | cadastro C30 · reenviar C30 | - |
+| `redirect` inválido (4) | absoluto C6 · `//` C6 · sem barra C6 · `/\\` C31 | - |
+| `redirect` através do 2FA (1) | `/settings/security` C28 | - |
 | validação do cadastro (3) | senha curta C2 · e-mail inválido C2 · nome vazio C2 | - |
 | resultados do link de verificação (2) | válido C4 · inválido C4 | - |
 | resultados do reset (3) | sucesso C15 · link com `error` C16 · senhas diferentes C17 | - |
 | resultados do 2FA no login (3) | TOTP correto C20 · TOTP errado C20 · código de backup C21 | - |
 | startup config: `E2E_BASE_URL` (2 assemblies) | dev `http://localhost:3000` C23 · CI C24 | - |
-| Landing doors (3) | 1 client C25 · 2 guard C10, C25 · 3 e2e C23, C24 | - |
+| Landing doors (4) | 1 client C25 · 1b 2FA redirect C28 · 2 guard C10, C25, C27 · 3 e2e C23, C24 | - |
 
 - Claims naming a route or a message: every proof drives a real browser against the real server
 - No other check claims more than the single case its proof exercises
@@ -129,8 +165,8 @@ These rows are the bar for this build.
 
 Evidence:
 
-- `lib/auth-client.ts` `authErrorMessage`: maps ≥ 4 codes (credenciais, não confirmado, `429`, token inválido) + fallback -> decides, reached through C7, C8, C9, C16
-- `safeRedirect`: 3 rejection rules -> decides, reached through C6
+- `lib/auth-client.ts` `authErrorMessage`: 6 codes + `429` + fallback (rodada 2) -> decides, every row reached through a screen (C7, C8, C9, C20, C29)
+- `safeRedirect`: 3 rejection rules (`//`, `/\\`, not starting with `/`) -> decides, reached through C6, C31
 - the web has no unit test runner; adding one for two helpers is complexity the e2e already covers
 
 Cost: 25 e2e cases. Without these rows, the redirect sanitizer would be proven by one happy path.
@@ -142,7 +178,7 @@ Cost: 25 e2e cases. Without these rows, the redirect sanitizer would be proven b
 - idempotency: n/a - telas; o envio repetido é tratado pelo server (`auth-core`) e o botão fica desabilitado durante o envio
 - authorization: C10, C11
 - concurrency: n/a - uma aba, sem estado compartilhado além do cookie
-- data lifecycle: C12 (logout limpa o cache do `/me`)
+- data lifecycle: C26 (logout limpa o cache do `/me`)
 - dependency failure: C9, C13
 - state transitions: C19, C22 (2FA ligado ↔ desligado), C4 (não verificado → verificado)
 - observability: n/a - sem requisito de log no web nesta fase
@@ -153,4 +189,7 @@ Cost: 25 e2e cases. Without these rows, the redirect sanitizer would be proven b
 - **Boundary:** C1-C25 closed at the commit `feat(web): add the authentication screens` (gate green, 130 server tests; `pnpm e2e` 23 passed against `pnpm dev`; C24 structural check ok, the job itself runs on the first push to `main`)
 - **Settled mid-build:** the post-reset login flag is `?reset=true` (TanStack Router serializes search values as JSON; `'1'` became `%221%22`); the e2e clears the `RateLimit` table before each test because every browser request shares one client address; the shadcn CLI resolved `cn` to an npm package of that name - replaced by `@/lib/utils` and `@base-ui/react` added; plan Landing 1b (2FA redirect handled by the login form)
 - **Abandoned:** `onTwoFactorRedirect` in the auth client (circular import; see Landing 1b)
+- **Boundary:** C26-C34 closed at the commit `fix(web): prove the sign-out cache, the 401 redirect and every auth message` (round 2; gate green, 130 server tests; `pnpm e2e` 29 passed twice in a row)
+- **Settled mid-build:** C27 counts 2 `/me` requests (one per guard: `_app` and `/login`); the `authErrorMessage` map dropped the four codes no screen can receive; Orval's generated suspense hook does not compile under `exactOptionalPropertyTypes`, so `useMe` reads the generated `useGetMe()` from the cache the `_app` guard filled (C34 names `useGetMe`); a Playwright `unrouteAll` + `route` race made C13 flaky (the new route sometimes missed the next request) - one mode-driven handler per test instead
+- **Abandoned:** the per-operation `useSuspenseQuery` override in `orval.config.ts` (generated code fails the typecheck)
 

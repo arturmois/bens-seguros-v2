@@ -7,16 +7,14 @@ export const authClient = createAuthClient({ plugins: [twoFactorClient()] })
 
 type AuthError = { status: number; code?: string | undefined }
 
+// Only the codes a screen can receive: the password length is checked by the form first, and the
+// reset screen shows its own text for a bad link.
 const MESSAGES: Record<string, string> = {
   INVALID_EMAIL_OR_PASSWORD: 'E-mail ou senha incorretos.',
   EMAIL_NOT_VERIFIED: 'Confirme seu e-mail para entrar.',
-  INVALID_TOKEN: 'Link inválido ou expirado.',
-  TOKEN_EXPIRED: 'Link inválido ou expirado.',
   INVALID_CODE: 'Código inválido.',
   INVALID_BACKUP_CODE: 'Código inválido.',
   INVALID_PASSWORD: 'Senha incorreta.',
-  PASSWORD_TOO_SHORT: 'A senha precisa ter pelo menos 8 caracteres.',
-  PASSWORD_TOO_LONG: 'A senha pode ter no máximo 128 caracteres.',
   ACCOUNT_TEMPORARILY_LOCKED: 'Muitas tentativas. Aguarde alguns minutos e tente de novo.',
 }
 

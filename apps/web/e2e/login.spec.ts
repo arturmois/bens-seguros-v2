@@ -25,7 +25,12 @@ test.describe('login, logout e guard', () => {
   test('ignores an external redirect', async ({ page, api, baseURL }) => {
     const user = await verifiedUser(api)
 
-    for (const target of ['https://evil.example', '//evil.example', 'dashboard']) {
+    for (const target of [
+      'https://evil.example',
+      '//evil.example',
+      'dashboard',
+      '/\\evil.example',
+    ]) {
       await page.context().clearCookies()
       await signIn(page, user.email, user.password, `/login?redirect=${encodeURIComponent(target)}`)
       await expect(page, target).toHaveURL(`${baseURL}/dashboard`)
@@ -92,32 +97,97 @@ test.describe('login, logout e guard', () => {
     await expect(page).toHaveURL('/login?redirect=%2Fdashboard')
   })
 
+  test('sign-out clears the cached account', async ({ page, api }) => {
+    const user = await verifiedUser(api)
+    await signIn(page, user.email, user.password)
+    await expect(page.getByRole('heading', { name: `Olá, ${NAME}` })).toBeVisible()
+
+    await page.getByRole('button', { name: 'Sair' }).click()
+    await expect(page).toHaveURL('/login')
+    // Back in the history: the SPA navigates without reloading, so only a cleared cache sends the
+    // guard to the server again.
+    await page.goBack()
+
+    await expect(page).toHaveURL('/login?redirect=%2Fdashboard')
+    await expect(page.getByText('Olá,')).toHaveCount(0)
+  })
+
+  test('redirects on the first 401 without rendering the page', async ({ page, api: _api }) => {
+    await page.addInitScript(() => {
+      const seen = { greeting: false }
+      Object.assign(window, { __seen: seen })
+      new MutationObserver(() => {
+        if (document.body?.innerText.includes('Olá,')) seen.greeting = true
+      }).observe(document, { childList: true, subtree: true, characterData: true })
+    })
+    const meRequests: string[] = []
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname === '/api/v1/me') meRequests.push(request.url())
+    })
+
+    await page.goto('/dashboard')
+    await expect(page).toHaveURL('/login?redirect=%2Fdashboard')
+    await expect(page.getByRole('heading', { name: 'Entrar' })).toBeVisible()
+
+    // One from the _app guard, one from the /login guard; a retried 401 would add more.
+    expect(meRequests).toHaveLength(2)
+    expect(await page.evaluate(() => Reflect.get(window, '__seen').greeting)).toBe(false)
+  })
+
+  test('disables the button while signing in', async ({ page, api: _api }) => {
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    await page.route('**/api/auth/sign-in/email', async (route) => {
+      await held
+      await route.fulfill({
+        status: 401,
+        json: { code: 'INVALID_EMAIL_OR_PASSWORD', message: 'Invalid email or password' },
+      })
+    })
+    await page.goto('/login')
+    await page.getByLabel('E-mail').fill('alguem@example.com')
+    await page.getByLabel('Senha').fill('qualquer-senha')
+
+    await page.getByRole('button', { name: 'Entrar' }).click()
+
+    const waiting = page.getByRole('button', { name: 'Aguarde…' })
+    await expect(waiting).toBeVisible()
+    await expect(waiting).toBeDisabled()
+    release()
+    await expect(page.getByText('E-mail ou senha incorretos.')).toBeVisible()
+  })
+
   test('shows loading and error states for the account', async ({ page, api }) => {
     const user = await verifiedUser(api)
     await signIn(page, user.email, user.password)
     await expect(page).toHaveURL('/dashboard')
-
+    // One handler for the whole test (re-routing mid-test races in Playwright): the mode decides.
+    let mode: 'slow' | 'failing' | 'normal' = 'slow'
     await page.route('**/api/v1/me', async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+      if (mode === 'failing') {
+        await route.fulfill({
+          status: 500,
+          json: { error: { code: 'INTERNAL_ERROR', message: 'Erro interno do servidor.' } },
+        })
+        return
+      }
+      if (mode === 'slow') await new Promise((resolve) => setTimeout(resolve, 1500))
       await route.continue()
     })
+
     await page.goto('/dashboard')
     await expect(page.getByText('Carregando sua conta…')).toBeVisible()
     await expect(page.getByRole('heading', { name: `Olá, ${NAME}` })).toBeVisible()
 
-    await page.unroute('**/api/v1/me')
-    await page.route('**/api/v1/me', (route) =>
-      route.fulfill({
-        status: 500,
-        json: { error: { code: 'INTERNAL_ERROR', message: 'Erro interno do servidor.' } },
-      }),
-    )
+    mode = 'failing'
     await page.goto('/dashboard')
     await expect(page.getByText('Não foi possível carregar sua conta.')).toBeVisible({
       timeout: 15_000,
     })
 
-    await page.unroute('**/api/v1/me')
+    mode = 'normal'
     await page.getByRole('button', { name: 'Tentar de novo' }).click()
     await expect(page.getByRole('heading', { name: `Olá, ${NAME}` })).toBeVisible()
   })

@@ -8,8 +8,10 @@ test.describe('cadastro e verificação', () => {
     await page.getByLabel('Nome').fill(NAME)
     await page.getByLabel('E-mail').fill(email)
     await page.getByLabel('Senha').fill(PASSWORD)
+    const signUp = page.waitForRequest('**/api/auth/sign-up/email')
     await page.getByRole('button', { name: 'Criar conta' }).click()
 
+    expect((await signUp).postDataJSON()).toMatchObject({ email, callbackURL: '/login' })
     await expect(page).toHaveURL(`/verify-email?email=${encodeURIComponent(email)}`)
     await expect(page.getByText(`Enviamos um link de confirmação para ${email}.`)).toBeVisible()
     await expect
@@ -38,7 +40,9 @@ test.describe('cadastro e verificação', () => {
     const { email } = await signUp(api)
     await page.goto(`/verify-email?email=${encodeURIComponent(email)}`)
 
+    const resend = page.waitForRequest('**/api/auth/send-verification-email')
     await page.getByRole('button', { name: 'Reenviar e-mail' }).click()
+    expect((await resend).postDataJSON()).toMatchObject({ email, callbackURL: '/login' })
     await expect(page.getByText('E-mail reenviado.')).toBeVisible()
 
     await page.route('**/api/auth/send-verification-email', (route) =>
@@ -48,6 +52,21 @@ test.describe('cadastro e verificação', () => {
     await expect(
       page.getByText('Muitas tentativas. Aguarde alguns minutos e tente de novo.'),
     ).toBeVisible()
+  })
+
+  test('shows a generic message for an unknown error', async ({ page, api: _api }) => {
+    await page.route('**/api/auth/sign-up/email', (route) =>
+      route.fulfill({ status: 500, json: { message: 'Internal Server Error' } }),
+    )
+    await page.goto('/register')
+
+    await page.getByLabel('Nome').fill(NAME)
+    await page.getByLabel('E-mail').fill(uniqueEmail())
+    await page.getByLabel('Senha').fill(PASSWORD)
+    await page.getByRole('button', { name: 'Criar conta' }).click()
+
+    await expect(page.getByText('Não foi possível concluir. Tente de novo.')).toBeVisible()
+    await expect(page).toHaveURL('/register')
   })
 
   test('the e-mail link signs in', async ({ page, api }) => {

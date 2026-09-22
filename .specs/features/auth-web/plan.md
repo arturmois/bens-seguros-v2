@@ -55,6 +55,7 @@ Rotas do web (consumidas pelo navegador e pelos links dos e-mails):
 | `/reset-password` | search `token?`, `error?` | formulário de senha nova | `200` (SPA) |
 | `/two-factor` | — | formulário do código TOTP ou de backup | `200` (SPA) |
 | `/dashboard`, `/settings/security` | cookie | páginas autenticadas | `200` (SPA); sem sessão → `/login?redirect=` |
+| `/two-factor` (rodada 2) | search `redirect?` | depois do código → `redirect` interno ou `/dashboard` | `200` (SPA) |
 
 ## Landing
 
