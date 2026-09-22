@@ -176,6 +176,24 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: scripts/staging-smoke.mjs:532-547 (specs)
 - last seen: 2026-09-22T17:20:33Z
 
+### L-028 - When a check names N cases of a decision table, the cited proof must assert every case, including the all-false baseline pair
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `auth` · harmful: 0
+- features: org-core
+- evidence: C19 me.spec.ts:160-164 (auth)
+- last seen: 2026-09-22T21:30:24Z
+
+### L-029 - Fault-inject the uncovered member of a boolean decision table; a green named proof that omits that member is not coverage
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `auth` · harmful: 0
+- features: org-core
+- evidence: session-context.ts:42 vs C19 (auth)
+- last seen: 2026-09-22T21:30:24Z
+
+### L-030 - Recompute Coverage members from the claim; a member attributed to a proof that never asserts it is unproven
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `verification` · harmful: 0
+- features: org-core
+- evidence: Coverage isSuperAdmin pairs / neither (verification)
+- last seen: 2026-09-22T21:30:24Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

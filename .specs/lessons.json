@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 28,
+  "next_id": 31,
   "lessons": [
     {
       "id": "L-001",
@@ -491,6 +491,60 @@
       ],
       "created": "2026-09-22T17:20:33Z",
       "last_seen": "2026-09-22T17:20:33Z"
+    },
+    {
+      "id": "L-028",
+      "key": "ac_gap::when a check names n cases of a decision table the cited proof must assert every case including the all false baseline pair",
+      "text": "When a check names N cases of a decision table, the cited proof must assert every case, including the all-false baseline pair",
+      "signal": "ac_gap",
+      "scope": "auth",
+      "status": "candidate",
+      "features": [
+        "org-core"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "C19 me.spec.ts:160-164 (auth)"
+      ],
+      "created": "2026-09-22T21:30:24Z",
+      "last_seen": "2026-09-22T21:30:24Z"
+    },
+    {
+      "id": "L-029",
+      "key": "surviving_mutant::fault inject the uncovered member of a boolean decision table a green named proof that omits that member is not coverage",
+      "text": "Fault-inject the uncovered member of a boolean decision table; a green named proof that omits that member is not coverage",
+      "signal": "surviving_mutant",
+      "scope": "auth",
+      "status": "candidate",
+      "features": [
+        "org-core"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "session-context.ts:42 vs C19 (auth)"
+      ],
+      "created": "2026-09-22T21:30:24Z",
+      "last_seen": "2026-09-22T21:30:24Z"
+    },
+    {
+      "id": "L-030",
+      "key": "ac_gap::recompute coverage members from the claim a member attributed to a proof that never asserts it is unproven",
+      "text": "Recompute Coverage members from the claim; a member attributed to a proof that never asserts it is unproven",
+      "signal": "ac_gap",
+      "scope": "verification",
+      "status": "candidate",
+      "features": [
+        "org-core"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "Coverage isSuperAdmin pairs / neither (verification)"
+      ],
+      "created": "2026-09-22T21:30:24Z",
+      "last_seen": "2026-09-22T21:30:24Z"
     }
   ]
 }

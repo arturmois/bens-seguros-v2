@@ -32,5 +32,5 @@ Ordem. Cada uma: `plan.md` revisado → `checks.md` → build → Verifier. Perf
 
 ## Handoff
 
-- `org-core`: código e checks escritos; Verifier ainda não rodou.
+- `org-core`: `verification.md` PASS (`8869be9`). Próxima feature: `invitations`.
 - Fase 3 fechada: `signup-gates` e `terms` com `verification.md` PASS.
