@@ -3,7 +3,7 @@
 > Base: [`architecture.md`](./architecture.md), ADRs 001–010 e a checklist de [`migration.md`](./migration.md).
 > Cada fase termina com o CI verde (`lint`, `typecheck`, `test`, `build`) e com a pergunta: **"Existe alguma abstração que podemos remover?"**
 > Staging na VPS a partir da Fase 3, para cada fase ser validada num ambiente real, e não só no final.
-> **Processo:** no início de cada fase ou feature, o agente escolhe e declara o nível de spec (nenhum, `tlc-spec-lean` ou `tlc-spec-driven`), seguindo os critérios do `CLAUDE.md`. Expectativa: nenhum para as Fases 1–2 e 13; lean para as demais; driven só se a fase se mostrar grande e incerta (candidatas: 5 e 11).
+> **Processo:** no início de cada fase ou feature, o agente escolhe e declara o nível de spec (`tlc-spec-lean` ou `tlc-spec-driven`; toda implementação usa um dos dois), seguindo os critérios do `CLAUDE.md`. Expectativa: lean em todas as fases; driven só se a fase se mostrar grande e incerta (candidatas: 5 e 11). As Fases 1–2 foram feitas antes desta regra; o isolamento de tenant da Fase 2 foi refeito com lean (`.specs/features/tenant-rls`).
 
 ```text
 1 Foundation ─▶ 2 Infrastructure ─▶ [H1] ─▶ 3 Auth ─▶ 4 Tenancy & Orgs ─▶ [H2] ─▶ 5 Billing

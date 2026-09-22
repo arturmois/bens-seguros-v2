@@ -29,12 +29,11 @@ Legado (somente referência de regras, não de arquitetura): `github.com/arturmo
 
 ## Processo por feature: escolher o nível de spec
 
-Ao receber o prompt de uma feature ou fase, **antes de codar**, avalie e declare em 1–2 linhas qual processo usar e por quê. Depois siga-o:
+Ao receber o prompt de uma feature ou fase, **antes de codar**, declare em 1–2 linhas qual processo usar e por quê. Depois siga-o até o Verifier. **Toda implementação usa um dos dois, sem exceção** (inclusive infraestrutura, tooling e bug fix): o Verifier independente e o histórico em `.specs/` são o motivo.
 
 | Processo | Quando usar |
 | --- | --- |
-| **Nenhum** (prompt direto) | Scaffolding, tooling ou infraestrutura técnica, com critérios de aceite já definidos no `roadmap.md`. Poucas regras de negócio. Mudança pequena ou bug fix |
-| **`tlc-spec-lean`** (padrão para domínio) | Feature com regras de negócio: máquina de estados, cálculo, permissões ou carteira, integração externa. Os itens da checklist do `migration.md` viram critérios EARS verificáveis |
+| **`tlc-spec-lean`** (padrão) | Toda mudança que não pede o driven, inclusive infraestrutura e bug fix. Mudança pequena (menos de ~3 arquivos, sem porta de mão única): só `checks.md` com `## Intent`, como a skill permite. Em feature com regras de negócio: máquina de estados, cálculo, permissões ou carteira, integração externa. Os itens da checklist do `migration.md` viram critérios EARS verificáveis |
 | **`tlc-spec-driven`** | Só quando a feature é grande **e** incerta: muitas partes móveis, várias sessões de trabalho, decisões ainda abertas que precisam de registro (ex.: o chat inteiro, a integração com o Asaas). Justifique por que o lean não basta |
 
 Na dúvida entre lean e driven, escolha o **lean**. Se a escolha envolver decisão de produto, pergunte ao usuário (em pt-BR, uma pergunta por vez, com recomendação).

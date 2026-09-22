@@ -146,7 +146,7 @@ Toda tabela nova com tenant nasce protegida, ou o teste falha.
 | repositories deixam de filtrar `organizationId` | sim, o RLS é a garantia; os testes `withTwoTenants` provam por endpoint | é o que limpa o código; manter o filtro seria redundância que vira regra esquecida | y |
 | sem tenant na sessão | erro ruidoso (`current_setting` sem `missing_ok`) em vez de lista vazia | falha fechada e visível; lista vazia esconderia o esquecimento | n |
 | banco de dev existente | eu rodo o script de roles uma vez e recrio o schema `pgboss` de dev (dados de fila de dev, descartáveis) | necessário para os testes; é aditivo e reversível | n |
-| tenant da sessão trocado em runtime | risco aceito: um `SET app.tenant_id` montado com string dinâmica escapa do teste de arquitetura (critério 17); a ameaça é bug de código, não código malicioso, e um `SET` deliberado passa por revisão de PR | fechar exigiria resetar o setting a cada checkout do pool, complexidade sem problema concreto hoje (rodada 2 do Verifier, report-only) | n |
+| tenant da sessão trocado em runtime | risco aceito: código da aplicação que fixar `app.tenant_id` com string dinâmica escapa do teste de arquitetura (critério 17) — um `set_config(…, true)` dentro de `withTenant(A)` troca o tenant pelo resto da transação, e um `SET` de sessão contamina a conexão do pool | a ameaça é bug, não código malicioso; um `set_config` deliberado passa por revisão de PR; fechar no banco (marca da transação na política) é complexidade sem problema concreto hoje | y (usuário, 2026-09-22) |
 | senha do role em dev | `bens_app` / `bens_app` no `docker-compose` e no `.env.example`, como as demais credenciais de dev | paridade com o resto do compose | n |
 
 **Open questions:** none - all resolved or logged above.

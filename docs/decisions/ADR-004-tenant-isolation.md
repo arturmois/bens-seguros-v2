@@ -68,7 +68,7 @@ tenant. Custo medido: ~1 ms por transação.
 - Cada tabela tenant-scoped pede ~4 linhas de SQL na sua migration (o Prisma não modela RLS); o teste de schema pega o esquecimento.
 - Tenant errado vira lista vazia ou "não encontrado", não um erro que aponta a query; os testes `withTwoTenants` compensam.
 - Toda leitura de tabela tenant-scoped abre uma transação.
-- Código da aplicação que fizer `SET app.tenant_id` (sessão) contamina a conexão do pool; o teste de arquitetura só pega o texto literal. Risco aceito: a ameaça é bug, não código malicioso, e isso passa por revisão.
+- Código da aplicação que fixar `app.tenant_id` por conta própria troca o tenant: um `set_config(…, true)` dentro de `withTenant(A)` vale para o resto daquela transação, e um `SET` de sessão contamina a conexão do pool para as queries seguintes. O teste de arquitetura só pega o texto literal. Risco aceito pelo usuário (2026-09-22): a ameaça é bug, não código malicioso; ninguém escreve `set_config` sem querer, e isso passa por revisão de PR.
 
 ## Consequences
 - `Organization` fica sem RLS até a Fase 4, que decide sua política junto com `Member`/`Invitation` (`app.user_id`).
