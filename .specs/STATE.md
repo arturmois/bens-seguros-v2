@@ -9,6 +9,7 @@
 | AD-003 | E-mail sai só pelo job `email.send`, com payload serializável `{ template, to, props }`; `template` é uma chave validada com Zod em `src/emails/send-email.tsx`, que monta assunto + elemento React no worker | active | `.specs/features/auth-core/plan.md` (Landing 3) |
 | AD-004 | Checagem de `Origin` própria em todo método mutável, em qualquer caminho (403 `ORIGIN_NOT_ALLOWED`; rodada 2 do `auth-core`: o filtro por prefixo da URL crua era contornável), além da do Better Auth. Webhooks (Fase 5+) entram como exceção explícita quando existirem | active | `.specs/features/auth-core/plan.md` (Landing 7) |
 | AD-005 | Aceite pendente de termos bloqueia rota de tenant: o `requireTenant` da Fase 4 responde `403 TERMS_NOT_ACCEPTED`; `/me` e o próprio aceite ficam liberados (só `requireSession`) | active | `.specs/features/terms/plan.md` (Landing 3) |
+| AD-006 | RLS de quem ainda não está dentro do tenant. `Member` (e, no mesmo formato, `Invitation`) usa a política `tenant_isolation`: `USING` é `organizationId = app.tenant_id` ou `userId = app.user_id` (`current_setting(..., true)`); `WITH CHECK` é só o tenant. `Organization` não tem `organizationId`; a política homônima libera a linha quando `id = app.tenant_id` ou existe `Member` daquele `app.user_id`. `app.user_id` só é setado em `database.ts` (`withUser`). Sem isso a troca de organização não lê o próprio membro, e sem RLS qualquer sessão lista as corretoras | active | `.specs/features/org-core/plan.md` (Landing 5 e 6) |
 
 ## Phase 3 — features
 
@@ -20,6 +21,16 @@ Ordem e escopo. Cada feature tem `plan.md` → `checks.md` → build → Verifie
 4. `signup-gates` — `SIGNUP_MODE`, bloqueio de e-mail temporário, Turnstile (server + web).
 5. `terms` — aceite versionado de termos e privacidade (server + web).
 
+## Phase 4 — features
+
+Ordem. Cada uma: `plan.md` revisado → `checks.md` → build → Verifier. Perfil standard.
+
+1. `org-core` — onboarding (org + OWNER + trial), teto de orgs, troca da ativa, `requireTenant`, RLS de `Organization`/`Member` (AD-006), `permissions[]` no `/me`, fim do módulo `examples`.
+2. `invitations` — convite com papel e expiração, e-mail `email.send`, aceite checa `maxUsers` do plano.
+3. `audit` — `audit.record` sem PII, papel e OWNER na API, transferência de carteira com o que existir, `scopeFor`, `withTwoSalespeople`.
+4. `org-web` — onboarding, seletor e settings, depois dos termos.
+
 ## Handoff
 
-- Fase 3 em planejamento: os 5 `plan.md` escritos, aguardando revisão do usuário antes dos `checks.md`.
+- `org-core`: `plan.md` escrito, aguardando revisão antes dos `checks.md`.
+- Fase 3 fechada: `signup-gates` e `terms` com `verification.md` PASS.
