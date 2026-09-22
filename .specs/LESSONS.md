@@ -158,6 +158,24 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: C15; docs/runbooks/staging.md:46-47 (deploy)
 - last seen: 2026-09-22T17:02:29Z
 
+### L-025 - Prove a branch selected by an environment variable with a case the fallback path cannot satisfy
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `deploy` · harmful: 0
+- features: staging
+- evidence: fault R2-1; scripts/staging-smoke.mjs:348-364 (deploy)
+- last seen: 2026-09-22T17:20:33Z
+
+### L-026 - Prove a pruned or bundled image by loading every module the process can load, not only by a health check on the boot path
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `deploy` · harmful: 0
+- features: staging
+- evidence: fault R2-4; scripts/staging-smoke.mjs:481-505 (deploy)
+- last seen: 2026-09-22T17:20:33Z
+
+### L-027 - Add every new smoke step to the list the all command runs, or the suite silently skips the check
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `specs` · harmful: 0
+- features: staging
+- evidence: scripts/staging-smoke.mjs:532-547 (specs)
+- last seen: 2026-09-22T17:20:33Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

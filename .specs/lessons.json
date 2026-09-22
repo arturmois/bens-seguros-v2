@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 25,
+  "next_id": 28,
   "lessons": [
     {
       "id": "L-001",
@@ -437,6 +437,60 @@
       ],
       "created": "2026-09-22T17:02:29Z",
       "last_seen": "2026-09-22T17:02:29Z"
+    },
+    {
+      "id": "L-025",
+      "key": "surviving_mutant::prove a branch selected by an environment variable with a case the fallback path cannot satisfy",
+      "text": "Prove a branch selected by an environment variable with a case the fallback path cannot satisfy",
+      "signal": "surviving_mutant",
+      "scope": "deploy",
+      "status": "candidate",
+      "features": [
+        "staging"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "fault R2-1; scripts/staging-smoke.mjs:348-364 (deploy)"
+      ],
+      "created": "2026-09-22T17:20:33Z",
+      "last_seen": "2026-09-22T17:20:33Z"
+    },
+    {
+      "id": "L-026",
+      "key": "surviving_mutant::prove a pruned or bundled image by loading every module the process can load not only by a health check on the boot path",
+      "text": "Prove a pruned or bundled image by loading every module the process can load, not only by a health check on the boot path",
+      "signal": "surviving_mutant",
+      "scope": "deploy",
+      "status": "candidate",
+      "features": [
+        "staging"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "fault R2-4; scripts/staging-smoke.mjs:481-505 (deploy)"
+      ],
+      "created": "2026-09-22T17:20:33Z",
+      "last_seen": "2026-09-22T17:20:33Z"
+    },
+    {
+      "id": "L-027",
+      "key": "ac_gap::add every new smoke step to the list the all command runs or the suite silently skips the check",
+      "text": "Add every new smoke step to the list the all command runs, or the suite silently skips the check",
+      "signal": "ac_gap",
+      "scope": "specs",
+      "status": "candidate",
+      "features": [
+        "staging"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "scripts/staging-smoke.mjs:532-547 (specs)"
+      ],
+      "created": "2026-09-22T17:20:33Z",
+      "last_seen": "2026-09-22T17:20:33Z"
     }
   ]
 }

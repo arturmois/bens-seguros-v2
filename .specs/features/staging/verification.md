@@ -2,134 +2,148 @@
 
 **Verdict**: FAIL
 **Profile**: standard
-**Diff range**: 7a7da47..7629514
-**Round**: 1 - full
+**Diff range**: 7a7da47..b04cbff (fix range 7629514..b04cbff)
+**Round**: 2 - scoped
 **Verifier**: independent sub-agent (author != verifier)
 
-All 15 checks are green at `7629514` with a located assertion each, and all 5 faults were killed.
-The verdict is FAIL on coverage: the server image carries the Prisma CLI, which is the alternative
-Landing door 1 rejected, and no check looks at what is in the image. The provisioning script's
-`PROVISION_DATABASE_URL` branch, which both CI jobs use, is also proven by no check. That leaves
-one `Test policy` row unmet.
+Round 1 (at `7629514`) was FAIL: Landing door 1 unproven and contradicted (the runtime image
+carried the Prisma CLI, `next`, `playwright-core`, native `typescript`, 866 MB), the provisioning
+script's `PROVISION_DATABASE_URL` branch unproven, one `Test policy` row unmet, and two precision
+gaps (C13's proof named a file that did not exist, C15's runbook claimed a Caddy healthcheck).
 
-Real-tree baseline `git status --porcelain` was empty before the run. It was still empty after the
-fault injection, the worktree removal and the gate. The stack was restored from the real tree, and
-`health`, `non-root`, `headers`, `spa` and `forwarded-for` passed again. The Caddyfile inside the
-running `caddy` container matches the real `Caddyfile` (`diff` empty). Nothing was pushed: the
-branch `feat/phase-2-infrastructure` is 24 commits ahead of its remote. No VPS action was taken.
+The fix commit `b04cbff` adds `apps/server/scripts/prune-runtime.mjs` (run in the `prod-deps`
+stage), the smoke steps `image` (C17) and the `PROVISION_DATABASE_URL` assertions inside
+`provision` (C16), plan Landing 1b, and the wording fixes in `checks.md`, `plan.md` and the
+runbook. The image is now 260 MB.
+
+Round 2 verdict is FAIL on two grounded findings, both about the new proofs rather than the new
+code: C16's assertions pass with the `PROVISION_DATABASE_URL` branch disabled (surviving mutant),
+and C17's "the pruned server answers `/api/health`" does not reach the modules the server loads
+off the boot path - a prune that deletes `@react-pdf/renderer` passes `image`, `health` and
+`cookie`. `image` is also absent from the `all` list, so the run the runbook and the Handoff call
+the local validation never executes C17.
+
+All proofs re-ran in full at `b04cbff`. Real-tree baseline `git status --porcelain` was empty
+before the run, and empty again after the faults, the worktree removal and the gate. The stack was
+restored from the real tree: `health` and `image` pass and the runtime probe below is green again.
+Nothing was pushed or deployed; the `opasuite` container was not touched.
 
 ## Binding sources
 
+Carried from `7629514` (the fix touched no binding source; the Dockerfile change stays inside
+architecture §10's "multi-stage, runtime não-root"). Re-checked the two rows the fix could move.
+
 | Source | Opened | Contradiction | Uncovered |
 | --- | --- | --- | --- |
-| `docs/decisions/ADR-008-deployment.md` | yes - services caddy/server/postgres/migrate, same origin, `/api/*` + `/socket.io/*` to server | none - GHCR/tag pipeline, backup, Sentry, `/api/ready` and `/embed/*` are deferred by the plan's Out of scope / door 5 | - |
-| `docs/decisions/ADR-004-tenant-isolation.md` | yes - item 2 (runtime as `bens_app`, only the Prisma CLI as owner) | none - `docker-compose.prod.yml:54` `DATABASE_URL` is `bens_app`, `:34` `MIGRATION_DATABASE_URL` is the owner, C6 asserts `rolsuper`/`rolbypassrls` false | - |
-| `docs/architecture.md` §7 security controls | yes - "Headers: helmet na API; CSP e X-Frame-Options no Caddy para a SPA" | none - `apps/server/src/app.ts:47` registers helmet; observed through Caddy, `GET /api/health` also carries HSTS, CSP, nosniff, `X-Frame-Options: DENY` (one value each; the Caddy `header` block at `Caddyfile:32-39` replaces them site-wide) | - |
-| `docs/architecture.md` §10 deploy | yes - "node:24-slim, multi-stage (deps -> prisma generate -> tsc -> runtime não-root)" | none - `apps/server/Dockerfile:5,11-18,31-41`; C5 uid 1000 | - |
-| `prompts/prompt-03.md` staging bullet | yes - compose + Caddyfile validated locally + provisioning script, stop before deploy | none - all three delivered; no push/deploy (branch ahead of origin by 24) | - |
-| `CLAUDE.md` | yes - lean process, gate, secrets via config | none | - |
+| `docs/architecture.md` §10 deploy | yes - verified at `b04cbff`: `apps/server/Dockerfile:5,11-18,26-34,35-45` still multi-stage on `node:24.21.0-slim` with `USER node` | none | - |
+| `docs/decisions/ADR-004-tenant-isolation.md` | yes - verified at `b04cbff`: `docker-compose.prod.yml:34,54`; the pruned image keeps `@prisma/client` + `@prisma/adapter-pg` and drops only the CLI | none | - |
+| `docs/decisions/ADR-008-deployment.md`, `docs/architecture.md` §7, `prompts/prompt-03.md`, `CLAUDE.md` | carried from `7629514` - opened there, no contradiction, nothing uncovered | none | - |
 
 ## Checks
 
-All proofs ran in one invocation: `node scripts/staging-smoke.mjs all`, exit 0. It printed 48
-`ok -` lines and `pnpm e2e` reported `29 passed (1.1m)` against `https://localhost:8443`. Every
-step is in the new file `scripts/staging-smoke.mjs`, so each proof exercises code from this diff.
+`node scripts/staging-smoke.mjs all` at `b04cbff`, exit 0: 50 `ok -` lines, `pnpm e2e` 29 passed
+against `https://localhost:8443`. `all` does not include `image`, so C17 ran separately:
+`node scripts/staging-smoke.mjs image`, exit 0, 10 `ok -` lines.
+
+C1-C15 are carried from `7629514` for their claim and re-run at `b04cbff`; citations refreshed
+because the new steps moved line numbers.
 
 | Check | Claim | Proof run | Evidence | Result |
 | --- | --- | --- | --- | --- |
-| C1 | migrate exits 0 before server starts; health 200 `{"status":"ok"}`; 502 with server down | `staging-smoke.mjs all` (step `health`) exit 0 | `scripts/staging-smoke.mjs:187` - `assert(migrateExit === '0', …)`; `:188-189` - `containerTime('migrate','FinishedAt') < containerTime('server','StartedAt')`; `:193-194` - `health.status === 200` and `JSON.stringify(await health.json()) === '{"status":"ok"}'`; `:199` - `down.status === 502` | PASS |
-| C2 | `/login` 200 SPA; hashed asset immutable; missing asset 404 | step `spa` | `scripts/staging-smoke.mjs:210-211` - `login.status === 200`, `html.includes('<div id="root">')`; `:216-217` - `found.headers.get('cache-control') === 'public, max-age=31536000, immutable'`; `:221` - `missing.status === 404` | PASS |
-| C3 | `http://` -> 308 `Location: https://localhost/` | step `redirect` | `scripts/staging-smoke.mjs:227` - `response.status === 308`; `:231` - `response.headers.get('location') === 'https://localhost/'` | PASS |
-| C4 | prod file alone publishes no server/postgres port | step `ports` | `scripts/staging-smoke.mjs:239-248` - `docker compose -f docker-compose.prod.yml … config` (prod file alone, no override); `:251` - `config.services.server.ports === undefined`; `:255` - `config.services.postgres.ports === undefined` | PASS |
-| C5 | server uid != 0 | step `non-root` | `scripts/staging-smoke.mjs:268` - `assert(uid !== '0', …)` (observed uid 1000) | PASS |
-| C6 | fresh DB: `x` creates NOSUPERUSER NOBYPASSRLS role that logs in with `x`; empty password exits != 0, no role | step `provision` | `scripts/staging-smoke.mjs:338-339` - `empty.status !== 0`, `roles() === ''`; `:341-343` - `run('senha-x').status === 0`, `roles() === 'false\|false'`, `login('senha-x')`. Login goes over the container IP (`:321-332`), so pg_hba `trust` on 127.0.0.1 does not apply. `:347` proves a password is actually checked | PASS |
-| C7 | re-run with `y` exits 0; `y` logs in, `x` refused | step `provision` | `scripts/staging-smoke.mjs:345-347` - `run('senha-y').status === 0`, `login('senha-y')`, `!login('senha-x')` | PASS |
-| C8 | `__Secure-` session cookie, Secure, HttpOnly, SameSite=Lax, Path=/, no Domain | step `cookie` | `scripts/staging-smoke.mjs:356` - `item.startsWith('__Secure-better-auth.session_token=')`; `:361-367` - regex per attribute `/;\s*Secure/i`, `/;\s*HttpOnly/i`, `/;\s*SameSite=Lax/i`, `/;\s*Path=\/(;\|$)/i`; `:369` - `!/;\s*Domain=/i.test(cookie)` | PASS |
-| C9 | `Origin: https://evil.example` -> 403 | step `origin` | `scripts/staging-smoke.mjs:379` - `response.status === 403`. The same request with `origin: BASE` returns 401 in step `forwarded-for`, so the 403 comes from the Origin check | PASS |
-| C10 | 11 sign-ins, a different XFF on each: first 10 not 429, 11th 429 | step `forwarded-for` | `scripts/staging-smoke.mjs:390` - `'x-forwarded-for': \`203.0.113.${i + 1}\`` (a different value on every request); `:395` - `!statuses.slice(0, 10).includes(429)`; `:398` - `statuses[10] === 429`. The bucket is IP+path, not the e-mail (`apps/server/src/modules/auth/auth.ts:80-97`), so the 429 needs a fixed IP | PASS |
-| C11 | `/api/docs` 404 | step `docs` | `scripts/staging-smoke.mjs:405` - `response.status === 404`. The route exists only when `NODE_ENV !== 'production'` (`apps/server/src/app.ts:62-64`) | PASS |
-| C12 | door 5 headers, literal values | step `headers` | `scripts/staging-smoke.mjs:411-420` - `response.headers.get(name) === value` for the 5 headers with the plan's literal strings | PASS |
-| C13 | `pnpm e2e` over HTTPS exits 0 (register, verify, login, logout, reset, 2FA) | step `e2e` (the checks name `scripts/staging-smoke.sh e2e`, a file that does not exist; see gaps) | `scripts/staging-smoke.mjs:434` - `result.status === 0`. `apps/web/playwright.config.ts:14` - `baseURL: process.env.E2E_BASE_URL`. 29 passed: `login.spec.ts` (12, incl. `signs out`), `password-reset.spec.ts` (4), `register.spec.ts` (6), `two-factor.spec.ts` (7) | PASS |
-| C14 | Socket.IO websocket via `wss://` with the session cookie connects | step `socket` | `scripts/staging-smoke.mjs:446` - `transports: ['websocket']`; `:457-458` - `outcome === 'connected'` | PASS |
-| C15 | runbook sections in order; cited files exist | step `runbook` | `scripts/staging-smoke.mjs:469-476` - every section found, `index > found[i - 1]`; `:483` - `text.includes(file) && existsSync(file)` | PASS |
+| C1 | migrate exits 0 before the server starts; health 200 `{"status":"ok"}`; 502 with the server down | `all` (step `health`) | `scripts/staging-smoke.mjs:187` - `migrateExit === '0'`; `:188-191` - `containerTime('migrate','FinishedAt') < containerTime('server','StartedAt')`; `:193-194` - `health.status === 200`, `JSON.stringify(await health.json()) === '{"status":"ok"}'`; `:199` - `down.status === 502` | PASS |
+| C2 | `/login` 200 SPA; hashed asset immutable; missing asset 404 | step `spa` | `:210-211` - `login.status === 200`, `html.includes('<div id="root">')`; `:216-217` - `found.headers.get('cache-control') === 'public, max-age=31536000, immutable'`; `:221` - `missing.status === 404` | PASS |
+| C3 | `http://` -> 308 `Location: https://localhost/` | step `redirect` | `:227` - `response.status === 308`; `:230-231` - `response.headers.get('location') === 'https://localhost/'` | PASS |
+| C4 | the prod file alone publishes no server/postgres port | step `ports` | `:239-248` - `docker compose -f docker-compose.prod.yml … config` (prod file alone); `:250-251` - `config.services.server.ports === undefined`; `:254-255` - `config.services.postgres.ports === undefined` | PASS |
+| C5 | server uid != 0 | step `non-root` | `:268` - `assert(uid !== '0', …)`, observed uid 1000 | PASS |
+| C6 | fresh DB: creates `bens_app` NOSUPERUSER NOBYPASSRLS, logs in; empty password exits != 0 and creates nothing | step `provision` | `:338-339` - `empty.status !== 0`, `roles() === ''`; `:341-343` - `run('senha-x').status === 0`, `roles() === 'false\|false'`, `login('senha-x')`; login goes over the container IP (`:321-335`), so the image's `trust` on 127.0.0.1 does not apply | PASS |
+| C7 | re-run with `y` exits 0; `y` logs in, `x` refused | step `provision` | `:345-347` - `run('senha-y').status === 0`, `login('senha-y')`, `!login('senha-x')` | PASS |
+| C8 | `__Secure-` cookie with Secure, HttpOnly, SameSite=Lax, Path=/, no Domain | step `cookie` | `:373` - `item.startsWith('__Secure-better-auth.session_token=')`; `:378-384` - one regex per attribute; `:386` - `!/;\s*Domain=/i.test(cookie)` | PASS |
+| C9 | `Origin: https://evil.example` -> 403 | step `origin` | `:396` - `response.status === 403`; the same request with the real origin returns 401 in `forwarded-for` | PASS |
+| C10 | 11 sign-ins with a different XFF each: first 10 not 429, 11th 429 | step `forwarded-for` | `:407` - `'x-forwarded-for': 203.0.113.${i + 1}`; `:411-412` - `!statuses.slice(0, 10).includes(429)`; `:415` - `statuses[10] === 429` | PASS |
+| C11 | `/api/docs` 404 | step `docs` | `:422` - `response.status === 404`; the route exists only when `NODE_ENV !== 'production'` (`apps/server/src/app.ts:62-64`) | PASS |
+| C12 | door 5 headers, literal values | step `headers` | `:428-437` - `response.headers.get(name) === value` over the 5 header literals | PASS |
+| C13 | `pnpm e2e` over HTTPS exits 0 | step `e2e` (proof line now reads `node scripts/staging-smoke.mjs e2e`, `checks.md:66`) | `:451` - `result.status === 0`; `apps/web/playwright.config.ts:14` - `baseURL: process.env.E2E_BASE_URL`; 29 passed (login 12, reset 4, register 6, 2FA 7) | PASS |
+| C14 | Socket.IO over `wss://` with the session cookie connects | step `socket` | `:463` - `transports: ['websocket']`; `:474-475` - `outcome === 'connected'` | PASS |
+| C15 | runbook sections in order; cited files exist | step `runbook` | `:513-521` - sections found and increasing; `:527` - `text.includes(file) && existsSync(file)`. The round-1 inaccuracy is fixed: `docs/runbooks/staging.md:46-47` now says `caddy` `running` "(sem healthcheck)" | PASS |
+| C16 | the `PROVISION_DATABASE_URL` run exits 0 and `bens_app` logs in with that password | step `provision` | `:363` - `byUrl.status === 0`; `:364` - `login('senha-z')`. **Non-discriminating**: the assertions also pass when the branch is removed (fault R2-1), because the throwaway container falls back to the local socket as `postgres` | PASS (assertion passes, but it does not settle the claim - see Faults and gaps) |
+| C17 | no prisma CLI / next / @next swc / playwright(-core) / typescript / @prisma studio-core / vitest; < 400 MB; the pruned server answers `/api/health` | `node scripts/staging-smoke.mjs image` exit 0 (not part of `all`) | `:490-499` - `present.length === 0` for each of the 8 names; `:502` - `Number(size) < 400` (observed 260); `:504` - `health.status === 200` | PASS for the "absent" half; the "the pruned server still works" half is settled only for the boot path (see gaps) |
 
 ## Coverage
 
+Recomputed at `b04cbff` for the rows the fix touched (provisioning, Landing doors, startup
+config, and the new "runtime modules" row). The other rows - compose services, Caddy routes,
+Surface statuses, door 5 headers, cookie attributes, unpublished ports - are carried from
+`7629514`, where they were recomputed with no unproven member; the fix touches none of them.
+
 | Set (size) | Recomputed from | Member -> proof | Unproven |
 | --- | --- | --- | --- |
-| compose services (4) | `docker-compose.prod.yml:8,27,39,72` | caddy C2/C12 · server C1/C5 · postgres C1 (server connects as `bens_app` from the init script), C4 · migrate C1 | - |
-| Caddy routes (4) | `Caddyfile:13-30` | `@api /api/*` C1 · `@api /socket.io/*` C14 · `/assets/*` C2 · SPA fallback C2 | - |
-| Surface statuses (5) | plan Surface | SPA 200 C2 · assets 200 C2 · assets 404 C2 · 308 C3 · API 502 with the server down C1 | - |
-| door 5 headers (5) | plan Landing door 5 / `Caddyfile:33-37` | HSTS · nosniff · Referrer-Policy · X-Frame-Options · CSP, all C12 | - |
-| cookie attributes (6) | plan AC 8 | prefix · Secure · HttpOnly · SameSite=Lax · Path=/ · no Domain, all C8 | - |
-| provisioning script branches (4, the checks say 3) | `docker/postgres/init/01-app-role.sh:11-14,16-20,25-27` | empty password C6 · create C6 · alter/password change C7 · **connection by `PROVISION_DATABASE_URL` (`:16-17`)**: no proof. The provision step only takes the `POSTGRES_USER`/`POSTGRES_DB` branch (`scripts/staging-smoke.mjs:300-304`) | PROVISION_DATABASE_URL branch (used by `.github/workflows/ci.yml:57` and `:131`) |
-| unpublished ports (2) | plan AC 4 | server C4 · postgres C4 | - |
-| server startup assemblies (2) | `docker-compose.prod.yml:39-70`; `.github/workflows/ci.yml:57,131` | compose C1 · CI: the only change this diff makes to the CI assembly is role provisioning over `PROVISION_DATABASE_URL`. C13 runs against the compose stack, never against the CI assembly, and CI has not run at this HEAD (not pushed) | CI assembly (`ci.yml:57`, `:131`) |
-| Landing doors (6: 1, 2, 3, 4, 4b, 5) | plan Landing | door 1: runs C1, non-root C5; **"prod-only runtime (`pnpm deploy --prod` to `/app`), migration tool not in the process that serves requests"** has no proof, and the code contradicts it: `apps/server/Dockerfile:26-37` installs `--prod` into `/repo`, with no `pnpm deploy` and no `/app`; the running `server` image holds `/repo/node_modules/.pnpm/prisma@7.10.0…/node_modules/prisma/build/index.js` (the Prisma CLI, pulled in as the peer of `@prisma/client`) plus `@prisma/studio-core`, `next@16.3.3`, `playwright-core` and the native `typescript`, 866 MB of `node_modules` in all; migrate CMD is `pnpm exec prisma migrate deploy` (`:23`), not `["prisma","migrate","deploy"]`. door 2 C2 · door 3 C6/C7 · door 4 C1/C4 · door 4b C3 (8080), C1 (8443) · door 5 C12 | door 1 (runtime free of the migration tool) |
+| provisioning script branches (4) | `docker/postgres/init/01-app-role.sh:11-14,16-20,25-27` | empty password C6 · create C6 · alter C7 · `PROVISION_DATABASE_URL` C16 - present but non-discriminating (fault R2-1 survived) | the URL branch is named by a proof that passes without it |
+| server startup assemblies (2) | `docker-compose.prod.yml:39-70`; `.github/workflows/ci.yml:57,131` | compose C1 · CI: the diff's only change to the CI assembly is the role provisioning, now named by C16. `checks.md:88` still maps this member to C13, which runs against the compose stack and never against the CI assembly | the row's own mapping (C13) does not reach the CI assembly; the substance is covered by C16 subject to the caveat above |
+| Landing doors (6) | plan Landing | 1 C1, C5, C17 · 1b C17 · 2 C2 · 3 C6, C7, C16 · 4 C1, C4 · 5 C12. Door 1's round-1 gap is closed: `image` shows the CLI, `next`, `playwright-core`, `typescript`, `@prisma/studio-core` and `vitest` are gone and `node_modules` is 260 MB | - |
+| runtime modules the server can load off the boot path (3) | `apps/server/src/dependencies.ts:5,29` (storage), `apps/server/src/infrastructure/pdf.ts:1-7` (`@react-pdf/renderer`), `apps/server/src/infrastructure/email.ts:23-24` (`react-email` render) | e-mail render: C13 (the e2e reads verification and reset e-mails out of Mailpit) · PDF: no proof · S3 storage: no proof. Fault R2-4 shows the consequence: with `@react-pdf/renderer` pruned away, `image`, `health` and `cookie` all pass | `renderPdf` (`@react-pdf/renderer`), `createStorage` (`@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`) |
 
-- Claims that name a status code or a header all cross the Caddy boundary over TLS, so there is no
-  level gap.
-- The door 4 literal says secrets go in "`.env` (`env_file`)", but the compose file interpolates
-  them per service (`environment: ${…}` with `--env-file`). This is tighter than `env_file`,
-  because each service gets only its own variables. It is still drift the plan does not record.
-  The same goes for `caddy:2.10-alpine` -> `2.11.4-alpine`, which the Assumptions row allows.
+Probe, not a proof (verified at `b04cbff`, inside the running pruned container, `docker compose
+exec -w /repo/apps/server server node --input-type=module`): `renderPdf` produced a 1526-byte
+`%PDF-`, `render()` from `react-email` produced HTML with the accented text, and
+`createStorage(...)` did `put` + presigned `GET` (200, same length) + `delete` against MinIO. So
+the prune at `b04cbff` is correct today; nothing in the checks would notice if it stopped being.
+A sweep of the pruned store for unresolved optional peers of kept packages found only deliberate
+removals (`prisma`, `next`, `typescript`, `vitest`, drizzle/mongo/svelte/solid/vue adapters,
+`pg-native`, `bufferutil`, `utf-8-validate`, cross-platform `@esbuild/*`), each loaded lazily or
+not at all by this server.
 
 ## Test policy rows
 
 | Row | Files it classifies | Required proof | Expectation met |
 | --- | --- | --- | --- |
-| Caddyfile routing and headers | `Caddyfile` | one smoke step per route and header, through TLS: C1, C2, C3, C12, C14 | yes |
-| Dockerfiles, compose | `apps/server/Dockerfile`, `apps/web/Dockerfile`, `docker-compose.prod.yml`, `docker-compose.staging-local.yml` | stack built and observed running: C1, C4, C5 | yes as written ("each service's role observed"); the door-1 image contents are a Coverage gap above |
-| provisioning script | `docker/postgres/init/01-app-role.sh` | each branch against a throwaway Postgres | no - gap: the `PROVISION_DATABASE_URL` branch (`:16-17`) is never run by a proof; the Evidence line (`checks.md:100`) counts "2 branches" and misses it |
+| Caddyfile routing and headers | `Caddyfile` | one smoke step per route and header, through TLS: C1, C2, C3, C12, C14 | yes - carried from `7629514`, proofs re-run at `b04cbff` |
+| Dockerfiles, compose | `apps/server/Dockerfile`, `apps/server/scripts/prune-runtime.mjs`, `apps/web/Dockerfile`, `docker-compose.prod.yml`, `docker-compose.staging-local.yml` | stack built from scratch and each service's role observed: C1, C4, C5, plus C17 for the image's contents | partial - the contents half is met (C17); the "the pruned image still holds everything the server loads" half is proven only for the boot path and the e2e's e-mail path (faults R2-3 and R2-4 survived) |
+| provisioning script | `docker/postgres/init/01-app-role.sh` | each branch against a throwaway Postgres | no - the URL branch now has a proof (C16) but the proof passes with the branch disabled; `checks.md:103` counts 3 branches, which is right |
 
 ## Faults injected
 
-Each fault was injected in a git worktree under the scratchpad. The stack was rebuilt from that
-worktree with project `bens-staging-local`, and the narrowest step was run from there. The stack
-was then restored from the real tree and the worktree removed.
+Injected in a git worktree at `b04cbff` under the scratchpad, the stack rebuilt from that worktree
+under the same project name, then the narrowest step run from there. The stack was restored from
+the real tree afterwards. R2-1 and R2-5 were not run, in order to keep to the cap: the caddy,
+cookie and header surfaces were made to fail in round 1 and the fix does not touch them.
 
 | Mutation | Location | Killed |
 | --- | --- | --- |
-| CSP without `frame-ancestors 'none'` | `Caddyfile:37` | yes - `headers`: `not ok - content-security-policy: … connect-src 'self'; base-uri 'self'; …` |
-| `/assets/*` handle removed (assets fall through to the SPA handle) | `Caddyfile:18-23` | yes - `spa`: `not ok - cache-control: null` (killed before the 404 assertion) |
-| Caddy trusts the client's X-Forwarded-For (`servers { trusted_proxies static private_ranges }`) | `Caddyfile:3-6` | yes - `forwarded-for`: `not ok - the 11th is 429 despite a new X-Forwarded-For (401)` |
-| `USER node` dropped | `apps/server/Dockerfile:39` | yes - `non-root`: `not ok - server runs as uid 0` |
-| empty-password guard removed | `docker/postgres/init/01-app-role.sh:11-14` | yes - `provision`: `not ok - empty APP_DB_PASSWORD exits 0` |
-
-- C4's proof is a static read of `docker compose config` on the prod file. A fault there is
-  trivially killed, so no run was spent on it.
-- Supplementary probe, not a proof. In a throwaway `postgres:18-alpine`, the script with
-  `PROVISION_DATABASE_URL=postgresql://postgres:owner@<container ip>/postgres` exited 0, and
-  `bens_app` logged in with the new password as `f|f`. A password containing `'` and `;` was
-  quoted safely by `:'app_password'`. So the branch works today, but nothing in the checks would
-  catch it breaking.
+| `if [ -n "${PROVISION_DATABASE_URL:-}" ]` -> `if false` (the URL is ignored; the script falls back to the local socket) | `docker/postgres/init/01-app-role.sh:16` | **no** - `provision` still printed `ok - PROVISION_DATABASE_URL run exits 0` and `ok - bens_app logs in with senha-z`, exit 0 |
+| the prune follows optional peers too (`!optionalPeers[name]?.optional` -> `name !== undefined`) | `apps/server/scripts/prune-runtime.mjs:29-31` | yes - `image`: `not ok - the runtime image has no prisma (prisma@7.10.0…)` |
+| the prune stops following `optionalDependencies` | `apps/server/scripts/prune-runtime.mjs:34` | **no** - `image` (249 MB) and `health` both exit 0. It deletes `@esbuild/linux-x64`, esbuild's platform binary; the probe still passed, so the mutant is latent rather than harmless, and no assertion can tell |
+| the prune drops a real runtime dependency off the boot path (root `dependencies` filtered to exclude `@react-pdf/*`) | `apps/server/scripts/prune-runtime.mjs:33` | **no** - `image` exit 0 (223 MB, `/api/health` 200), `health` exit 0, `cookie` 6/6 ok; only the probe failed: `Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@react-pdf/renderer'` |
 
 ## Gate
 
-`pnpm lint && pnpm typecheck && pnpm test && pnpm build` - exit 0: biome 109 files; 22 test files, 130 passed, 0 failed; web build ok.
+`pnpm lint && pnpm typecheck && pnpm test && pnpm build` - exit 0: biome 110 files; 22 test files, 130 passed, 0 failed; web build ok.
 
 ## Ranked gaps
 
-1. Landing door 1 is unproven and contradicted. The runtime image ships the Prisma CLI, the thing
-   the plan's rejected alternative warned about, plus `next`, `playwright-core`, native `typescript`
-   and `@prisma/studio-core` (866 MB of `node_modules`). There is no `pnpm deploy --prod` to
-   `/app`, and the migrate CMD differs. No check asserts what the image contains. Coverage row
-   "Landing doors"; `apps/server/Dockerfile:26-37,23`.
-2. The provisioning script's `PROVISION_DATABASE_URL` branch has no proof, yet it is the path both
-   CI jobs now take. The Test policy row "each branch" is unmet, and the startup-config row's CI
-   member is unproven. `docker/postgres/init/01-app-role.sh:16-17`, `.github/workflows/ci.yml:57,131`,
-   `.specs/features/staging/checks.md:79,81,100`.
-3. Precision gap: C13's proof names `scripts/staging-smoke.sh e2e`, and that file does not exist.
-   The header and the plan also still name the `.sh`. `.specs/features/staging/checks.md:10,60`,
-   `.specs/features/staging/plan.md:103,152`.
-4. Precision gap (C15): the runbook says `caddy` is `running (healthy)`, but the `caddy` service
-   has no healthcheck. C15 checks only headings and file existence, not that the commands and
-   their expected output are right. `docs/runbooks/staging.md:46-47` vs
-   `docker-compose.prod.yml:72-89`.
-5. Observation, not failing: the `caddy` and `migrate` containers run as root (image `User`
-   empty). Architecture §10 requires non-root only for the server runtime.
-   `apps/web/Dockerfile:15`, `apps/server/Dockerfile:21-23`.
-6. Observation: `APP_DB_PASSWORD` stays in the long-running `postgres` container's environment,
-   although it is needed only at init (`docker-compose.prod.yml:16`). Locally, C3's `Location:
-   https://localhost/` points at port 443, which is another container on this machine. The Handoff
-   accepts this, and it is correct on the VPS.
+1. **C16 does not discriminate (surviving mutant R2-1).** In the throwaway container the script
+   falls back to `--username postgres --dbname postgres` over the local socket, which succeeds, so
+   disabling the `PROVISION_DATABASE_URL` branch still prints both `ok` lines. The branch needs a
+   proof that can only pass through the URL - for example a connection URL whose user is not the
+   container's default, or one the local fallback cannot reach. `scripts/staging-smoke.mjs:348-364`,
+   `docker/postgres/init/01-app-role.sh:16-20`.
+2. **C17's "the pruned server works" half reaches only the boot path (surviving mutants R2-4 and
+   R2-3).** Deleting `@react-pdf/renderer` from the image passes `image`, `health` and `cookie`;
+   `renderPdf` and `createStorage` have no check at all. The `image` step should load the modules
+   the server can load - the PDF render and a storage round trip are both runnable in the
+   container, as the probe shows. `scripts/staging-smoke.mjs:481-505`,
+   `apps/server/src/infrastructure/pdf.ts:1-7`, `apps/server/src/infrastructure/storage.ts:19-46`.
+3. **`image` is missing from `ORDER`**, so `node scripts/staging-smoke.mjs all` - the command the
+   runbook calls the local validation and the Handoff cites as the round-2 boundary - never runs
+   C17. `scripts/staging-smoke.mjs:532-547`, `docs/runbooks/staging.md:5`,
+   `.specs/features/staging/checks.md:128`.
+4. **Stale mapping (precision).** The startup-config Coverage row still sends the CI assembly to
+   C13, which never runs it; after this fix the member belongs to C16.
+   `.specs/features/staging/checks.md:88`.
+5. Closed since round 1, re-judged at `b04cbff`: Landing door 1 (C17, 260 MB, no CLI), C13's proof
+   command (`checks.md:66`), C15's runbook claim (`docs/runbooks/staging.md:46-47`), and the
+   `Test policy` branch count (`checks.md:103`).
+6. Observations carried from `7629514`, none failing: the `caddy` and `migrate` containers run as
+   root; door 4's literal says `env_file` while the compose interpolates per service;
+   `APP_DB_PASSWORD` stays in the long-running postgres container's environment
+   (`docker-compose.prod.yml:16`); locally C3's `https://localhost/` points at port 443, which is
+   another container on this machine, and is correct on the VPS.
