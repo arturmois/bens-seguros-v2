@@ -13,6 +13,23 @@ test.describe('terms', () => {
 
   test('accepts and follows the redirect', async ({ page, api }) => {
     const directed = await verifiedUser(api, { terms: false })
+    const fromMe = { termsVersion: '4.2', privacyVersion: '8.8' }
+    let accepted = false
+    await page.route('**/api/v1/me', async (route) => {
+      if (route.request().method() !== 'GET') return route.continue()
+      const response = await route.fetch()
+      const body = (await response.json()) as { terms: { pending: boolean } }
+      body.terms = { pending: !accepted, ...fromMe }
+      await route.fulfill({ response, json: body })
+    })
+    await page.route('**/api/v1/me/terms-acceptance', async (route) => {
+      expect(route.request().postDataJSON()).toEqual(fromMe)
+      accepted = true
+      await route.fulfill({
+        status: 200,
+        json: { ...fromMe, acceptedAt: '2026-09-22T12:00:00.000Z' },
+      })
+    })
     await page.goto('/login')
     await page.getByLabel('E-mail').fill(directed.email)
     await page.getByLabel('Senha').fill(directed.password)
@@ -23,6 +40,7 @@ test.describe('terms', () => {
     await expect(page).toHaveURL('/settings/security')
 
     const plain = await verifiedUser(api, { terms: false })
+    accepted = false
     await page.context().clearCookies()
     await page.goto('/login')
     await page.getByLabel('E-mail').fill(plain.email)
