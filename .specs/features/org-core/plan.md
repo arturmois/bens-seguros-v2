@@ -152,9 +152,9 @@ O banco, e não o filtro da aplicação, separa as corretoras. O exemplo sai.
 
 | Assumption | Chosen default | Rationale | Confirmed? |
 | --- | --- | --- | --- |
-| E-mail não verificado pode fazer onboarding | sim, basta sessão | o `/me` já não exige e-mail verificado; criar essa trava aqui muda a Fase 3 | n |
-| Segundo onboarding troca a organização ativa para a nova | sim | é o que o AC 3 descreve; a lista para escolher fica no `org-web` | n |
-| `commissionSplitBp` do OWNER inicial | 0 | a ADR-010 congela o split na emissão; sem tela de membro neste ciclo | n |
+| E-mail não verificado pode fazer onboarding | sim, basta sessão | o `/me` já não exige e-mail verificado; criar essa trava aqui muda a Fase 3 | y |
+| Segundo onboarding troca a organização ativa para a nova | sim | é o que o AC 3 descreve; a lista para escolher fica no `org-web` | y |
+| `commissionSplitBp` do OWNER inicial | 0 | a ADR-010 congela o split na emissão; sem tela de membro neste ciclo | y |
 
 **Open questions:** none - all resolved or logged above.
 
