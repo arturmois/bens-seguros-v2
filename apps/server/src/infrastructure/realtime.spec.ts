@@ -1,13 +1,14 @@
 import type { AddressInfo } from 'node:net'
-import { io as connect } from 'socket.io-client'
+import { io as connect, type Socket } from 'socket.io-client'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { buildTestApp } from '../../test/app.ts'
+import { buildTestApp, TEST_APP_URL } from '../../test/app.ts'
+import { signedInUser, TestClient } from '../../test/auth.ts'
 
 let testApp: Awaited<ReturnType<typeof buildTestApp>>
 let baseUrl: string
 
 beforeAll(async () => {
-  testApp = await buildTestApp()
+  testApp = await buildTestApp({ workers: true })
   await testApp.app.listen({ host: '127.0.0.1', port: 0 })
   const { port } = testApp.app.server.address() as AddressInfo
   baseUrl = `http://127.0.0.1:${port}`
@@ -15,17 +16,60 @@ beforeAll(async () => {
 
 afterAll(() => testApp.close())
 
+function open(headers: Record<string, string>) {
+  return connect(baseUrl, {
+    path: '/socket.io',
+    transports: ['websocket'],
+    extraHeaders: headers,
+    reconnection: false,
+  })
+}
+
+function outcome(socket: Socket) {
+  return new Promise<{ connected: true } | { error: string }>((resolve) => {
+    socket.once('connect', () => resolve({ connected: true }))
+    socket.once('connect_error', (error) => resolve({ error: error.message }))
+  })
+}
+
+async function sessionCookie() {
+  const client = new TestClient(testApp.app)
+  const user = await signedInUser(client, testApp.deps)
+  return { ...user, cookie: client.cookieHeader }
+}
+
 describe('realtime', () => {
-  it('accepts Socket.IO connections on the API server under /socket.io', async () => {
-    const socket = connect(baseUrl, { path: '/socket.io', transports: ['websocket'] })
+  it('accepts a socket with a valid session', async () => {
+    const { cookie, userId } = await sessionCookie()
+    const socket = open({ cookie, origin: TEST_APP_URL })
 
-    await new Promise<void>((resolve, reject) => {
-      socket.once('connect', resolve)
-      socket.once('connect_error', reject)
-    })
-    expect(socket.connected).toBe(true)
-
+    expect(await outcome(socket)).toEqual({ connected: true })
+    const serverSockets = await testApp.app.realtime.io.fetchSockets()
+    const serverSide = serverSockets.find((candidate) => candidate.id === socket.id)
+    expect(serverSide?.data.user.userId).toBe(userId)
     socket.disconnect()
+  })
+
+  it('rejects a socket without a valid session', async () => {
+    const noCookie = open({ origin: TEST_APP_URL })
+    expect(await outcome(noCookie)).toEqual({ error: 'UNAUTHENTICATED' })
+    noCookie.disconnect()
+
+    const { cookie, userId } = await sessionCookie()
+    await testApp.deps.db.session.deleteMany({ where: { userId } })
+    const revoked = open({ cookie, origin: TEST_APP_URL })
+    expect(await outcome(revoked)).toEqual({ error: 'UNAUTHENTICATED' })
+    revoked.disconnect()
+  })
+
+  it('rejects a socket from another origin', async () => {
+    const { cookie } = await sessionCookie()
+    const socket = open({ cookie, origin: 'https://evil.example' })
+
+    const result = await outcome(socket)
+    socket.disconnect()
+
+    expect(result).not.toEqual({ connected: true })
   })
 
   it('keeps serving HTTP routes on the same server', async () => {

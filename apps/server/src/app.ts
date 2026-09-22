@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto'
+import fastifyHelmet from '@fastify/helmet'
 import fastifySwagger from '@fastify/swagger'
+import fastifySwaggerUi from '@fastify/swagger-ui'
 import Fastify, { LogController } from 'fastify'
 import {
   jsonSchemaTransform,
@@ -9,25 +11,45 @@ import {
 } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import type { Deps } from './dependencies.ts'
-import { createRealtime } from './infrastructure/realtime.ts'
+import { createRealtime, type Realtime } from './infrastructure/realtime.ts'
+import { authRoutes, headersOf, resolveSession } from './modules/auth/index.ts'
 import { exampleRoutes } from './modules/examples/index.ts'
-import { errorHandler, notFoundHandler } from './shared/errors.ts'
+import { AppError, errorHandler, notFoundHandler } from './shared/errors.ts'
 
 z.config(z.locales.ptBR())
 
 const healthOutput = z.object({ status: z.literal('ok') })
 
+const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    realtime: Realtime
+  }
+}
+
 export function buildApp(deps: Deps) {
+  const { config } = deps
+  const appOrigin = new URL(config.APP_URL).origin
+
   const app = Fastify({
     loggerInstance: deps.logger,
     genReqId: () => randomUUID(),
     logController: new LogController({ requestIdLogLabel: 'requestId' }),
+    // `request.ip` is the client behind the proxy only when the proxy is trusted (AD-002).
+    trustProxy: config.TRUST_PROXY,
   }).withTypeProvider<ZodTypeProvider>()
 
   app.setValidatorCompiler(validatorCompiler)
   app.setSerializerCompiler(serializerCompiler)
   app.setErrorHandler(errorHandler)
   app.setNotFoundHandler(notFoundHandler)
+  app.decorateRequest('user', null)
+
+  app.register(fastifyHelmet, {
+    // The API returns JSON; the SPA's CSP is set by Caddy. Swagger UI (dev only) needs inline code.
+    contentSecurityPolicy: config.NODE_ENV === 'production',
+  })
 
   // Collects every route schema; scripts/export-openapi.ts writes it for Orval (ADR-007).
   app.register(fastifySwagger, {
@@ -37,14 +59,30 @@ export function buildApp(deps: Deps) {
     },
     transform: jsonSchemaTransform,
   })
+  if (config.NODE_ENV !== 'production') {
+    app.register(fastifySwaggerUi, { routePrefix: '/api/docs' })
+  }
 
-  const realtime = createRealtime(app.server)
+  const realtime = createRealtime(app.server, {
+    allowedOrigin: appOrigin,
+    authenticate: async (request) =>
+      (await resolveSession(deps.auth, headersOf(request)))?.context ?? null,
+  })
+  app.decorate('realtime', realtime)
   app.addHook('preClose', async () => {
     await realtime.close()
   })
 
   app.addHook('onRequest', async (request, reply) => {
     reply.header('x-request-id', request.id)
+    // CSRF (AD-004): writes only from the app's own origin, on top of SameSite=Lax.
+    if (
+      MUTATING_METHODS.has(request.method) &&
+      request.url.startsWith('/api/') &&
+      request.headers.origin !== appOrigin
+    ) {
+      throw new AppError(403, 'ORIGIN_NOT_ALLOWED', 'Origem da requisição não permitida.')
+    }
   })
 
   // Routes go through `register` so @fastify/swagger (loaded first) sees them.
@@ -57,6 +95,7 @@ export function buildApp(deps: Deps) {
       async () => ({ status: 'ok' as const }),
     )
   })
+  app.register(authRoutes(deps))
   app.register(exampleRoutes)
 
   return app

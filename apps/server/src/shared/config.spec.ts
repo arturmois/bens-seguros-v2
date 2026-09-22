@@ -8,6 +8,8 @@ const required = {
   S3_SECRET_ACCESS_KEY: 'bens-minio',
   SMTP_URL: 'smtp://localhost:1025',
   EMAIL_FROM: 'Bens Seguros <nao-responda@bensseguros.local>',
+  APP_URL: 'http://localhost:3000',
+  BETTER_AUTH_SECRET: 'a'.repeat(32),
 }
 
 describe('loadConfig', () => {
@@ -20,6 +22,7 @@ describe('loadConfig', () => {
       LOG_LEVEL: 'info',
       S3_REGION: 'auto',
       S3_FORCE_PATH_STYLE: false,
+      TRUST_PROXY: false,
     })
   })
 
@@ -46,5 +49,15 @@ describe('loadConfig', () => {
     expect(load).toThrow(/SMTP_URL/)
     expect(load).toThrow(/S3_BUCKET/)
     expect(load).toThrow(/EMAIL_FROM/)
+  })
+
+  it('requires the auth secret and the app url', () => {
+    const { APP_URL: _appUrl, ...withoutAppUrl } = required
+    const load = () => loadConfig({ ...withoutAppUrl, BETTER_AUTH_SECRET: 'a'.repeat(31) })
+
+    expect(load).toThrow(ConfigError)
+    expect(load).toThrow(/BETTER_AUTH_SECRET/)
+    expect(load).toThrow(/APP_URL/)
+    expect(loadConfig(required).BETTER_AUTH_SECRET).toHaveLength(32)
   })
 })

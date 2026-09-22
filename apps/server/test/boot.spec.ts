@@ -34,6 +34,8 @@ describe('server boot', () => {
         S3_SECRET_ACCESS_KEY: 'bens-minio',
         SMTP_URL: 'smtp://localhost:1025',
         EMAIL_FROM: 'teste@bensseguros.local',
+        APP_URL: 'http://localhost:3000',
+        BETTER_AUTH_SECRET: 'test-secret-with-at-least-32-characters',
       },
       timeout: 15_000,
     })
@@ -41,6 +43,31 @@ describe('server boot', () => {
     await expect(boot).rejects.toMatchObject({
       code: 1,
       stderr: expect.stringContaining('Database role "bens" bypasses row level security'),
+    })
+  })
+
+  it('exits with code 1 when the auth secret is too short', async () => {
+    const boot = run(process.execPath, ['--import', 'tsx', serverEntry], {
+      env: {
+        PATH: process.env.PATH,
+        NODE_ENV: 'test',
+        LOG_LEVEL: 'silent',
+        PORT: '3998',
+        DATABASE_URL: 'postgresql://bens_app:bens_app@localhost:5432/bens',
+        S3_BUCKET: 'bens-test',
+        S3_ACCESS_KEY_ID: 'bens',
+        S3_SECRET_ACCESS_KEY: 'bens-minio',
+        SMTP_URL: 'smtp://localhost:1025',
+        EMAIL_FROM: 'teste@bensseguros.local',
+        APP_URL: 'http://localhost:3000',
+        BETTER_AUTH_SECRET: 'curto',
+      },
+      timeout: 15_000,
+    })
+
+    await expect(boot).rejects.toMatchObject({
+      code: 1,
+      stderr: expect.stringContaining('BETTER_AUTH_SECRET'),
     })
   })
 })

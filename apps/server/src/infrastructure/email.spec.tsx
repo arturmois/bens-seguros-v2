@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { afterAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { testConfig } from '../../test/app.ts'
-import ExampleEmail from '../emails/example.tsx'
+import VerifyEmail from '../emails/verify-email.tsx'
 import { createMailer } from './email.ts'
 
 const mailer = createMailer(testConfig())
@@ -28,7 +28,7 @@ describe('mailer (Mailpit)', () => {
     await mailer.send({
       to: 'maria@example.com',
       subject,
-      body: <ExampleEmail name="Maria" url="https://app.bensseguros.local" />,
+      body: <VerifyEmail name="Maria" url="https://app.bensseguros.local" />,
     })
 
     const search = await mailpit(

@@ -1,12 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { buildTestApp } from '../test/app.ts'
+import { buildTestApp, TEST_APP_URL } from '../test/app.ts'
 import { contextFor, createOrganization } from '../test/factories.ts'
 import type { App } from './app.ts'
 import { AppError } from './shared/errors.ts'
 
 let app: App
 let close: () => Promise<void>
+// Calls of the /api/test/write handler: a rejected request must never reach it.
+let writes = 0
 
 beforeAll(async () => {
   const testApp = await buildTestApp()
@@ -42,6 +44,14 @@ beforeAll(async () => {
   })
   app.get('/test/crash', async () => {
     throw new Error('database password is hunter2')
+  })
+  app.route({
+    method: ['POST', 'PUT', 'PATCH', 'DELETE'],
+    url: '/api/test/write',
+    handler: async () => {
+      writes++
+      return { ok: true }
+    },
   })
 
   await app.ready()
@@ -157,5 +167,63 @@ describe('error handler', () => {
       },
     })
     expect(res.body).not.toContain('hunter2')
+  })
+})
+
+describe('origin check (CSRF)', () => {
+  it('rejects mutating requests from another origin', async () => {
+    const methods = ['POST', 'PUT', 'PATCH', 'DELETE'] as const
+    const foreign = [{}, { origin: 'https://evil.example' }, { origin: 'http://localhost:3001' }]
+    writes = 0
+
+    for (const method of methods) {
+      for (const headers of foreign) {
+        const res = await app.inject({ method, url: '/api/test/write', headers })
+
+        expect(res.statusCode, `${method} ${JSON.stringify(headers)}`).toBe(403)
+        expect(res.json()).toEqual({
+          error: { code: 'ORIGIN_NOT_ALLOWED', message: 'Origem da requisição não permitida.' },
+        })
+      }
+    }
+    expect(writes).toBe(0)
+
+    for (const method of methods) {
+      const res = await app.inject({
+        method,
+        url: '/api/test/write',
+        headers: { origin: TEST_APP_URL },
+      })
+      expect(res.statusCode, method).toBe(200)
+    }
+    expect(writes).toBe(4)
+  })
+
+  it('accepts reads without an origin', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/health' })
+
+    expect(res.statusCode).toBe(200)
+  })
+})
+
+describe('security headers and docs', () => {
+  it('sends security headers', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/health' })
+
+    expect(res.headers['x-content-type-options']).toBe('nosniff')
+    expect(res.headers['strict-transport-security']).toMatch(/max-age=\d+/)
+  })
+
+  it('serves api docs outside production only', async () => {
+    const docs = await app.inject({ method: 'GET', url: '/api/docs' })
+    expect(docs.statusCode).toBe(200)
+    expect(docs.headers['content-type']).toContain('text/html')
+
+    const production = await buildTestApp({ env: { NODE_ENV: 'production' } })
+    await production.app.ready()
+    const hidden = await production.app.inject({ method: 'GET', url: '/api/docs' })
+    await production.close()
+
+    expect(hidden.statusCode).toBe(404)
   })
 })

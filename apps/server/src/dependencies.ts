@@ -3,6 +3,7 @@ import { createDatabase, parseDatabaseUrl } from './infrastructure/database.ts'
 import { createMailer } from './infrastructure/email.ts'
 import { createQueue } from './infrastructure/queue.ts'
 import { createStorage } from './infrastructure/storage.ts'
+import { createAuth } from './modules/auth/index.ts'
 import type { Config } from './shared/config.ts'
 import { loggerOptions } from './shared/logger.ts'
 
@@ -12,18 +13,22 @@ export function createDependencies(config: Config) {
   const logger = pino(loggerOptions(config))
   const { connectionString, schema } = parseDatabaseUrl(config.DATABASE_URL)
 
+  const db = createDatabase(config.DATABASE_URL)
+  const queue = createQueue({
+    connectionString,
+    // Next to the app tables; `test_w1` gets `test_w1_pgboss`.
+    schema: schema === 'public' ? 'pgboss' : `${schema}_pgboss`,
+    logger,
+  })
+
   return {
     config,
     logger,
-    db: createDatabase(config.DATABASE_URL),
-    queue: createQueue({
-      connectionString,
-      // Next to the app tables; `test_w1` gets `test_w1_pgboss`.
-      schema: schema === 'public' ? 'pgboss' : `${schema}_pgboss`,
-      logger,
-    }),
+    db,
+    queue,
     storage: createStorage(config),
     mailer: createMailer(config),
+    auth: createAuth({ config, db, queue }),
   }
 }
 

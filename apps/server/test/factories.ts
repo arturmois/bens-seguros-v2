@@ -7,7 +7,13 @@ export async function createOrganization(db: Database, name = `Corretora ${rando
 }
 
 export function contextFor(organizationId: string): RequestContext {
-  return { requestId: randomUUID(), userId: randomUUID(), organizationId }
+  return {
+    requestId: randomUUID(),
+    userId: randomUUID(),
+    sessionId: randomUUID(),
+    isSuperAdmin: false,
+    organizationId,
+  }
 }
 
 // Two isolated tenants: every endpoint test proves that B never sees or changes A's rows (ADR-004).

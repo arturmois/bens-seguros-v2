@@ -40,6 +40,12 @@ export function createDatabase(databaseUrl: string) {
         })
       },
 
+      // A transaction with no tenant, for user-level tables (identity) and the queue: every
+      // tenant-scoped table fails inside it, as outside `withTenant`.
+      withoutTenant<T>(run: (tx: Transaction) => Promise<T>): Promise<T> {
+        return client.$transaction(run)
+      },
+
       // Boot check: a superuser or BYPASSRLS role would silently skip every policy.
       async assertRowSecurityApplies() {
         const [role] = await client.$queryRaw<

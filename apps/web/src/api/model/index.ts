@@ -7,5 +7,6 @@
 
 export * from './getHealth200';
 export * from './getHealth200Status';
+export * from './getMe200';
 export * from './previewExampleCommission200';
 export * from './previewExampleCommissionParams';

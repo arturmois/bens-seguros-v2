@@ -213,3 +213,8 @@ hide behind one happy-path request.
 ## Handoff
 
 - S1–S8 ≈ 61k tokens (≈ 245 KB de arquivos tocados ÷ 4), todos em `modules/auth`, `emails`, `app.ts`, `infrastructure/realtime.ts`, `shared/`; abaixo do budget de 150k - one builder
+
+- **Boundary:** C1-C41 closed at the commit `feat(server): authenticate with better auth` (gate green: lint, typecheck, 120 tests, build; `server.ts` booted with the dev `.env` and delivered the verification e-mail to Mailpit)
+- **Settled mid-build:** C15 simulates "12 h since the last update" through `expiresAt` too (Better Auth derives the session age from it); C17 `update-user` answers `400 FIELD_NOT_ALLOWED` for `isSuperAdmin` and ignores `activeOrganizationId` (a session field); C24 also asserts the `RateLimit` row, because Better Auth's memory store is process-global and would pass a same-process restart; Landing door 9 (`withoutTenant`) added
+- **Abandoned:** none
+

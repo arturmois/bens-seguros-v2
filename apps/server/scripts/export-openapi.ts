@@ -14,6 +14,8 @@ const config = loadConfig({
   S3_SECRET_ACCESS_KEY: 'openapi',
   SMTP_URL: 'smtp://localhost:25',
   EMAIL_FROM: 'openapi@localhost',
+  APP_URL: 'http://localhost:3000',
+  BETTER_AUTH_SECRET: 'openapi-placeholder-secret-32-chars',
 })
 const app = buildApp(createDependencies(config))
 await app.ready()

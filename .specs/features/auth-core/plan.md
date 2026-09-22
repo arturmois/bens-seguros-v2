@@ -54,6 +54,8 @@ flowchart TD
 | API | toda rota mutável de `/api/*` passa a exigir `Origin` igual a `APP_URL`; os testes existentes que fazem `POST` (`app.spec.ts`) passam a enviar `Origin` |
 | API | respostas ganham os headers do helmet |
 | config | chaves novas obrigatórias: `BETTER_AUTH_SECRET`, `APP_URL`; opcional `TRUST_PROXY` (padrão `false`). `.env.example`, `test/app.ts`, `boot.spec.ts` e CI recebem valores |
+| infra | `db.withoutTenant(tx => …)` (novo em `database.ts`): transação sem tenant, usada para tabelas de usuário e para enfileirar o `email.send` fora de um tenant (door 9) |
+| infra | `src/workers.ts` registra todo worker depois do `queue.start()`, no server e no harness de testes (`buildTestApp({ workers: true })`); o Fastify expõe `app.realtime` para as fases que emitirem em rooms |
 | stored data | nada a migrar (banco vazio); migration nova cria 6 tabelas |
 
 ## Relations
@@ -95,6 +97,7 @@ gerados pelo Prisma (door 2). No columns and no types here.
 | 6. IP do cliente (AD-002) | `Fastify({ trustProxy: config.TRUST_PROXY })`; o mount faz `headers.set('x-forwarded-for', request.ip)` antes de `auth.handler`; `rateLimit: { enabled: true, storage: 'database', window: 60, max: 100, customRules: { '/sign-in/email': { window: 900, max: 10 }, '/sign-up/email': { window: 3600, max: 5 }, '/request-password-reset': { window: 3600, max: 3 }, '/send-verification-email': { window: 3600, max: 3 }, '/two-factor/*': { window: 900, max: 10 } } }` | deixar o Better Auth ler o `x-forwarded-for` do cliente - sem proxy na frente, qualquer um troca de bucket mandando o header |
 | 7. Origin em métodos mutáveis (AD-004) | hook `onRequest` global: `POST/PUT/PATCH/DELETE` em `/api/*` exige `request.headers.origin === new URL(APP_URL).origin`, senão `403 { error: { code: 'ORIGIN_NOT_ALLOWED', message: 'Origem da requisição não permitida.' } }` | confiar só no `SameSite=Lax` - não cobre um subdomínio irmão (same-site); checar `Referer` - pode ser suprimido por política do browser |
 | 8. dependências novas | `better-auth`, `@fastify/helmet`, `@fastify/swagger-ui`, versões estáveis mais recentes que passem no `minimumReleaseAge`; exceções no `pnpm-workspace.yaml` reportadas no resumo | `helmet` do Express - não integra ao ciclo do Fastify |
+| 9. transação sem tenant (achado no build) | `withoutTenant<T>(run: (tx: Transaction) => Promise<T>) { return client.$transaction(run) }` na extensão de `createDatabase`, ao lado de `withTenant`; toda tabela tenant-scoped falha dentro dela, como fora de `withTenant` | `db.$transaction` do client estendido - o `tx` tem outro tipo e não entra em `queue.enqueue(tx)`; expor o client base - abriria um segundo caminho ao banco sem o contrato do ADR-004 |
 
 - Nothing else in this change is hard to reverse
 

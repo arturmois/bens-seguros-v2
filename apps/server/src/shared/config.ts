@@ -8,6 +8,14 @@ const configSchema = z.object({
 
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
 
+  // Public origin of the app (Caddy in production, Vite in dev): links in e-mails, the Origin check
+  // and the session cookie's `Secure` flag all derive from it.
+  APP_URL: z.url({ protocol: /^https?$/ }),
+  // Signs sessions and encrypts the TOTP secrets (Better Auth). At least 32 characters.
+  BETTER_AUTH_SECRET: z.string().min(32),
+  // Only behind a reverse proxy that overwrites X-Forwarded-For (Caddy), with the server port closed.
+  TRUST_PROXY: z.stringbool().default(false),
+
   // Unset for AWS S3; MinIO in dev and R2 in production need it.
   S3_ENDPOINT: z.url().optional(),
   S3_REGION: z.string().min(1).default('auto'),

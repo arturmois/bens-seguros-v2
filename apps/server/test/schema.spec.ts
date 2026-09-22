@@ -265,3 +265,23 @@ model Item {
     expect(findSimpleTenantRelations(schema)).toEqual(['Item.product'])
   })
 })
+
+describe('identity tables', () => {
+  it('identity tables carry no tenant column', async () => {
+    const identity = ['Account', 'RateLimit', 'Session', 'TwoFactor', 'User', 'Verification']
+    const { rows } = await withOwnerClient((client) =>
+      client.query<{ table: string; tenant: boolean }>(
+        `SELECT c.relname AS table,
+                EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid
+                         AND a.attname = 'organizationId' AND NOT a.attisdropped) AS tenant
+           FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = $1 AND c.relkind = 'r' AND c.relname = ANY ($2)
+          ORDER BY 1`,
+        [workerSchema(), identity],
+      ),
+    )
+
+    // User-level tables (ADR-003): outside row level security, so no tenant column (ADR-004).
+    expect(rows).toEqual(identity.map((table) => ({ table, tenant: false })))
+  })
+})

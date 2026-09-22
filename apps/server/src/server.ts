@@ -2,6 +2,7 @@ import { buildApp } from './app.ts'
 import { closeDependencies, createDependencies } from './dependencies.ts'
 import { RowSecurityBypassError } from './infrastructure/database.ts'
 import { ConfigError, loadConfig } from './shared/config.ts'
+import { registerWorkers } from './workers.ts'
 
 function loadConfigOrExit() {
   try {
@@ -34,7 +35,7 @@ try {
   await deps.db.assertRowSecurityApplies()
   if (config.NODE_ENV !== 'production') await deps.storage.ensureBucket()
   await deps.queue.start()
-  // Workers and crons register here, module by module (`<module>.jobs.ts`), from Phase 3 on.
+  await registerWorkers(deps)
   await app.listen({ host: config.HOST, port: config.PORT })
 } catch (error) {
   if (error instanceof RowSecurityBypassError) {
