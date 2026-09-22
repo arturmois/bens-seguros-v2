@@ -37,10 +37,10 @@ Proof: `node scripts/staging-smoke.mjs provision`
 **C7** - Rodar o script de novo com `APP_DB_PASSWORD=y` sai com código 0; o login com `y` funciona e com `x` falha (AC 7)
 Proof: `node scripts/staging-smoke.mjs provision`
 
-**C16** - O script de provisionamento rodado com `PROVISION_DATABASE_URL` (a URL do owner, como no CI) sai com código 0 e deixa `bens_app` logando com a senha dada (ramo usado pelo CI e pelo runbook, **rodada 2**)
+**C16** - O script rodado com `PROVISION_DATABASE_URL` apontando para **outro banco** (que o fallback do initdb nunca alcança) sai com código 0, deixa `bens_app` logando com a senha dada e aplica os grants **nesse** banco (ramo usado pelo CI e pelo runbook, **rodada 2**; **rodada 3**: antes o fallback fazia o check passar mesmo ignorando a URL)
 Proof: `node scripts/staging-smoke.mjs provision`
 
-**C17** - A imagem de runtime do server não contém o Prisma CLI, `next`, `@next/swc`, `playwright`, `playwright-core`, `typescript`, `@prisma/studio-core` nem `vitest`, tem menos de 400 MB de `node_modules`, e o server podado responde `200` em `/api/health` (Landing 1 e 1b, **rodada 2**: a imagem tinha 866 MB com esses peers opcionais)
+**C17** - A imagem de runtime do server não contém o Prisma CLI, `next`, `@next/swc`, `playwright`, `playwright-core`, `typescript`, `@prisma/studio-core` nem `vitest`, tem menos de 400 MB de `node_modules`, o server podado responde `200` em `/api/health`, e todo módulo compilado (`app`, `dependencies`, `infrastructure/{pdf,storage,email,queue,realtime}`, `emails/send-email`, `modules/auth/auth`) importa dentro da imagem (Landing 1 e 1b, **rodada 2**: a imagem tinha 866 MB; **rodada 3**: só o boot era observado, e a poda podia remover o `@react-pdf/renderer` sem falhar)
 Proof: `node scripts/staging-smoke.mjs image`
 
 ### S2 - Cookie, Origin e IP atrás do Caddy · ~4 files · ~15 KB · ~4k
@@ -84,8 +84,8 @@ Proof: `node scripts/staging-smoke.mjs runbook`
 | atributos do cookie (6) | prefixo C8 · `Secure` C8 · `HttpOnly` C8 · `SameSite=Lax` C8 · `Path=/` C8 · sem `Domain` C8 | - |
 | provisionamento (4) | cria C6 · senha vazia C6 · troca de senha C7 · por `PROVISION_DATABASE_URL` C16 | - |
 | portas não publicadas (2) | `server` C4 · `postgres` C4 | - |
-| startup config do server em produção (2 assemblies) | `docker-compose.prod.yml` C1 · CI e2e job (feature `auth-web`) C13 | - |
-| Landing doors (6) | 1 imagem do server C1, C5, C17 · 1b poda C17 · 2 imagem do web C2 · 3 provisionamento C6, C7 · 4 compose C1, C4 · 5 headers C12 | - |
+| startup config do server em produção (2 assemblies) | `docker-compose.prod.yml` C1, C17 · CI e2e job (feature `auth-web`) C16 | - |
+| Landing doors (6) | 1 imagem do server C1, C5, C17 · 1b poda C17 · 2 imagem do web C2 · 3 provisionamento C6, C7, C16 · 4 compose C1, C4 · 5 headers C12 | - |
 
 - Claims naming a status code or header: every proof crosses the Caddy boundary with `curl -k` or a real client
 - `404` de assets e `502` com o server fora: C2 pede um asset inexistente; C1 para o `server`, espera `502` em `/api/health` e sobe de novo
@@ -128,4 +128,7 @@ Evidence:
 - **Boundary:** C16-C17 closed at the commit `build: prune optional peers from the server image and prove the url provisioning` (round 2; `node scripts/staging-smoke.mjs all` exit 0, `pnpm e2e` 29 passed over HTTPS; repo gate green)
 - **Settled mid-build:** the user chose to prune in the Dockerfile (2026-09-22); instead of a hand list, `apps/server/scripts/prune-runtime.mjs` keeps what is reachable from the server's production dependencies and required peers (866 MB -> 260 MB); `autoInstallPeers: false` in the workspace changed nothing in the `--prod` install and was reverted; the runbook no longer claims a Caddy healthcheck
 - **Abandoned:** `autoInstallPeers: false` (no effect on the image, changes the whole lockfile)
+- **Boundary:** rodada 3 closed at the commit `test: make the staging image and provisioning proofs discriminate` (`node scripts/staging-smoke.mjs all` exit 0 with `image` included; repo gate green)
+- **Settled mid-build:** C16 points the URL at another database and asserts the grants landed there, because the initdb fallback reached the same server; C17 imports every compiled module in the container, because the boot path alone missed `@react-pdf/renderer` and the AWS SDK; `image` is in the `all` list
+- **Abandoned:** none
 

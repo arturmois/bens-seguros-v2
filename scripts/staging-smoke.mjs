@@ -346,7 +346,23 @@ const steps = {
       assert(login('senha-y'), 'bens_app logs in with senha-y')
       assert(!login('senha-x'), 'senha-x is refused')
 
-      // The branch CI and the runbook use: the owner's URL instead of the initdb connection.
+      // The branch CI and the runbook use: the owner's URL instead of the initdb connection. It
+      // points at another database, which the initdb fallback (POSTGRES_DB) never reaches.
+      docker(['exec', name, 'psql', '-U', 'postgres', '-qc', 'CREATE DATABASE provision_target'])
+      const grantedOn = (database) =>
+        docker([
+          'exec',
+          name,
+          'psql',
+          '-U',
+          'postgres',
+          '-tAc',
+          `SELECT has_database_privilege('bens_app', '${database}', 'CREATE')`,
+        ])
+      assert(
+        grantedOn('provision_target') === 'f',
+        'the URL database has no CREATE grant before the run',
+      )
       const byUrl = spawnSync(
         'docker',
         [
@@ -354,7 +370,7 @@ const steps = {
           '-e',
           'APP_DB_PASSWORD=senha-z',
           '-e',
-          `PROVISION_DATABASE_URL=postgresql://postgres:owner@${ip}/postgres`,
+          `PROVISION_DATABASE_URL=postgresql://postgres:owner@${ip}/provision_target`,
           name,
           '/provision/01-app-role.sh',
         ],
@@ -362,6 +378,7 @@ const steps = {
       )
       assert(byUrl.status === 0, `PROVISION_DATABASE_URL run exits ${byUrl.status}`)
       assert(login('senha-z'), 'bens_app logs in with senha-z')
+      assert(grantedOn('provision_target') === 't', 'the grants landed on the database of the URL')
     } finally {
       docker(['stop', name])
     }
@@ -502,6 +519,36 @@ const steps = {
     assert(Number(size) < 400, `runtime node_modules is ${size} MB (< 400)`)
     const health = await fetch(`${BASE}/api/health`)
     assert(health.status === 200, `the pruned server answers /api/health -> ${health.status}`)
+    // The boot path is not the whole image: every infrastructure module must still load, including
+    // the ones no request touches until a later phase (PDF, storage).
+    const modules = [
+      'app.js',
+      'dependencies.js',
+      'infrastructure/pdf.js',
+      'infrastructure/storage.js',
+      'infrastructure/email.js',
+      'infrastructure/queue.js',
+      'infrastructure/realtime.js',
+      'emails/send-email.js',
+      'modules/auth/auth.js',
+    ]
+    const load = spawnSync(
+      'docker',
+      [
+        ...COMPOSE,
+        'exec',
+        '-T',
+        'server',
+        'node',
+        '-e',
+        `Promise.all(${JSON.stringify(modules.map((file) => `./dist/${file}`))}.map((file) => import(file))).catch((error) => { console.error(error.message); process.exit(1) })`,
+      ],
+      { encoding: 'utf8' },
+    )
+    assert(
+      load.status === 0,
+      `every compiled module imports in the image (${load.stderr.trim().split('\n')[0] ?? ''})`,
+    )
   },
 
   // C15
@@ -536,6 +583,7 @@ const ORDER = [
   'ports',
   'non-root',
   'provision',
+  'image',
   'cookie',
   'origin',
   'forwarded-for',
