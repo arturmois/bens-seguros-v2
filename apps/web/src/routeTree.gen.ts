@@ -17,10 +17,15 @@ import { Route as authRegisterRouteImport } from './routes/(auth)/register'
 import { Route as authResetPasswordRouteImport } from './routes/(auth)/reset-password'
 import { Route as authTwoFactorRouteImport } from './routes/(auth)/two-factor'
 import { Route as authVerifyEmailRouteImport } from './routes/(auth)/verify-email'
+import { Route as onboardingAcceptInvitationRouteImport } from './routes/(onboarding)/accept-invitation'
+import { Route as onboardingOnboardingRouteImport } from './routes/(onboarding)/onboarding'
+import { Route as onboardingSelectOrgRouteImport } from './routes/(onboarding)/select-org'
 import { Route as publicIndexRouteImport } from './routes/(public)/index'
 import { Route as publicPrivacyRouteImport } from './routes/(public)/privacy'
 import { Route as publicTermsRouteImport } from './routes/(public)/terms'
 import { Route as AppDashboardRouteImport } from './routes/_app/dashboard'
+import { Route as AppSettingsMembersRouteImport } from './routes/_app/settings/members'
+import { Route as AppSettingsOrganizationRouteImport } from './routes/_app/settings/organization'
 import { Route as AppSettingsSecurityRouteImport } from './routes/_app/settings/security'
 
 const AppRoute = AppRouteImport.update({
@@ -62,6 +67,22 @@ const authVerifyEmailRoute = authVerifyEmailRouteImport.update({
   path: '/verify-email',
   getParentRoute: () => rootRouteImport,
 } as any)
+const onboardingAcceptInvitationRoute =
+  onboardingAcceptInvitationRouteImport.update({
+    id: '/(onboarding)/accept-invitation',
+    path: '/accept-invitation',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const onboardingOnboardingRoute = onboardingOnboardingRouteImport.update({
+  id: '/(onboarding)/onboarding',
+  path: '/onboarding',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const onboardingSelectOrgRoute = onboardingSelectOrgRouteImport.update({
+  id: '/(onboarding)/select-org',
+  path: '/select-org',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const publicIndexRoute = publicIndexRouteImport.update({
   id: '/(public)/',
   path: '/',
@@ -82,6 +103,16 @@ const AppDashboardRoute = AppDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSettingsMembersRoute = AppSettingsMembersRouteImport.update({
+  id: '/settings/members',
+  path: '/settings/members',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsOrganizationRoute = AppSettingsOrganizationRouteImport.update({
+  id: '/settings/organization',
+  path: '/settings/organization',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSettingsSecurityRoute = AppSettingsSecurityRouteImport.update({
   id: '/settings/security',
   path: '/settings/security',
@@ -97,9 +128,14 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof authResetPasswordRoute
   '/two-factor': typeof authTwoFactorRoute
   '/verify-email': typeof authVerifyEmailRoute
+  '/accept-invitation': typeof onboardingAcceptInvitationRoute
+  '/onboarding': typeof onboardingOnboardingRoute
+  '/select-org': typeof onboardingSelectOrgRoute
   '/privacy': typeof publicPrivacyRoute
   '/terms': typeof publicTermsRoute
   '/dashboard': typeof AppDashboardRoute
+  '/settings/members': typeof AppSettingsMembersRoute
+  '/settings/organization': typeof AppSettingsOrganizationRoute
   '/settings/security': typeof AppSettingsSecurityRoute
 }
 export interface FileRoutesByTo {
@@ -111,9 +147,14 @@ export interface FileRoutesByTo {
   '/reset-password': typeof authResetPasswordRoute
   '/two-factor': typeof authTwoFactorRoute
   '/verify-email': typeof authVerifyEmailRoute
+  '/accept-invitation': typeof onboardingAcceptInvitationRoute
+  '/onboarding': typeof onboardingOnboardingRoute
+  '/select-org': typeof onboardingSelectOrgRoute
   '/privacy': typeof publicPrivacyRoute
   '/terms': typeof publicTermsRoute
   '/dashboard': typeof AppDashboardRoute
+  '/settings/members': typeof AppSettingsMembersRoute
+  '/settings/organization': typeof AppSettingsOrganizationRoute
   '/settings/security': typeof AppSettingsSecurityRoute
 }
 export interface FileRoutesById {
@@ -126,10 +167,15 @@ export interface FileRoutesById {
   '/(auth)/reset-password': typeof authResetPasswordRoute
   '/(auth)/two-factor': typeof authTwoFactorRoute
   '/(auth)/verify-email': typeof authVerifyEmailRoute
+  '/(onboarding)/accept-invitation': typeof onboardingAcceptInvitationRoute
+  '/(onboarding)/onboarding': typeof onboardingOnboardingRoute
+  '/(onboarding)/select-org': typeof onboardingSelectOrgRoute
   '/(public)/privacy': typeof publicPrivacyRoute
   '/(public)/terms': typeof publicTermsRoute
   '/_app/dashboard': typeof AppDashboardRoute
   '/(public)/': typeof publicIndexRoute
+  '/_app/settings/members': typeof AppSettingsMembersRoute
+  '/_app/settings/organization': typeof AppSettingsOrganizationRoute
   '/_app/settings/security': typeof AppSettingsSecurityRoute
 }
 export interface FileRouteTypes {
@@ -143,9 +189,14 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/two-factor'
     | '/verify-email'
+    | '/accept-invitation'
+    | '/onboarding'
+    | '/select-org'
     | '/privacy'
     | '/terms'
     | '/dashboard'
+    | '/settings/members'
+    | '/settings/organization'
     | '/settings/security'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -157,9 +208,14 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/two-factor'
     | '/verify-email'
+    | '/accept-invitation'
+    | '/onboarding'
+    | '/select-org'
     | '/privacy'
     | '/terms'
     | '/dashboard'
+    | '/settings/members'
+    | '/settings/organization'
     | '/settings/security'
   id:
     | '__root__'
@@ -171,10 +227,15 @@ export interface FileRouteTypes {
     | '/(auth)/reset-password'
     | '/(auth)/two-factor'
     | '/(auth)/verify-email'
+    | '/(onboarding)/accept-invitation'
+    | '/(onboarding)/onboarding'
+    | '/(onboarding)/select-org'
     | '/(public)/privacy'
     | '/(public)/terms'
     | '/_app/dashboard'
     | '/(public)/'
+    | '/_app/settings/members'
+    | '/_app/settings/organization'
     | '/_app/settings/security'
   fileRoutesById: FileRoutesById
 }
@@ -187,6 +248,9 @@ export interface RootRouteChildren {
   authResetPasswordRoute: typeof authResetPasswordRoute
   authTwoFactorRoute: typeof authTwoFactorRoute
   authVerifyEmailRoute: typeof authVerifyEmailRoute
+  onboardingAcceptInvitationRoute: typeof onboardingAcceptInvitationRoute
+  onboardingOnboardingRoute: typeof onboardingOnboardingRoute
+  onboardingSelectOrgRoute: typeof onboardingSelectOrgRoute
   publicPrivacyRoute: typeof publicPrivacyRoute
   publicTermsRoute: typeof publicTermsRoute
   publicIndexRoute: typeof publicIndexRoute
@@ -250,6 +314,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof authVerifyEmailRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/(onboarding)/accept-invitation': {
+      id: '/(onboarding)/accept-invitation'
+      path: '/accept-invitation'
+      fullPath: '/accept-invitation'
+      preLoaderRoute: typeof onboardingAcceptInvitationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/(onboarding)/onboarding': {
+      id: '/(onboarding)/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof onboardingOnboardingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/(onboarding)/select-org': {
+      id: '/(onboarding)/select-org'
+      path: '/select-org'
+      fullPath: '/select-org'
+      preLoaderRoute: typeof onboardingSelectOrgRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/(public)/': {
       id: '/(public)/'
       path: '/'
@@ -278,6 +363,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDashboardRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/settings/members': {
+      id: '/_app/settings/members'
+      path: '/settings/members'
+      fullPath: '/settings/members'
+      preLoaderRoute: typeof AppSettingsMembersRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/settings/organization': {
+      id: '/_app/settings/organization'
+      path: '/settings/organization'
+      fullPath: '/settings/organization'
+      preLoaderRoute: typeof AppSettingsOrganizationRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/settings/security': {
       id: '/_app/settings/security'
       path: '/settings/security'
@@ -290,11 +389,15 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppDashboardRoute: typeof AppDashboardRoute
+  AppSettingsMembersRoute: typeof AppSettingsMembersRoute
+  AppSettingsOrganizationRoute: typeof AppSettingsOrganizationRoute
   AppSettingsSecurityRoute: typeof AppSettingsSecurityRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppDashboardRoute: AppDashboardRoute,
+  AppSettingsMembersRoute: AppSettingsMembersRoute,
+  AppSettingsOrganizationRoute: AppSettingsOrganizationRoute,
   AppSettingsSecurityRoute: AppSettingsSecurityRoute,
 }
 
@@ -309,6 +412,9 @@ const rootRouteChildren: RootRouteChildren = {
   authResetPasswordRoute: authResetPasswordRoute,
   authTwoFactorRoute: authTwoFactorRoute,
   authVerifyEmailRoute: authVerifyEmailRoute,
+  onboardingAcceptInvitationRoute: onboardingAcceptInvitationRoute,
+  onboardingOnboardingRoute: onboardingOnboardingRoute,
+  onboardingSelectOrgRoute: onboardingSelectOrgRoute,
   publicPrivacyRoute: publicPrivacyRoute,
   publicTermsRoute: publicTermsRoute,
   publicIndexRoute: publicIndexRoute,

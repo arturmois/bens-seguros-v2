@@ -4,6 +4,7 @@
  * Bens Seguros API
  * OpenAPI spec version: 1.0.0
  */
+import type { GetMe200OrganizationsItem } from './getMe200OrganizationsItem';
 import type { GetMe200PermissionsItem } from './getMe200PermissionsItem';
 import type { GetMe200Role } from './getMe200Role';
 import type { GetMe200Terms } from './getMe200Terms';
@@ -20,5 +21,6 @@ export type GetMe200 = {
   activeOrganizationId: string | null;
   role: GetMe200Role;
   permissions: GetMe200PermissionsItem[];
+  organizations: GetMe200OrganizationsItem[];
   terms: GetMe200Terms;
 };

@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { expect, NAME, test, totp, userWithTwoFactor, verifiedUser } from './support'
+import { expect, NAME, onboard, test, totp, userWithTwoFactor, verifiedUser } from './support'
 
 async function signIn(page: Page, email: string, password: string) {
   await page.goto('/login')
@@ -16,6 +16,7 @@ async function twoFactorEnabled(page: Page) {
 test.describe('verificação em duas etapas', () => {
   test('shows the qr code, the key and the backup codes', async ({ page, api }) => {
     const user = await verifiedUser(api)
+    await onboard(api)
     await signIn(page, user.email, user.password)
     await expect(page).toHaveURL('/dashboard')
     await page.goto('/settings/security')
@@ -33,6 +34,7 @@ test.describe('verificação em duas etapas', () => {
 
   test('enables two-factor with a valid code', async ({ page, api }) => {
     const user = await verifiedUser(api)
+    await onboard(api)
     await signIn(page, user.email, user.password)
     await expect(page).toHaveURL('/dashboard')
     await page.goto('/settings/security')
@@ -141,6 +143,7 @@ test.describe('verificação em duas etapas', () => {
     // Wrong password to enable, then a wrong confirmation code.
     await page.context().clearCookies()
     const plain = await verifiedUser(api)
+    await onboard(api)
     await signIn(page, plain.email, plain.password)
     await expect(page).toHaveURL('/dashboard')
     await page.goto('/settings/security')

@@ -55,6 +55,7 @@ describe('GET /api/v1/me', () => {
       activeOrganizationId: null,
       role: null,
       permissions: [],
+      organizations: [],
       terms: { pending: true, termsVersion: '1.0', privacyVersion: '1.0' },
     })
   })
@@ -214,5 +215,57 @@ describe('GET /api/v1/me', () => {
       isSuperAdmin: false,
       activeOrganizationId: null,
     })
+  })
+
+  it('lists the active organizations by name', async () => {
+    const named = new TestClient(app)
+    await signedInUser(named, deps)
+    await acceptCurrentTerms(named)
+    expect((await named.get('/api/v1/me')).json().organizations).toEqual([])
+
+    const alfa = await named.post('/api/v1/onboarding', { name: 'Alfa' })
+    const beta = await named.post('/api/v1/onboarding', { name: 'Beta' })
+    expect(alfa.statusCode).toBe(200)
+    expect(beta.statusCode).toBe(200)
+    expect((await named.get('/api/v1/me')).json().organizations).toEqual([
+      { id: alfa.json().id, name: 'Alfa', role: 'OWNER' },
+      { id: beta.json().id, name: 'Beta', role: 'OWNER' },
+    ])
+
+    const owner = new TestClient(app)
+    await signedInUser(owner, deps)
+    await acceptCurrentTerms(owner)
+    expect((await owner.post('/api/v1/onboarding', { name: 'Aaa' })).statusCode).toBe(200)
+    const guestEmail = uniqueEmail('lista')
+    expect(
+      (await owner.post('/api/v1/invitations', { email: guestEmail, role: 'ADMIN' })).statusCode,
+    ).toBe(200)
+
+    const guest = new TestClient(app)
+    await signedInUser(guest, deps, guestEmail)
+    const token = new URL(
+      await lastEmailUrl(deps, guestEmail, 'invitation'),
+      'http://localhost',
+    ).searchParams.get('token')
+    const accepted = await guest.post('/api/v1/invitations/accept', { token })
+    expect(accepted.statusCode).toBe(200)
+
+    const members = await owner.get('/api/v1/members')
+    const guestMember = members
+      .json()
+      .items.find((item: { email: string }) => item.email === guestEmail)
+    const deactivated = await owner.patch(`/api/v1/members/${guestMember.id}`, { active: false })
+    expect(deactivated.statusCode).toBe(200)
+
+    const first = await guest.post('/api/v1/onboarding', { name: 'Igual' })
+    const second = await guest.post('/api/v1/onboarding', { name: 'Igual' })
+    expect(first.statusCode).toBe(200)
+    expect(second.statusCode).toBe(200)
+    const ids = [first.json().id as string, second.json().id as string].toSorted()
+
+    expect((await guest.get('/api/v1/me')).json().organizations).toEqual([
+      { id: ids[0], name: 'Igual', role: 'OWNER' },
+      { id: ids[1], name: 'Igual', role: 'OWNER' },
+    ])
   })
 })

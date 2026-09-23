@@ -76,8 +76,10 @@ test.describe('cadastro e verificação', () => {
 
     await expect(page).toHaveURL(/\/terms-acceptance/)
     await page.getByRole('button', { name: 'Li e aceito' }).click()
-    await expect(page).toHaveURL('/dashboard')
-    await expect(page.getByRole('heading', { name: `Olá, ${NAME}` })).toBeVisible()
+    await expect(page).toHaveURL('/onboarding')
+    await expect(page.getByRole('heading', { name: 'Criar corretora' })).toBeVisible()
+    await expect(page.getByLabel('Nome')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Criar corretora' })).toBeVisible()
   })
 
   test('an invalid e-mail link lands on login', async ({ page, api: _api }) => {

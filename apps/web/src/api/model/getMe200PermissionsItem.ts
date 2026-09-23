@@ -11,4 +11,7 @@ export type GetMe200PermissionsItem = typeof GetMe200PermissionsItem[keyof typeo
 export const GetMe200PermissionsItem = {
   'organization:read': 'organization:read',
   'organization:update': 'organization:update',
+  'invitation:create': 'invitation:create',
+  'member:update': 'member:update',
+  'portfolio:transfer': 'portfolio:transfer',
 } as const;

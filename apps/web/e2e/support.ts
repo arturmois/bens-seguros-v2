@@ -86,6 +86,26 @@ export async function signUp(api: APIRequestContext, email = uniqueEmail()) {
 }
 
 // A user whose e-mail link was already opened (by the API context, not the page).
+export async function onboard(api: APIRequestContext, name = 'Corretora') {
+  const response = await api.post('/api/v1/onboarding', {
+    data: { name: `${name} ${randomUUID().slice(0, 8)}` },
+  })
+  expect(response.ok()).toBeTruthy()
+  return (await response.json()) as { id: string; name: string; slug: string; role: string }
+}
+
+export async function clearActiveOrganization(userId: string) {
+  const client = new pg.Client({ connectionString: databaseUrl })
+  await client.connect()
+  try {
+    await client.query('UPDATE "Session" SET "activeOrganizationId" = NULL WHERE "userId" = $1', [
+      userId,
+    ])
+  } finally {
+    await client.end()
+  }
+}
+
 export async function verifiedUser(api: APIRequestContext, options: { terms?: boolean } = {}) {
   const user = await signUp(api)
   const verify = await api.get(await emailLink(user.email, 'Confirme seu e-mail'), {
@@ -119,6 +139,7 @@ export function totp(secretBase32: string, at = Date.now()) {
 // Signs in through the API context and turns TOTP on; returns the secret and the backup codes.
 export async function userWithTwoFactor(api: APIRequestContext) {
   const user = await verifiedUser(api)
+  await onboard(api)
   const enable = await api.post('/api/auth/two-factor/enable', { data: { password: PASSWORD } })
   const { totpURI, backupCodes } = await enable.json()
   const secret = new URL(totpURI).searchParams.get('secret') ?? ''

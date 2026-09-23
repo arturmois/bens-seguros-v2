@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { expect, NAME, signUp, test, verifiedUser } from './support'
+import { expect, NAME, onboard, signUp, test, verifiedUser } from './support'
 
 async function signIn(page: Page, email: string, password: string, path = '/login') {
   await page.goto(path)
@@ -13,6 +13,7 @@ const rateLimited = 'Muitas tentativas. Aguarde alguns minutos e tente de novo.'
 test.describe('login, logout e guard', () => {
   test('signs in to the redirect target', async ({ page, api }) => {
     const user = await verifiedUser(api)
+    await onboard(api)
 
     await signIn(page, user.email, user.password, '/login?redirect=%2Fsettings%2Fsecurity')
     await expect(page).toHaveURL('/settings/security')
@@ -24,6 +25,7 @@ test.describe('login, logout e guard', () => {
 
   test('ignores an external redirect', async ({ page, api, baseURL }) => {
     const user = await verifiedUser(api)
+    await onboard(api)
 
     for (const target of [
       'https://evil.example',
@@ -39,6 +41,7 @@ test.describe('login, logout e guard', () => {
 
   test('shows wrong credentials', async ({ page, api }) => {
     const user = await verifiedUser(api)
+    await onboard(api)
 
     await signIn(page, user.email, 'senha-errada-000')
 
@@ -76,6 +79,7 @@ test.describe('login, logout e guard', () => {
 
   test('sends a signed-in user away from auth pages', async ({ page, api }) => {
     const user = await verifiedUser(api)
+    await onboard(api)
     await signIn(page, user.email, user.password)
     await expect(page).toHaveURL('/dashboard')
 
@@ -87,6 +91,7 @@ test.describe('login, logout e guard', () => {
 
   test('signs out', async ({ page, api }) => {
     const user = await verifiedUser(api)
+    await onboard(api)
     await signIn(page, user.email, user.password)
     await expect(page).toHaveURL('/dashboard')
 
@@ -99,6 +104,7 @@ test.describe('login, logout e guard', () => {
 
   test('sign-out clears the cached account', async ({ page, api }) => {
     const user = await verifiedUser(api)
+    await onboard(api)
     await signIn(page, user.email, user.password)
     await expect(page.getByRole('heading', { name: `Olá, ${NAME}` })).toBeVisible()
 
@@ -161,6 +167,7 @@ test.describe('login, logout e guard', () => {
 
   test('shows loading and error states for the account', async ({ page, api }) => {
     const user = await verifiedUser(api)
+    await onboard(api)
     await signIn(page, user.email, user.password)
     await expect(page).toHaveURL('/dashboard')
     // One handler for the whole test (re-routing mid-test races in Playwright): the mode decides.

@@ -1,4 +1,4 @@
-import { expect, test, verifiedUser } from './support'
+import { expect, onboard, test, verifiedUser } from './support'
 
 test.describe('terms', () => {
   test('sends a pending user to terms acceptance', async ({ page, api }) => {
@@ -13,6 +13,7 @@ test.describe('terms', () => {
 
   test('accepts and follows the redirect', async ({ page, api }) => {
     const directed = await verifiedUser(api, { terms: false })
+    await onboard(api)
     const fromMe = { termsVersion: '4.2', privacyVersion: '8.8' }
     let accepted = false
     await page.route('**/api/v1/me', async (route) => {
@@ -40,6 +41,7 @@ test.describe('terms', () => {
     await expect(page).toHaveURL('/settings/security')
 
     const plain = await verifiedUser(api, { terms: false })
+    await onboard(api)
     accepted = false
     await page.context().clearCookies()
     await page.goto('/login')
@@ -54,6 +56,7 @@ test.describe('terms', () => {
 
   test('reloads terms when the version changed', async ({ page, api }) => {
     const user = await verifiedUser(api, { terms: false })
+    await onboard(api)
     let phase: 'real' | 'mismatch' | 'accepted' = 'real'
     await page.route('**/api/v1/me', async (route) => {
       if (phase === 'real' || route.request().method() !== 'GET') return route.continue()
@@ -143,6 +146,7 @@ test.describe('terms', () => {
 
   test('disables the button while accepting', async ({ page, api }) => {
     const user = await verifiedUser(api, { terms: false })
+    await onboard(api)
     let release = () => {}
     const gate = new Promise<void>((resolve) => {
       release = resolve

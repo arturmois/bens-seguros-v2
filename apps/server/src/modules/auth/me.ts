@@ -19,20 +19,33 @@ export async function getMe(deps: { db: Database }, user: UserContext): Promise<
   // Revoked between the preHandler and here.
   if (!session) throw unauthenticated()
   const organizationId = session.activeOrganizationId
-  const membership = organizationId
-    ? await deps.db.withUser(user.userId, (tx) =>
-        tx.member.findFirst({
-          where: { userId: user.userId, organizationId, active: true },
-          select: { role: true },
-        }),
-      )
-    : null
+  const memberships = await deps.db.withUser(user.userId, (tx) =>
+    tx.member.findMany({
+      where: { userId: user.userId, active: true },
+      select: { role: true, organization: { select: { id: true, name: true } } },
+    }),
+  )
+  const organizations = memberships
+    .map((membership) => ({
+      id: membership.organization.id,
+      name: membership.organization.name,
+      role: membership.role,
+    }))
+    .sort((left, right) => {
+      if (left.name < right.name) return -1
+      if (left.name > right.name) return 1
+      if (left.id < right.id) return -1
+      if (left.id > right.id) return 1
+      return 0
+    })
+  const active = organizations.find((organization) => organization.id === organizationId)
   return {
     ...session.user,
     isSuperAdmin: user.isSuperAdmin,
     activeOrganizationId: session.activeOrganizationId,
-    role: membership?.role ?? null,
-    permissions: membership ? [...permissionsFor(membership.role)] : [],
+    role: active?.role ?? null,
+    permissions: active ? [...permissionsFor(active.role)] : [],
+    organizations,
     terms: await termsState(deps, session.user.id),
   }
 }

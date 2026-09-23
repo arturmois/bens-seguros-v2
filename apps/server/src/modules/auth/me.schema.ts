@@ -12,6 +12,15 @@ export const meOutput = z.object({
   activeOrganizationId: z.uuid().nullable(),
   role: z.enum(ROLES).nullable(),
   permissions: z.array(z.enum(PERMISSIONS)),
+  organizations: z.array(
+    z
+      .object({
+        id: z.uuid(),
+        name: z.string(),
+        role: z.enum(ROLES),
+      })
+      .strict(),
+  ),
   terms: termsStateOutput,
 })
 
