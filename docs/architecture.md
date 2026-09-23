@@ -47,6 +47,8 @@ Princípio: **Complexity must be earned.** Cada camada, pacote, serviço ou abst
 
 ## 2. Estrutura do repositório
 
+**Status no disco (2026-09-23):** só existem pastas sob `modules/` para o que já foi implementado. A árvore abaixo mistura o presente e o alvo; cada linha de módulo diz se está **no disco** ou só no **roadmap**. Não crie a pasta “planejado” antes da fase correspondente.
+
 ```text
 bens-seguros-v2/
 ├── apps/
@@ -54,24 +56,24 @@ bens-seguros-v2/
 │   │   ├── prisma/{schema.prisma, migrations/, seed.ts}
 │   │   ├── src/
 │   │   │   ├── modules/
-│   │   │   │   ├── auth/            # Better Auth (identidade, sessão, 2FA), /me, org ativa, termos, gates de cadastro
-│   │   │   │   ├── organizations/   # org, logo, membros, convites, transferência de carteira, onboarding
-│   │   │   │   ├── contacts/        # leads (CHAT_ONLY → qualificado), identidade de canal, promoção a cliente
-│   │   │   │   ├── clients/         # PF/PJ, CPF/CNPJ cifrado, LGPD, import/export
-│   │   │   │   ├── insurers/
-│   │   │   │   ├── proposals/       # funil, etapas, checklist, cotação (e-mail + PDF), CEP, placa, renovação automática
-│   │   │   │   ├── policies/        # emissão (transacional), importação, cancelamento, expiração, endossos, PDF, export
-│   │   │   │   ├── commissions/     # valores corretora/vendedor, workflow de repasse, estorno, export
-│   │   │   │   ├── claims/          # sinistros + ocorrências
-│   │   │   │   ├── assistances/
-│   │   │   │   ├── documents/       # upload validado, download pré-assinado
-│   │   │   │   ├── notifications/   # in-app + e-mail + push por socket + alertas diários
-│   │   │   │   ├── dashboard/       # estatísticas + relatório PDF
-│   │   │   │   ├── search/          # busca global
-│   │   │   │   ├── audit/           # trilha de auditoria (sem PII) + listagem
-│   │   │   │   ├── billing/         # planos, assinatura, faturas, Asaas, entitlements, uso de IA
-│   │   │   │   ├── chat/            # canais, conversas, mensagens, fila, bot IA, whatsapp/, widget/
-│   │   │   │   └── admin/           # super-admin: tenants, uso de IA, jobs com falha
+│   │   │   │   ├── auth/            # [no disco / implementado] Better Auth, /me, org ativa, termos, gates
+│   │   │   │   ├── organizations/   # [no disco / implementado] org, membros, convites, carteira, onboarding
+│   │   │   │   ├── audit/           # [no disco / implementado] trilha sem PII (+ API de listagem)
+│   │   │   │   ├── billing/         # [no disco / parcial] só trial no onboarding; Asaas/planos = Fase 5 (roadmap)
+│   │   │   │   ├── contacts/        # [planejado / não no disco] leads, canal → cliente
+│   │   │   │   ├── clients/         # [planejado / não no disco] PF/PJ, CPF/CNPJ cifrado, LGPD
+│   │   │   │   ├── insurers/        # [planejado / não no disco]
+│   │   │   │   ├── proposals/       # [planejado / não no disco] funil, cotação, renovação
+│   │   │   │   ├── policies/        # [planejado / não no disco] emissão, endossos, PDF
+│   │   │   │   ├── commissions/     # [planejado / não no disco] repasse, estorno
+│   │   │   │   ├── claims/          # [planejado / não no disco] sinistros + ocorrências
+│   │   │   │   ├── assistances/     # [planejado / não no disco]
+│   │   │   │   ├── documents/       # [planejado / não no disco] upload / download pré-assinado
+│   │   │   │   ├── notifications/   # [planejado / não no disco] in-app + e-mail + socket
+│   │   │   │   ├── dashboard/       # [planejado / não no disco]
+│   │   │   │   ├── search/          # [planejado / não no disco]
+│   │   │   │   ├── chat/            # [planejado / não no disco] WhatsApp, widget, bot IA
+│   │   │   │   └── admin/           # [planejado / não no disco] super-admin
 │   │   │   ├── infrastructure/
 │   │   │   │   ├── database.ts      # PrismaClient (role da aplicação) + withTenant (RLS)
 │   │   │   │   ├── queue.ts         # interface mínima sobre o pg-boss (enqueue/registerWorker/schedule)
