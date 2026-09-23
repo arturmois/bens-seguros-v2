@@ -38,7 +38,8 @@ Ordem. Cada uma: `plan.md` revisado → `checks.md` → build → Verifier. Perf
 
 - Fase 4 fechada: `org-core`, `invitations`, `audit` e `org-web` com `verification.md` PASS.
 - `org-web`: `verification.md` PASS na rodada 3 (`c445910`). Rodada 1 FAIL em `90ca899` (regressão do login sem organização ativa → AD-010; testes que não discriminavam), rodada 2 FAIL em `16dbd6f` (dois membros sem prova).
-- Próximo: Checkpoint H2 (`harness-eval`, Track A, sessão nova), depois a Fase 5.
+- Checkpoint H2 fechado: `harness-h2` com `verification.md` PASS na rodada 2 (`a885893`). Rodada 1 FAIL em `e6c1b8e` (o `CLAUDE.md` dizia que `withoutTenant` servia às tabelas de identidade → L-037). Resultado e o que foi mantido: `docs/roadmap.md`, Checkpoint H2.
+- Próximo: Fase 5 (`prompts/prompt-05.md`).
 - `audit`: `verification.md` PASS (`3ab6b69`).
 - `invitations`: `verification.md` PASS (`121a060`).
 - `org-core`: `verification.md` PASS (`8869be9`).

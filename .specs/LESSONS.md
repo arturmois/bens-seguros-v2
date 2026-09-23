@@ -228,6 +228,12 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: verification.md round 2 gap 2 - Relations SetNull, migration.sql:5 (20260923133344_user_last_active_organization) (specs)
 - last seen: 2026-09-23T14:09:19Z
 
+### L-037 - Check every harness sentence that names a helper against the call sites that use it, not only against the helper's definition
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `harness` · harmful: 0
+- features: harness-h2
+- evidence: verification.md round 1 I1 - CLAUDE.md:15 (withoutTenant claimed for identity tables) (harness)
+- last seen: 2026-09-23T16:07:31Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

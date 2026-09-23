@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 37,
+  "next_id": 38,
   "lessons": [
     {
       "id": "L-001",
@@ -656,6 +656,24 @@
       ],
       "created": "2026-09-23T14:09:19Z",
       "last_seen": "2026-09-23T14:09:19Z"
+    },
+    {
+      "id": "L-037",
+      "key": "ac_gap::check every harness sentence that names a helper against the call sites that use it not only against the helper s definition",
+      "text": "Check every harness sentence that names a helper against the call sites that use it, not only against the helper's definition",
+      "signal": "ac_gap",
+      "scope": "harness",
+      "status": "candidate",
+      "features": [
+        "harness-h2"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "verification.md round 1 I1 - CLAUDE.md:15 (withoutTenant claimed for identity tables) (harness)"
+      ],
+      "created": "2026-09-23T16:07:31Z",
+      "last_seen": "2026-09-23T16:07:31Z"
     }
   ]
 }
