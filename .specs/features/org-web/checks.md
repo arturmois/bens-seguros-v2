@@ -3,7 +3,7 @@
 Profile: standard
 Plan: `.specs/features/org-web/plan.md`
 
-49 checks in 6 slices · 4 one-way doors · 0 open
+50 checks in 6 slices · 4 one-way doors · 0 open
 
 Proof command prefix for the server, omitted below: `pnpm --filter @bens/server exec vitest run`.
 Proof command prefix for the web, omitted below: `pnpm --filter @bens/web exec playwright test`.
@@ -66,6 +66,7 @@ Proof: `e2e/org-web.spec.ts -g "sends a user with no active membership to onboar
 
 **C17** - `POST /api/v1/me/active-organization` `404` mostra "Organização não encontrada." e a URL não muda (AC 15)
 Proof: `e2e/org-web.spec.ts -g "shows organization not found when the switch fails"`
+Proof: `e2e/org-web.spec.ts -g "keeps the screen when the header switch fails"`
 
 ### S3 - Nome da corretora · ~4 files · ~16 KB · ~4k
 
@@ -171,6 +172,9 @@ Proof: `e2e/org-web.spec.ts -g "returns to the last brokerage after signing in a
 **C49** - `PATCH /api/v1/organization` que responde `error.message` mostra essa mensagem e o campo "Nome" mantém o valor digitado (AC 44)
 Proof: `e2e/org-web.spec.ts -g "shows the rename failure"`
 
+**C50** - Apagar a `Organization` que está em `User.lastActiveOrganizationId` mantém a linha do `User` e zera o campo (`ON DELETE SET NULL`) (Relations, door 4)
+Proof: `test/schema.spec.ts -t "forgets the last active organization when it is deleted"`
+
 ## Coverage
 
 | Set (size) | Member -> proof | Unproven |
@@ -186,6 +190,8 @@ Proof: `e2e/org-web.spec.ts -g "shows the rename failure"`
 | menu Equipe (2) | com `member:update` C23 · sem `member:update` C23 | - |
 | Landing doors, rodada 2 (1) | organização inicial da sessão C44 | - |
 | initial organization of a session (5) | última com membro ativo C44 · última inativa e uma única ativa C45 · sem última e uma única ativa C45 · duas ativas sem última C46 · nenhuma ativa C46 | - |
+| switch failure screens (2) | `/select-org` C17 · cabeçalho do `_app` C17 | - |
+| `User.lastActiveOrganizationId` relation (1) | apagar a organização zera o campo C50 | - |
 | writers of the last organization (3) | onboarding C47 · troca C47 · aceite do convite C47 | - |
 | mutation failure shown (5) | desativar membro C36 · revogar convite C36 · transferir carteira C36 · mudar papel C36 · renomear corretora C49 | - |
 
@@ -227,4 +233,5 @@ Cost: a lista de organizações tem prova na própria camada, além da tela. Cad
 ## Handoff
 
 - S1 = 6k, S2 = 8k, S3 = 4k, S4 = 12k, S5 = 5k, total 35k, under the 150k budget - one builder
+- Rodada 3 (depois do FAIL da rodada 2 em `16dbd6f`): segunda prova de C17 e C50, ~2k - one builder
 - Rodada 2 (depois do FAIL do Verifier em `90ca899`): S6 = 10k mais as correções dos testes de C8, C12, C15, C16, C21, C34, C36 (~15k), total 25k, under the 150k budget - one builder

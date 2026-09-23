@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 36,
+  "next_id": 37,
   "lessons": [
     {
       "id": "L-001",
@@ -273,10 +273,11 @@
       "harmful": 0,
       "evidence": [
         "Coverage AC 38 - realtime.spec.ts:53-63 (expired session untested over the socket) (specs)",
-        "F3 members.tsx:329; C36 org-web.spec.ts:605 (specs)"
+        "F3 members.tsx:329; C36 org-web.spec.ts:605 (specs)",
+        "verification.md round 2 gap 1 - AC 15 header origin, apps/web/src/routes/_app.tsx:125-128 (specs)"
       ],
       "created": "2026-09-22T13:17:42Z",
-      "last_seen": "2026-09-23T12:35:52Z"
+      "last_seen": "2026-09-23T14:09:19Z"
     },
     {
       "id": "L-016",
@@ -637,6 +638,24 @@
       ],
       "created": "2026-09-23T12:35:52Z",
       "last_seen": "2026-09-23T12:35:52Z"
+    },
+    {
+      "id": "L-036",
+      "key": "ac_gap::give every constraint the plan s relations names a check that asserts it or mark it n a with the reason",
+      "text": "Give every constraint the plan's Relations names a check that asserts it, or mark it n/a with the reason",
+      "signal": "ac_gap",
+      "scope": "specs",
+      "status": "candidate",
+      "features": [
+        "org-web"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "verification.md round 2 gap 2 - Relations SetNull, migration.sql:5 (20260923133344_user_last_active_organization) (specs)"
+      ],
+      "created": "2026-09-23T14:09:19Z",
+      "last_seen": "2026-09-23T14:09:19Z"
     }
   ]
 }

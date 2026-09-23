@@ -11,8 +11,8 @@ Corroborated across multiple features. Safe to apply as guidance.
 ### L-015 - Give every member an acceptance criterion enumerates its own case in the check, even when a sibling transport already covers it
 - signal: `ac_gap` · recurrence: 2 feature(s) · scope: `specs` · harmful: 0
 - features: auth-core, org-web
-- evidence: Coverage AC 38 - realtime.spec.ts:53-63 (expired session untested over the socket) (specs) (+1 more)
-- last seen: 2026-09-23T12:35:52Z
+- evidence: Coverage AC 38 - realtime.spec.ts:53-63 (expired session untested over the socket) (specs) (+2 more)
+- last seen: 2026-09-23T14:09:19Z
 
 ## Candidates (under observation - do NOT load as guidance yet)
 
@@ -221,6 +221,12 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - features: org-web
 - evidence: verification.md Gate: login/terms/two-factor/password-reset e2e 15 failed at 90ca899 (web-e2e)
 - last seen: 2026-09-23T12:35:52Z
+
+### L-036 - Give every constraint the plan's Relations names a check that asserts it, or mark it n/a with the reason
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `specs` · harmful: 0
+- features: org-web
+- evidence: verification.md round 2 gap 2 - Relations SetNull, migration.sql:5 (20260923133344_user_last_active_organization) (specs)
+- last seen: 2026-09-23T14:09:19Z
 
 ## Quarantined (failed when applied - ignore)
 
