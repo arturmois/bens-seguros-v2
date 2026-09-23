@@ -33,6 +33,7 @@ Ordem. Cada uma: `plan.md` revisado → `checks.md` → build → Verifier. Perf
 
 ## Handoff
 
-- `invitations`: `plan.md`, `checks.md` e código prontos. Gate local verde. Verifier ainda não rodou.
+- `invitations`: `verification.md` PASS (`121a060`).
 - `org-core`: `verification.md` PASS (`8869be9`).
 - Fase 3 fechada: `signup-gates` e `terms` com `verification.md` PASS.
+- Próximo: `audit`.
