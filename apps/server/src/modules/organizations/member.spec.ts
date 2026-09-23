@@ -5,7 +5,8 @@ import { acceptCurrentTerms, signedInUser, TestClient, uniqueEmail } from '../..
 import { withTwoSalespeople, withTwoTenants } from '../../../test/factories.ts'
 import type { App } from '../../app.ts'
 import type { Deps } from '../../dependencies.ts'
-import type { Role } from '../../shared/permissions.ts'
+import { permissionsFor, type Role } from '../../shared/permissions.ts'
+import { updateMember } from './member.ts'
 import { portfolioMoves } from './portfolio.ts'
 
 let app: App
@@ -130,6 +131,31 @@ describe('PATCH /api/v1/members/:id', () => {
     expect((await auditsOf(host.organizationId, target.member.id)).at(-1)?.changes).toMatchObject({
       active: [false, true],
     })
+  })
+
+  it('cites the organization when the subscription is missing on reactivation', async () => {
+    const host = await brokerage()
+    const target = await addMember(host.organizationId, 'VIEWER', false)
+    await deps.db.withTenant({ organizationId: host.organizationId }, (tx) =>
+      tx.subscription.deleteMany(),
+    )
+    const ctx = {
+      requestId: 'test',
+      userId: host.userId,
+      sessionId: randomUUID(),
+      isSuperAdmin: false,
+      organizationId: host.organizationId,
+      role: 'OWNER' as const,
+      permissions: permissionsFor('OWNER'),
+    }
+
+    await expect(
+      updateMember({ db: deps.db }, ctx, target.member.id, { active: true }),
+    ).rejects.toThrow(host.organizationId)
+    const stored = await deps.db.withTenant({ organizationId: host.organizationId }, (tx) =>
+      tx.member.findUniqueOrThrow({ where: { id: target.member.id } }),
+    )
+    expect(stored.active).toBe(false)
   })
 
   it('rejects a reactivation past the seat cap', async () => {

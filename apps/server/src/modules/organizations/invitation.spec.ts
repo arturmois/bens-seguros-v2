@@ -81,6 +81,18 @@ async function auditOf(organizationId: string, action: string) {
   )
 }
 
+// Waits until some connection is blocked inserting an invitation (a unique-index wait).
+async function waitForLockedInsert() {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const [row] = await deps.db.$queryRaw<{ waiting: number }[]>`
+      SELECT count(*)::int AS waiting FROM pg_stat_activity
+      WHERE wait_event_type = 'Lock' AND query ILIKE '%INSERT INTO%Invitation%'`
+    if ((row?.waiting ?? 0) > 0) return
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  throw new Error('no invitation insert waited on the unique index within 5s')
+}
+
 async function tokenFor(email: string) {
   const job = (await emailJobsTo(deps, email, 'invitation')).at(-1)
   const url = job?.props.url
@@ -310,9 +322,48 @@ describe('POST /api/v1/invitations', () => {
     expect(rows[0]).toMatchObject({
       entityId: response.json().id,
       actorUserId: host.userId,
-      changes: { role: 'COMMERCIAL' },
     })
+    expect(rows[0]?.changes).toEqual({ role: 'COMMERCIAL' })
     expect(JSON.stringify(rows[0]).toLowerCase()).not.toContain(email.toLowerCase())
+  })
+
+  it('maps a duplicate caught by the unique index to INVITATION_PENDING', async () => {
+    const host = await brokerage()
+    const email = uniqueEmail('corrida')
+    let release = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let inserted = () => {}
+    const ready = new Promise<void>((resolve) => {
+      inserted = resolve
+    })
+    // An uncommitted pending row: the request's pre-check cannot see it, and its insert waits on
+    // the unique index until this transaction commits.
+    const blocker = deps.db.withTenant({ organizationId: host.organizationId }, async (tx) => {
+      await tx.invitation.create({
+        data: {
+          email,
+          role: 'VIEWER',
+          tokenHash: sha256(randomUUID()),
+          status: 'PENDING',
+          expiresAt: new Date(Date.now() + WEEK),
+        },
+      })
+      inserted()
+      await held
+    })
+    await ready
+
+    const request = host.client.post('/api/v1/invitations', { email, role: 'MANAGER' })
+    await waitForLockedInsert()
+    release()
+    await blocker
+    const response = await request
+
+    expect(response.statusCode).toBe(409)
+    expect(response.json().error.code).toBe('INVITATION_PENDING')
+    expect(await auditOf(host.organizationId, 'invitation.create')).toEqual([])
   })
 
   it('does not record a rejected duplicate invitation', async () => {
@@ -444,8 +495,8 @@ describe('GET and DELETE /api/v1/invitations', () => {
     expect(rows[0]).toMatchObject({
       entityId: id,
       actorUserId: host.userId,
-      changes: { status: ['PENDING', 'REVOKED'] },
     })
+    expect(rows[0]?.changes).toEqual({ status: ['PENDING', 'REVOKED'] })
   })
 
   it('hides an invitation from another tenant on revoke', async () => {
@@ -659,8 +710,8 @@ describe('invitation preview and accept', () => {
     expect(rows[0]).toMatchObject({
       actorUserId: user.userId,
       entityId: member.id,
-      changes: { role: 'COMMERCIAL', invitationId: created.json().id },
     })
+    expect(rows[0]?.changes).toEqual({ role: 'COMMERCIAL', invitationId: created.json().id })
   })
 
   it('does not record an accept past the seat cap', async () => {

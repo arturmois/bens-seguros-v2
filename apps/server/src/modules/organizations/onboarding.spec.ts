@@ -70,8 +70,8 @@ describe('POST /api/v1/onboarding', () => {
       action: 'organization.create',
       actorUserId: userId,
       entityId: organizationId,
-      changes: { role: 'OWNER' },
     })
+    expect(rows[0]?.changes).toEqual({ role: 'OWNER' })
   })
 
   it('suffixes a slug that is taken', async () => {

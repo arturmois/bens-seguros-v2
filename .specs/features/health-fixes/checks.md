@@ -53,6 +53,7 @@ Proof: `test "$(rg -n '>=\s*maxOrgsPerUser' apps/server/src -g '!*.spec.*' | wc 
 Proof: `test "$(rg -n 'function isUniqueViolation' apps/server/src | wc -l)" = 1 && rg -q 'export function isUniqueViolation' apps/server/src/shared/errors.ts`
 Proof: `src/modules/organizations/invitation.spec.ts -t "rejects a second pending invitation for the same email"`
 Proof: `src/modules/organizations/onboarding.spec.ts -t "suffixes a slug that is taken"`
+Proof: `src/modules/organizations/invitation.spec.ts -t "maps a duplicate caught by the unique index to INVITATION_PENDING"`
 
 **C12** - Nenhum arquivo de produção contém `'tenant context missing'`, e as rotas usam `currentTenant(request)` (AC 12)
 Proof: `! rg -q 'tenant context missing' apps/server/src && test "$(rg -c 'currentTenant\(request\)' apps/server/src/modules/organizations/*.routes.ts | awk -F: '{s+=$2} END {print s}')" = 8`
@@ -62,6 +63,7 @@ Proof: `src/modules/audit/audit.spec.ts -t "names the key path of an unsupported
 
 **C14** - `acceptInvitation` numa organização sem `Subscription` rejeita com mensagem que contém o `organizationId` dessa organização, e o membro não é criado (AC 14)
 Proof: `src/modules/organizations/invitation.spec.ts -t "rolls back the accept when the subscription is missing"`
+Proof: `src/modules/organizations/member.spec.ts -t "cites the organization when the subscription is missing on reactivation"`
 
 **C15** - `previewStatus` recebe o enum `InvitationStatus` do Prisma e não existe mais `'unexpected invitation status'`; os previews de `PENDING`, `EXPIRED`, `REVOKED` e `ACCEPTED` seguem respondendo (AC 15)
 Proof: `! rg -q 'unexpected invitation status' apps/server/src && pnpm typecheck`
@@ -92,7 +94,7 @@ Proof: `rg -q 'go-live.*documents\.ts|documents\.ts.*go-live' docs/roadmap.md &&
 | falha sem linha de trilha (2) | convite duplicado C7 · aceite sem vaga C8 | - |
 | rotas que usam o teto de organizações (2) | onboarding C10 · aceite C10 | - |
 | usos de `isUniqueViolation` (3) | `errorHandler` C11 (estrutural) · `invitation.ts` C11 · `onboarding.ts` C11 | - |
-| erros de invariante do F-07 (3) | `unexpected audit change` C13 · `Subscription missing` C14 · `unexpected invitation status` C15 | - |
+| erros de invariante do F-07 (5) | audit `null`/`undefined` C13 · audit tipo não suportado C13 · `Subscription missing` no aceite C14 · `Subscription missing` na reativação C14 · `unexpected invitation status` C15 | - |
 | status de preview (4) | `PENDING` C15 · `EXPIRED` C15 · `REVOKED` C15 · `ACCEPTED` C15 | - |
 | documentos (5) | `architecture.md` §2 C16 · `architecture.md` §3 C17 · `CLAUDE.md` C18 · `STATE.md` C19 · `roadmap.md` C20 | - |
 | molde de módulo, door 2 (1) | C16 | - |

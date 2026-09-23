@@ -146,8 +146,8 @@ describe('GET and PATCH /api/v1/organization', () => {
     expect(rows[0]).toMatchObject({
       actorUserId: userId,
       entityId: organizationId,
-      changes: { name: '[alterado]' },
     })
+    expect(rows[0]?.changes).toEqual({ name: '[alterado]' })
     expect(JSON.stringify(rows)).not.toContain('Nome Novo')
   })
 

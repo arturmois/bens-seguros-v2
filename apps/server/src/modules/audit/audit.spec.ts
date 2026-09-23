@@ -93,6 +93,24 @@ describe('audit.record', () => {
         }),
       ),
     ).rejects.toThrow('changes.nested.value')
+    await expect(
+      deps.db.withTenant(ctx, (tx) =>
+        record(tx, ctx, {
+          action: 'member.update',
+          entityId: ctx.userId,
+          changes: { list: [undefined] },
+        }),
+      ),
+    ).rejects.toThrow('changes.list[0]')
+    await expect(
+      deps.db.withTenant(ctx, (tx) =>
+        record(tx, ctx, {
+          action: 'member.update',
+          entityId: ctx.userId,
+          changes: { at: () => 1 },
+        }),
+      ),
+    ).rejects.toThrow('changes.at has unsupported type function')
     const rows = await deps.db.withTenant(ctx, (tx) =>
       tx.auditLog.findMany({ where: { actorUserId: ctx.userId } }),
     )
