@@ -324,6 +324,26 @@ test.describe('org web', () => {
     await expect(page).toHaveURL('/select-org')
   })
 
+  test('keeps the screen when the header switch fails', async ({ page, api }) => {
+    const user = await verifiedUser(api)
+    const alfa = await onboard(api, 'Alfa')
+    const beta = await onboard(api, 'Beta')
+    await page.route('**/api/v1/me/active-organization', (route) =>
+      route.fulfill({
+        status: 404,
+        json: { error: { code: 'NOT_FOUND', message: 'Organização não encontrada.' } },
+      }),
+    )
+    await signIn(page, user)
+    await enterApp(page, beta.name)
+    await page.goto('/settings/organization')
+    const header = page.getByRole('banner')
+    await header.getByRole('button', { name: beta.name }).click()
+    await header.getByRole('button', { name: alfa.name }).click()
+    await expect(header.getByText('Organização não encontrada.')).toBeVisible()
+    await expect(page).toHaveURL('/settings/organization')
+  })
+
   test('shows the brokerage form to the owner', async ({ page, api }) => {
     const user = await verifiedUser(api)
     const created = await onboard(api, 'Formulario')

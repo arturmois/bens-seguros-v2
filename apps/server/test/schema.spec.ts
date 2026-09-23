@@ -387,4 +387,34 @@ describe('identity tables', () => {
     // User-level tables (ADR-003): outside row level security, so no tenant column (ADR-004).
     expect(rows).toEqual(identity.map((table) => ({ table, tenant: false })))
   })
+
+  it('forgets the last active organization when it is deleted', async () => {
+    const remembered = await withOwnerClient(async (client) => {
+      const schema = workerSchema()
+      const {
+        rows: [organization],
+      } = await client.query<{ id: string }>(
+        `INSERT INTO "${schema}"."Organization" (id, name, slug, "updatedAt")
+         VALUES (gen_random_uuid(), 'Apagada', gen_random_uuid()::text, now()) RETURNING id`,
+      )
+      const {
+        rows: [user],
+      } = await client.query<{ id: string }>(
+        `INSERT INTO "${schema}"."User" (id, name, email, "updatedAt", "lastActiveOrganizationId")
+         VALUES (gen_random_uuid(), 'Maria', gen_random_uuid()::text || '@example.com', now(), $1)
+         RETURNING id`,
+        [organization?.id],
+      )
+      await client.query(`DELETE FROM "${schema}"."Organization" WHERE id = $1`, [organization?.id])
+      const { rows } = await client.query<{ last: string | null }>(
+        `SELECT "lastActiveOrganizationId" AS last FROM "${schema}"."User" WHERE id = $1`,
+        [user?.id],
+      )
+      await client.query(`DELETE FROM "${schema}"."User" WHERE id = $1`, [user?.id])
+      return rows
+    })
+
+    // org-web door 4: the row stays, the choice goes (ON DELETE SET NULL).
+    expect(remembered).toEqual([{ last: null }])
+  })
 })
