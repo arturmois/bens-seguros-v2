@@ -8,7 +8,11 @@
 
 Corroborated across multiple features. Safe to apply as guidance.
 
-_none_
+### L-015 - Give every member an acceptance criterion enumerates its own case in the check, even when a sibling transport already covers it
+- signal: `ac_gap` · recurrence: 2 feature(s) · scope: `specs` · harmful: 0
+- features: auth-core, org-web
+- evidence: Coverage AC 38 - realtime.spec.ts:53-63 (expired session untested over the socket) (specs) (+1 more)
+- last seen: 2026-09-23T12:35:52Z
 
 ## Candidates (under observation - do NOT load as guidance yet)
 
@@ -96,12 +100,6 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `auth` · harmful: 0
 - features: auth-core
 - evidence: Coverage 'Better Auth configured values' - auth.ts:37-38,52,85-91 (auth)
-- last seen: 2026-09-22T13:17:42Z
-
-### L-015 - Give every member an acceptance criterion enumerates its own case in the check, even when a sibling transport already covers it
-- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `specs` · harmful: 0
-- features: auth-core
-- evidence: Coverage AC 38 - realtime.spec.ts:53-63 (expired session untested over the socket) (specs)
 - last seen: 2026-09-22T13:17:42Z
 
 ### L-016 - Prove a client-side cache clear with in-app navigation, never with a full page reload that discards the cache anyway
@@ -193,6 +191,36 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - features: org-core
 - evidence: Coverage isSuperAdmin pairs / neither (verification)
 - last seen: 2026-09-22T21:30:24Z
+
+### L-031 - Seed rows in an order different from the expected sort, so removing the sort fails the test
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `tests` · harmful: 0
+- features: org-web
+- evidence: F4 apps/server/src/modules/auth/me.ts:34-40; C8 me.spec.ts:230 (tests)
+- last seen: 2026-09-23T12:35:52Z
+
+### L-032 - Establish in the test every precondition the check names; a mocked field in one response does not create the server state it describes
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `web-e2e` · harmful: 0
+- features: org-web
+- evidence: F1 apps/web/src/features/organizations/account.ts:25; C15 org-web.spec.ts:221, C16 :236 (web-e2e)
+- last seen: 2026-09-23T12:35:52Z
+
+### L-033 - Prove a displayed value from a response with a value a constant cannot match, never only zero
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `web-e2e` · harmful: 0
+- features: org-web
+- evidence: F2 apps/web/src/routes/_app/settings/members.tsx:342; C34 org-web.spec.ts:569 (web-e2e)
+- last seen: 2026-09-23T12:35:52Z
+
+### L-034 - Scope a text or role assertion to the region the claim names, since a page-wide locator also matches the same text in the header or an open menu
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `web-e2e` · harmful: 0
+- features: org-web
+- evidence: C21 org-web.spec.ts:329; C12 org-web.spec.ts:196 (web-e2e)
+- last seen: 2026-09-23T12:35:52Z
+
+### L-035 - When a change moves where a signed-in user lands, run the whole e2e suite before landing, not only the feature spec
+- signal: `gate_fail` · recurrence: 1 feature(s) · scope: `web-e2e` · harmful: 0
+- features: org-web
+- evidence: verification.md Gate: login/terms/two-factor/password-reset e2e 15 failed at 90ca899 (web-e2e)
+- last seen: 2026-09-23T12:35:52Z
 
 ## Quarantined (failed when applied - ignore)
 

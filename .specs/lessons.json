@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 31,
+  "next_id": 36,
   "lessons": [
     {
       "id": "L-001",
@@ -264,17 +264,19 @@
       "text": "Give every member an acceptance criterion enumerates its own case in the check, even when a sibling transport already covers it",
       "signal": "ac_gap",
       "scope": "specs",
-      "status": "candidate",
+      "status": "confirmed",
       "features": [
-        "auth-core"
+        "auth-core",
+        "org-web"
       ],
-      "recurrence": 1,
+      "recurrence": 2,
       "harmful": 0,
       "evidence": [
-        "Coverage AC 38 - realtime.spec.ts:53-63 (expired session untested over the socket) (specs)"
+        "Coverage AC 38 - realtime.spec.ts:53-63 (expired session untested over the socket) (specs)",
+        "F3 members.tsx:329; C36 org-web.spec.ts:605 (specs)"
       ],
       "created": "2026-09-22T13:17:42Z",
-      "last_seen": "2026-09-22T13:17:42Z"
+      "last_seen": "2026-09-23T12:35:52Z"
     },
     {
       "id": "L-016",
@@ -545,6 +547,96 @@
       ],
       "created": "2026-09-22T21:30:24Z",
       "last_seen": "2026-09-22T21:30:24Z"
+    },
+    {
+      "id": "L-031",
+      "key": "surviving_mutant::seed rows in an order different from the expected sort so removing the sort fails the test",
+      "text": "Seed rows in an order different from the expected sort, so removing the sort fails the test",
+      "signal": "surviving_mutant",
+      "scope": "tests",
+      "status": "candidate",
+      "features": [
+        "org-web"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "F4 apps/server/src/modules/auth/me.ts:34-40; C8 me.spec.ts:230 (tests)"
+      ],
+      "created": "2026-09-23T12:35:52Z",
+      "last_seen": "2026-09-23T12:35:52Z"
+    },
+    {
+      "id": "L-032",
+      "key": "surviving_mutant::establish in the test every precondition the check names a mocked field in one response does not create the server state it describes",
+      "text": "Establish in the test every precondition the check names; a mocked field in one response does not create the server state it describes",
+      "signal": "surviving_mutant",
+      "scope": "web-e2e",
+      "status": "candidate",
+      "features": [
+        "org-web"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "F1 apps/web/src/features/organizations/account.ts:25; C15 org-web.spec.ts:221, C16 :236 (web-e2e)"
+      ],
+      "created": "2026-09-23T12:35:52Z",
+      "last_seen": "2026-09-23T12:35:52Z"
+    },
+    {
+      "id": "L-033",
+      "key": "surviving_mutant::prove a displayed value from a response with a value a constant cannot match never only zero",
+      "text": "Prove a displayed value from a response with a value a constant cannot match, never only zero",
+      "signal": "surviving_mutant",
+      "scope": "web-e2e",
+      "status": "candidate",
+      "features": [
+        "org-web"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "F2 apps/web/src/routes/_app/settings/members.tsx:342; C34 org-web.spec.ts:569 (web-e2e)"
+      ],
+      "created": "2026-09-23T12:35:52Z",
+      "last_seen": "2026-09-23T12:35:52Z"
+    },
+    {
+      "id": "L-034",
+      "key": "ac_gap::scope a text or role assertion to the region the claim names since a page wide locator also matches the same text in the header or an open menu",
+      "text": "Scope a text or role assertion to the region the claim names, since a page-wide locator also matches the same text in the header or an open menu",
+      "signal": "ac_gap",
+      "scope": "web-e2e",
+      "status": "candidate",
+      "features": [
+        "org-web"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "C21 org-web.spec.ts:329; C12 org-web.spec.ts:196 (web-e2e)"
+      ],
+      "created": "2026-09-23T12:35:52Z",
+      "last_seen": "2026-09-23T12:35:52Z"
+    },
+    {
+      "id": "L-035",
+      "key": "gate_fail::when a change moves where a signed in user lands run the whole e2e suite before landing not only the feature spec",
+      "text": "When a change moves where a signed-in user lands, run the whole e2e suite before landing, not only the feature spec",
+      "signal": "gate_fail",
+      "scope": "web-e2e",
+      "status": "candidate",
+      "features": [
+        "org-web"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "verification.md Gate: login/terms/two-factor/password-reset e2e 15 failed at 90ca899 (web-e2e)"
+      ],
+      "created": "2026-09-23T12:35:52Z",
+      "last_seen": "2026-09-23T12:35:52Z"
     }
   ]
 }

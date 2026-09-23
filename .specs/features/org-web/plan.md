@@ -39,6 +39,7 @@ flowchart TD
 5. `/settings/organization` lê `GET /api/v1/organization` (exists) e, com `organization:update`, envia `PATCH /api/v1/organization` (exists).
 6. `/settings/members` (new) só abre para quem tem `member:update`. Lista, convite, revogação, papel, ativação e transferência usam as rotas que já existem.
 7. `/accept-invitation` lê o preview público (exists) e, com sessão, envia `POST /api/v1/invitations/accept` (exists). No `200`, vai para `/dashboard`.
+8. Toda sessão nova (login, link de verificação, 2FA) nasce com a organização inicial (door 4): o hook `databaseHooks.session.create.before` do Better Auth (new) lê `User.lastActiveOrganizationId` e os memberships ativos com `withUser` (exists). Quem grava a ativa (`assignActiveOrganization`, exists: onboarding, troca, aceite) passa a gravar também a última usada no `User`.
 
 ## Impact
 
@@ -46,12 +47,13 @@ flowchart TD
 | --- | --- |
 | domain | nenhum termo novo. **organização**, **membro** e **convite** continuam com o sentido que `organizations` já gravou |
 | API | `GET /api/v1/me` ganha `organizations`. Quem ramifica hoje: `me.ts`, `me.schema.ts`, `me.spec.ts`, o hook gerado em `apps/web/src/api/` |
-| stored data | nada a migrar. A lista é calculada de `Member` e `Organization` |
+| stored data | a lista é calculada de `Member` e `Organization`. `User` ganha `lastActiveOrganizationId` nulo (door 4); linhas existentes ficam `NULL` e caem na regra da corretora única |
 | web | o `_app` passa a exigir organização ativa utilizável. O teste e2e que hoje, depois dos termos, espera `/dashboard` passa a esperar `/onboarding`. O cabeçalho mostra o nome da corretora |
+| auth | a sessão deixa de nascer sempre sem organização (door 4). Quem ramifica: `auth.ts` (hook), `active-organization.ts` do `auth`, e os e2e de login, termos, 2FA e recuperação de senha, que voltam a cair direto no `_app` |
 
 ## Relations
 
-`None - no stored-data shape change`
+- `User` 0..1 → `Organization`: a última organização ativa (`lastActiveOrganizationId`). Apagar a organização zera o campo (`SetNull`, como `Session.activeOrganizationId`). Só vale no login se ainda houver `Member` ativo do usuário nela.
 
 ## Surface
 
@@ -67,7 +69,9 @@ flowchart TD
 | 2. Rotas fora do `_app` | `/onboarding`, `/select-org`, `/accept-invitation` | debaixo do `_app`: o `beforeLoad` desse layout passa a exigir organização ativa, e essas telas existem para criar, escolher ou aceitar |
 | 3. Ordem do guard | sessão, depois termos, depois organização ativa utilizável (`activeOrganizationId` com `role` não nulo) | organização antes dos termos: a AD-005 já manda o aceite para a tela de termos, e o `_app` já faz essa ordem |
 
-- Nada mais neste cambio é difícil de reverter. Não há migration nem dependência nova.
+| 4. Organização inicial da sessão | `databaseHooks.session.create.before` define `activeOrganizationId`: `User.lastActiveOrganizationId` se o usuário ainda tem `Member` ativo nela; senão, a única organização com `Member` ativo; senão, `null` (→ `/select-org` ou `/onboarding`). `assignActiveOrganization` grava a sessão e `User.lastActiveOrganizationId` na mesma transação. Migration `user_last_active_organization` | copiar da sessão anterior: o sign-out apaga a linha de `Session`, então quem sai e entra perderia a escolha; cookie no web, como o legado: o tenant passaria a vir de um valor do cliente, e sem o `POST` a corretora única ainda cairia em `/select-org` |
+
+- Nada mais neste cambio é difícil de reverter. Não há dependência nova. A door 4 entrou durante o build (rodada 1 do Verifier: toda sessão nova caía em `/select-org`), decidida pelo usuário.
 
 ## Criteria
 
@@ -102,6 +106,9 @@ Quem tem duas corretoras alterna e vê o nome da ativa.
 14. WHILE `activeOrganizationId` está preenchido e `role` no `/me` é nulo, WHEN `organizations` tem itens THEN o sistema SHALL redirecionar `/dashboard` para `/select-org`. WHEN `organizations` é `[]` THEN o sistema SHALL redirecionar para `/onboarding`.
 15. IF `POST /api/v1/me/active-organization` responde `404` THEN o sistema SHALL mostrar "Organização não encontrada." e permanecer na tela de onde partiu a troca.
 
+42. WHEN uma sessão é criada THEN o sistema SHALL definir `activeOrganizationId` como `User.lastActiveOrganizationId` se o usuário tem `Member` ativo nela; senão, a única organização com `Member` ativo; senão, `null`.
+43. WHEN `POST /api/v1/onboarding`, `POST /api/v1/me/active-organization` ou `POST /api/v1/invitations/accept` define a organização ativa THEN o sistema SHALL gravar a mesma organização em `User.lastActiveOrganizationId`, de modo que sair e entrar de novo volta a ela no cabeçalho do `/dashboard`.
+
 **Independent test:** duas corretoras no mesmo usuário; o painel de uma não mostra o nome da outra depois da troca.
 
 ### S3: Nome da corretora (P1)
@@ -115,6 +122,8 @@ OWNER e ADMIN renomeiam. Os outros papéis só leem.
 18. IF o nome tem menos de 2 ou mais de 80 caracteres THEN o sistema SHALL mostrar "O nome precisa ter entre 2 e 80 caracteres." e não chamar `PATCH /api/v1/organization`.
 19. WHILE o papel é `VIEWER`, a página SHALL mostrar o nome como texto, sem o botão "Salvar", e não SHALL chamar `PATCH /api/v1/organization`.
 20. WHILE `GET /api/v1/organization` está em voo, a página SHALL mostrar "Carregando a corretora…". IF a request falha THEN a página SHALL mostrar "Não foi possível carregar a corretora." e o botão "Tentar de novo".
+
+44. IF `PATCH /api/v1/organization` responde com `error.message` THEN o sistema SHALL mostrar essa mensagem e manter o nome digitado no campo.
 
 **Independent test:** o OWNER renomeia; um VIEWER na mesma corretora vê o nome novo e não vê "Salvar".
 
@@ -204,6 +213,8 @@ O link do e-mail mostra a corretora e, com a sessão do e-mail certo, entra nela
 | screen `/accept-invitation` | unauthorised | AC 35, o preview é público; o aceite pede sessão por link, não por redirect cego |
 | screen `/accept-invitation` | destructive action confirms | n/a - aceitar não apaga dado |
 | screen cabeçalho | ordering | AC 11, AC 12 |
+| screen `/settings/organization` | error state (mutation) | AC 44 |
+| session | initial organization | AC 42, AC 43 |
 | API `GET /api/v1/me` | response shape | AC 8 |
 | API `GET /api/v1/me` | error shape and codes | existing - `401` `UNAUTHENTICATED` do `getMe` |
 | API `GET /api/v1/me` | who may call | existing - `requireSession` |

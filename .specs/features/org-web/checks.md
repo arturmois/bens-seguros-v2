@@ -3,7 +3,7 @@
 Profile: standard
 Plan: `.specs/features/org-web/plan.md`
 
-43 checks in 5 slices · 3 one-way doors · 0 open
+49 checks in 6 slices · 4 one-way doors · 0 open
 
 Proof command prefix for the server, omitted below: `pnpm --filter @bens/server exec vitest run`.
 Proof command prefix for the web, omitted below: `pnpm --filter @bens/web exec playwright test`.
@@ -38,6 +38,7 @@ Proof: `e2e/org-web.spec.ts -g "makes the new brokerage active"`
 
 **C8** - `GET /api/v1/me` `200` inclui `organizations` só com memberships `active`, itens `{ id, name, role }`, ordenados por `name` e depois `id`; membership inativo fica de fora; sem ativo, `organizations` é `[]` (AC 8, door 1)
 Proof: `src/modules/auth/me.spec.ts -t "lists the active organizations by name"`
+Proof: `src/modules/auth/me.spec.ts -t "orders organizations by name, then by id"`
 
 **C9** - `GET /api/v1/me` sem sessão válida responde `401` `UNAUTHENTICATED` (AC 8)
 Proof: `src/modules/auth/me.spec.ts -t "rejects every invalid session with 401"`
@@ -150,6 +151,26 @@ Proof: `e2e/org-web.spec.ts -g "shows an invitation meant for another email"`
 **C43** - Enquanto o preview não responde, a página mostra "Carregando o convite…". A página abre com termos pendentes e sem organização ativa, sem ir para `/onboarding` nem para `/terms-acceptance` (AC 41)
 Proof: `e2e/org-web.spec.ts -g "loads the invitation without an active brokerage"`
 
+### S6 - Organização inicial da sessão (door 4, rodada 2) · ~8 files · ~40 KB · ~10k
+
+**C44** - Login de quem tem `User.lastActiveOrganizationId` com `Member` ativo cria a sessão com `activeOrganizationId` igual a ela, mesmo tendo outra organização ativa (AC 42, door 4)
+Proof: `src/modules/auth/sign-in.spec.ts -t "starts the session in the last active organization"`
+
+**C45** - Login de quem teve o `Member` da última organização desativado e tem uma única outra organização ativa cria a sessão nessa outra (AC 42)
+Proof: `src/modules/auth/sign-in.spec.ts -t "falls back to the only active organization"`
+
+**C46** - Login sem última organização e com duas organizações ativas cria a sessão com `activeOrganizationId` `null`; sem nenhum `Member` ativo, também `null` (AC 42)
+Proof: `src/modules/auth/sign-in.spec.ts -t "leaves the organization open when there is a choice"`
+
+**C47** - `POST /api/v1/onboarding`, `POST /api/v1/me/active-organization` e `POST /api/v1/invitations/accept` gravam a organização que ficou ativa em `User.lastActiveOrganizationId` (AC 43, door 4)
+Proof: `src/modules/auth/sign-in.spec.ts -t "remembers the organization that was made active"`
+
+**C48** - Com duas corretoras, trocar para a segunda pelo cabeçalho, sair e entrar de novo leva a `/dashboard` com o nome da segunda no cabeçalho (AC 43)
+Proof: `e2e/org-web.spec.ts -g "returns to the last brokerage after signing in again"`
+
+**C49** - `PATCH /api/v1/organization` que responde `error.message` mostra essa mensagem e o campo "Nome" mantém o valor digitado (AC 44)
+Proof: `e2e/org-web.spec.ts -g "shows the rename failure"`
+
 ## Coverage
 
 | Set (size) | Member -> proof | Unproven |
@@ -163,6 +184,10 @@ Proof: `e2e/org-web.spec.ts -g "loads the invitation without an active brokerage
 | name bounds (4) | onboarding 1 C3 · onboarding 81 C3 · rename 1 C20 · rename 81 C20 | - |
 | invitation preview statuses (4) | `PENDING` C37 · `EXPIRED` C40 · `REVOKED` C41 · `ACCEPTED` C41 | - |
 | menu Equipe (2) | com `member:update` C23 · sem `member:update` C23 | - |
+| Landing doors, rodada 2 (1) | organização inicial da sessão C44 | - |
+| initial organization of a session (5) | última com membro ativo C44 · última inativa e uma única ativa C45 · sem última e uma única ativa C45 · duas ativas sem última C46 · nenhuma ativa C46 | - |
+| writers of the last organization (3) | onboarding C47 · troca C47 · aceite do convite C47 | - |
+| mutation failure shown (5) | desativar membro C36 · revogar convite C36 · transferir carteira C36 · mudar papel C36 · renomear corretora C49 | - |
 
 - Claims naming a status code, route or response shape: C4, C8, C9, C17, C29, C42 - each has a proof that crosses the boundary
 - No other check claims more than the single case its proof exercises
@@ -178,7 +203,8 @@ Proof: `e2e/org-web.spec.ts -g "loads the invitation without an active brokerage
 
 Evidence:
 
-- `organizations` no `/me`: ativo, ordem, vazio -> decides, na camada em `me.ts` C8 e na fronteira do cabeçalho C12
+- `organizations` no `/me`: ativo, ordem, vazio -> decides, na camada em `me.ts` C8 (unitário da ordem) e na fronteira do cabeçalho C12
+- organização inicial da sessão: 5 linhas -> decides, na fronteira do login C44, C45, C46; a gravação da última C47 e a volta pelo navegador C48
 - guard do `_app`: sessão, termos, organização utilizável -> decides, na fronteira das rotas C1, C5, C14, C15, C16
 - rótulos de papel: 5 linhas -> decides, na tela C26
 - convite na tela: 4 status do preview -> decides, na fronteira C37, C40, C41
@@ -195,9 +221,10 @@ Cost: a lista de organizações tem prova na própria camada, além da tela. Cad
 - concurrency: n/a - a corrida da vaga e do teto de organizações continua nos testes de server já existentes; esta feature não abre escrita nova
 - data lifecycle: n/a - nenhuma linha nova; a lista é calculada
 - dependency failure: n/a - nenhum serviço externo novo; o e-mail do convite continua o job já existente
-- state transitions: C15, C16, C33, C40, C41
+- state transitions: C15, C16, C33, C40, C41, C44, C45, C46
 - observability: n/a - não há log nem métrica nova; a confirmação visível é C19 e C34
 
 ## Handoff
 
 - S1 = 6k, S2 = 8k, S3 = 4k, S4 = 12k, S5 = 5k, total 35k, under the 150k budget - one builder
+- Rodada 2 (depois do FAIL do Verifier em `90ca899`): S6 = 10k mais as correções dos testes de C8, C12, C15, C16, C21, C34, C36 (~15k), total 25k, under the 150k budget - one builder
