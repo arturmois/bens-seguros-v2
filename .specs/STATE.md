@@ -13,6 +13,7 @@
 | AD-007 | Convite legível fora do tenant só pelo token. `Invitation.tenant_isolation`: `USING` é `organizationId = app.tenant_id` ou `tokenHash = current_setting('app.invitation_token', true)`; `WITH CHECK` é só o tenant. `app.invitation_token` só é setado em `database.ts` (`withInvitation`). O `organizationId` do `Member` criado no aceite sai dessa linha, nunca do request. Não usa `userId`: a linha não tem usuário até o aceite | active | `.specs/features/invitations/plan.md` (Landing 4) |
 | AD-008 | Trilha sem PII. Toda ação sensível chama `audit.record(tx, ctx, { action, entityId, changes })` dentro da mesma transação do ato. `changes` é jsonb; as chaves `email`, `name`, `phone`, `document`, `documentEncrypted`, `token`, `password`, `ipAddress` e `userAgent` (em qualquer nível) são gravadas como `"[alterado]"`. A linha guarda `actorUserId`, nunca o e-mail. `AuditLog` é tenant-scoped, RLS só por `app.tenant_id` | active | `.specs/features/audit/plan.md` (Landing 1 e 2) |
 | AD-009 | Carteira do COMMERCIAL. `scopeFor(ctx)` devolve `{ salespersonId: ctx.userId }` para `COMMERCIAL` e `{}` para os outros papéis. O repository aplica isso na query e devolve 404 fora da carteira; o RLS não filtra carteira. A transferência soma `portfolioMoves`, lista de `(tx, fromUserId, toUserId) => Promise<number>`, vazia até existir tabela com `salespersonId` | active | `.specs/features/audit/plan.md` (Landing 3 e 4) |
+| AD-010 | Organização inicial da sessão. `databaseHooks.session.create.before` do Better Auth define `activeOrganizationId`: `User.lastActiveOrganizationId` se ainda há `Member` ativo nela; senão, a única organização com `Member` ativo; senão, `null` (o web manda para `/select-org` ou `/onboarding`). `assignActiveOrganization` grava a sessão e `User.lastActiveOrganizationId` na mesma transação; apagar a organização zera o campo (`SET NULL`). Guardado no `User` porque o sign-out apaga a `Session`; nada vem do cliente (o legado usava cookie) | active | `.specs/features/org-web/plan.md` (Landing 4) |
 
 ## Phase 3 — features
 
@@ -35,8 +36,10 @@ Ordem. Cada uma: `plan.md` revisado → `checks.md` → build → Verifier. Perf
 
 ## Handoff
 
+- Fase 4 fechada: `org-core`, `invitations`, `audit` e `org-web` com `verification.md` PASS.
+- `org-web`: `verification.md` PASS na rodada 3 (`c445910`). Rodada 1 FAIL em `90ca899` (regressão do login sem organização ativa → AD-010; testes que não discriminavam), rodada 2 FAIL em `16dbd6f` (dois membros sem prova).
+- Próximo: Checkpoint H2 (`harness-eval`, Track A, sessão nova), depois a Fase 5.
 - `audit`: `verification.md` PASS (`3ab6b69`).
 - `invitations`: `verification.md` PASS (`121a060`).
 - `org-core`: `verification.md` PASS (`8869be9`).
 - Fase 3 fechada: `signup-gates` e `terms` com `verification.md` PASS.
-- Próximo: `org-web`.
