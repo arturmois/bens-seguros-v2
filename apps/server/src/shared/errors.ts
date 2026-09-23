@@ -21,6 +21,11 @@ export class AppError extends Error {
   }
 }
 
+// Unique constraint violation (P2002), for a use case that turns it into its own AppError or a retry.
+export function isUniqueViolation(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
+}
+
 function body(code: string, message: string, details?: unknown): ErrorBody {
   return { error: details === undefined ? { code, message } : { code, message, details } }
 }
@@ -39,7 +44,7 @@ export function errorHandler(error: FastifyError, request: FastifyRequest, reply
   }
 
   // Unique constraint violation that the use case did not turn into a friendlier AppError.
-  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+  if (isUniqueViolation(error)) {
     request.log.info({ err: error }, 'unique constraint violation')
     return reply.status(409).send(body('CONFLICT', 'Registro já existe.'))
   }

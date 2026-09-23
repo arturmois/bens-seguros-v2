@@ -22,7 +22,7 @@ import {
   previewInvitation,
   revokeInvitation,
 } from './invitation.ts'
-import { requirePermission, requireTenant } from './tenant-context.ts'
+import { currentTenant, requirePermission, requireTenant } from './tenant-context.ts'
 
 export type InvitationRoutesDeps = { auth: Auth; config: Config; db: Database; queue: Queue }
 
@@ -42,15 +42,12 @@ export function invitationRoutes(deps: InvitationRoutesDeps): FastifyPluginAsync
         },
         preHandler: canInvite,
       },
-      (request) => {
-        const ctx = request.ctx
-        if (!ctx) throw new Error('tenant context missing')
-        return createInvitation(
+      (request) =>
+        createInvitation(
           { db: deps.db, queue: deps.queue, appUrl: deps.config.APP_URL },
-          ctx,
+          currentTenant(request),
           request.body,
-        )
-      },
+        ),
     )
 
     app.get(
@@ -63,11 +60,7 @@ export function invitationRoutes(deps: InvitationRoutesDeps): FastifyPluginAsync
         },
         preHandler: canInvite,
       },
-      (request) => {
-        const ctx = request.ctx
-        if (!ctx) throw new Error('tenant context missing')
-        return listInvitations({ db: deps.db }, ctx)
-      },
+      (request) => listInvitations({ db: deps.db }, currentTenant(request)),
     )
 
     app.delete(
@@ -81,11 +74,7 @@ export function invitationRoutes(deps: InvitationRoutesDeps): FastifyPluginAsync
         },
         preHandler: canInvite,
       },
-      (request) => {
-        const ctx = request.ctx
-        if (!ctx) throw new Error('tenant context missing')
-        return revokeInvitation({ db: deps.db }, ctx, request.params.id)
-      },
+      (request) => revokeInvitation({ db: deps.db }, currentTenant(request), request.params.id),
     )
 
     app.get(

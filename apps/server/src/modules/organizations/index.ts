@@ -5,6 +5,7 @@ export { organizationRoutes } from './organization.routes.ts'
 export { portfolioMoves } from './portfolio.ts'
 export {
   assertRouteDeclaresPermission,
+  currentTenant,
   loadTenant,
   requirePermission,
   requireTenant,

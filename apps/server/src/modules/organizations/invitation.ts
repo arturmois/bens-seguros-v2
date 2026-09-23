@@ -1,13 +1,14 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { enqueueEmail } from '../../emails/send-email.tsx'
-import { Prisma } from '../../generated/prisma/client.ts'
+import type { InvitationStatus } from '../../generated/prisma/client.ts'
 import type { Database } from '../../infrastructure/database.ts'
 import type { Queue } from '../../infrastructure/queue.ts'
-import { AppError } from '../../shared/errors.ts'
+import { AppError, isUniqueViolation } from '../../shared/errors.ts'
 import type { RequestContext, UserContext } from '../../shared/request-context.ts'
+import { record } from '../audit/index.ts'
 import { assignActiveOrganization } from '../auth/index.ts'
 import type { INVITABLE_ROLES } from './invitation.schema.ts'
-import { countMemberships } from './membership.ts'
+import { assertOrgLimit } from './membership.ts'
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000
 const TOKEN_BYTES = 32
@@ -31,11 +32,6 @@ const quotaReached = new AppError(
   'USER_QUOTA_REACHED',
   'O plano não tem vagas para outro usuário.',
 )
-const orgLimit = new AppError(
-  422,
-  'ORG_LIMIT_REACHED',
-  'Você já participa do número máximo de organizações.',
-)
 
 type InvitableRole = (typeof INVITABLE_ROLES)[number]
 
@@ -49,16 +45,14 @@ function tokenHash(token: string) {
   return createHash('sha256').update(token).digest('hex')
 }
 
-function isUniqueViolation(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
-}
-
-type PreviewStatus = 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED'
-
-function previewStatus(status: string, expiresAt: Date, now: Date): PreviewStatus {
+// Expired is not stored: a pending row past `expiresAt` reads as expired.
+function previewStatus(
+  status: InvitationStatus,
+  expiresAt: Date,
+  now: Date,
+): InvitationStatus | 'EXPIRED' {
   if (status === 'PENDING' && expiresAt.getTime() <= now.getTime()) return 'EXPIRED'
-  if (status === 'ACCEPTED' || status === 'REVOKED' || status === 'PENDING') return status
-  throw new Error('unexpected invitation status')
+  return status
 }
 
 export async function createInvitation(
@@ -96,6 +90,11 @@ export async function createInvitation(
           status: 'PENDING',
           expiresAt,
         },
+      })
+      await record(tx, ctx, {
+        action: 'invitation.create',
+        entityId: invitation.id,
+        changes: { role: input.role },
       })
       const organization = await tx.organization.findFirstOrThrow({ select: { name: true } })
       await enqueueEmail(deps.queue, tx, {
@@ -145,6 +144,11 @@ export async function revokeInvitation(deps: { db: Database }, ctx: RequestConte
     if (!row) throw hidden
     if (row.status !== 'PENDING') throw closed
     await tx.invitation.update({ where: { id: row.id }, data: { status: 'REVOKED' } })
+    await record(tx, ctx, {
+      action: 'invitation.revoke',
+      entityId: row.id,
+      changes: { status: ['PENDING', 'REVOKED'] },
+    })
     return { id: row.id, status: 'REVOKED' as const }
   })
 }
@@ -204,8 +208,7 @@ export async function acceptInvitation(
   if (found.status !== 'PENDING') throw closed
   if (found.expiresAt.getTime() <= now.getTime()) throw expired
 
-  const held = await deps.db.withUser(user.userId, (tx) => countMemberships(tx, user.userId))
-  if (held >= deps.maxOrgsPerUser) throw orgLimit
+  await assertOrgLimit(deps.db, user.userId, deps.maxOrgsPerUser)
 
   return deps.db.withTenant({ organizationId: found.organizationId }, async (tx) => {
     await tx.$queryRaw`SELECT id FROM "Subscription" FOR UPDATE`
@@ -223,13 +226,21 @@ export async function acceptInvitation(
     const subscription = await tx.subscription.findFirst({
       include: { plan: { select: { maxUsers: true } } },
     })
-    if (!subscription) throw new Error('Subscription missing')
+    if (!subscription) {
+      throw new Error(`Subscription missing for organization ${found.organizationId}`)
+    }
     const active = await tx.member.count({ where: { active: true } })
     if (active >= subscription.plan.maxUsers) throw quotaReached
-    await tx.member.create({
+    const joined = await tx.member.create({
       data: { userId: user.userId, role: current.role, active: true, commissionSplitBp: 0 },
+      select: { id: true },
     })
     await tx.invitation.update({ where: { id: current.id }, data: { status: 'ACCEPTED' } })
+    await record(tx, user, {
+      action: 'invitation.accept',
+      entityId: joined.id,
+      changes: { role: current.role, invitationId: current.id },
+    })
     await assignActiveOrganization(tx, user.sessionId, found.organizationId)
     return { organizationId: found.organizationId, role: current.role }
   })

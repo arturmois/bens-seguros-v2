@@ -56,6 +56,24 @@ describe('POST /api/v1/onboarding', () => {
     expect(await activeOrganizationId(userId)).toBe(organizationId)
   })
 
+  it('records organization.create', async () => {
+    const client = new TestClient(app)
+    const { userId } = await signedInUser(client, deps)
+
+    const response = await client.post('/api/v1/onboarding', { name: 'Corretora Trilha' })
+
+    expect(response.statusCode).toBe(200)
+    const organizationId = response.json().id as string
+    const rows = await deps.db.withTenant({ organizationId }, (tx) => tx.auditLog.findMany())
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      action: 'organization.create',
+      actorUserId: userId,
+      entityId: organizationId,
+      changes: { role: 'OWNER' },
+    })
+  })
+
   it('suffixes a slug that is taken', async () => {
     const first = new TestClient(app)
     await signedInUser(first, deps)

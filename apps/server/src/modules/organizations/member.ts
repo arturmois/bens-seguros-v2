@@ -77,7 +77,9 @@ export async function updateMember(
       const subscription = await tx.subscription.findFirst({
         include: { plan: { select: { maxUsers: true } } },
       })
-      if (!subscription) throw new Error('Subscription missing')
+      if (!subscription) {
+        throw new Error(`Subscription missing for organization ${ctx.organizationId}`)
+      }
       const activeCount = await tx.member.count({ where: { active: true } })
       if (activeCount >= subscription.plan.maxUsers) throw quotaReached
     }

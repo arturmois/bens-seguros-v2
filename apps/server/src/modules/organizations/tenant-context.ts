@@ -58,6 +58,14 @@ export function requireTenant(deps: TenantDeps) {
   }
 }
 
+// The tenant of a route behind `requireTenant`.
+export function currentTenant(request: FastifyRequest): RequestContext {
+  if (!request.ctx) {
+    throw new Error(`requireTenant did not run before ${request.method} ${request.url}`)
+  }
+  return request.ctx
+}
+
 export function requirePermission(permission: Permission) {
   const hook = async (request: FastifyRequest, _reply: FastifyReply) => {
     if (!request.ctx?.permissions.includes(permission)) throw forbidden

@@ -13,6 +13,7 @@ import type { Deps } from '../../dependencies.ts'
 import { closeDependencies } from '../../dependencies.ts'
 import { sendEmail } from '../../emails/send-email.tsx'
 import type { Role } from '../../shared/permissions.ts'
+import { acceptInvitation } from './invitation.ts'
 
 const WEEK = 7 * 24 * 60 * 60 * 1000
 
@@ -71,6 +72,12 @@ async function invitationsOf(organizationId: string) {
 async function memberCount(organizationId: string, userId?: string) {
   return deps.db.withTenant({ organizationId }, (tx) =>
     tx.member.count({ where: userId === undefined ? { active: true } : { userId } }),
+  )
+}
+
+async function auditOf(organizationId: string, action: string) {
+  return deps.db.withTenant({ organizationId }, (tx) =>
+    tx.auditLog.findMany({ where: { action }, orderBy: { id: 'asc' } }),
   )
 }
 
@@ -291,6 +298,38 @@ describe('POST /api/v1/invitations', () => {
     expect(response.json().status).toBe('PENDING')
   })
 
+  it('records invitation.create without the email', async () => {
+    const host = await brokerage()
+    const email = uniqueEmail('trilha')
+
+    const response = await host.client.post('/api/v1/invitations', { email, role: 'COMMERCIAL' })
+
+    expect(response.statusCode).toBe(200)
+    const rows = await auditOf(host.organizationId, 'invitation.create')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      entityId: response.json().id,
+      actorUserId: host.userId,
+      changes: { role: 'COMMERCIAL' },
+    })
+    expect(JSON.stringify(rows[0]).toLowerCase()).not.toContain(email.toLowerCase())
+  })
+
+  it('does not record a rejected duplicate invitation', async () => {
+    const host = await brokerage()
+    const email = uniqueEmail()
+    const first = await host.client.post('/api/v1/invitations', { email, role: 'VIEWER' })
+
+    const second = await host.client.post('/api/v1/invitations', { email, role: 'MANAGER' })
+
+    expect(first.statusCode).toBe(200)
+    expect(second.statusCode).toBe(409)
+    expect(second.json().error.code).toBe('INVITATION_PENDING')
+    const rows = await auditOf(host.organizationId, 'invitation.create')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.entityId).toBe(first.json().id)
+  })
+
   it('rolls back the invitation when enqueue fails', async () => {
     const host = await brokerage()
     const email = uniqueEmail()
@@ -387,6 +426,26 @@ describe('GET and DELETE /api/v1/invitations', () => {
     expect(first.json()).toEqual({ id: open.json().id, status: 'REVOKED' })
     expect(second.statusCode).toBe(200)
     expect(second.json()).toEqual({ id: stale.json().id, status: 'REVOKED' })
+  })
+
+  it('records invitation.revoke', async () => {
+    const host = await brokerage()
+    const created = await host.client.post('/api/v1/invitations', {
+      email: uniqueEmail(),
+      role: 'VIEWER',
+    })
+    const id = created.json().id as string
+
+    const response = await host.client.delete(`/api/v1/invitations/${id}`)
+
+    expect(response.statusCode).toBe(200)
+    const rows = await auditOf(host.organizationId, 'invitation.revoke')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      entityId: id,
+      actorUserId: host.userId,
+      changes: { status: ['PENDING', 'REVOKED'] },
+    })
   })
 
   it('hides an invitation from another tenant on revoke', async () => {
@@ -578,6 +637,48 @@ describe('invitation preview and accept', () => {
     expect((await invitationsOf(host.organizationId))[0]?.status).toBe('ACCEPTED')
     expect(await activeOrganizationId(user.userId)).toBe(host.organizationId)
     expect(created.statusCode).toBe(200)
+  })
+
+  it('records invitation.accept in the invited organization', async () => {
+    const host = await brokerage()
+    const email = uniqueEmail()
+    const created = await host.client.post('/api/v1/invitations', { email, role: 'COMMERCIAL' })
+    const person = new TestClient(app)
+    const user = await signedInUser(person, deps, email)
+
+    const response = await person.post('/api/v1/invitations/accept', {
+      token: await tokenFor(email),
+    })
+
+    expect(response.statusCode).toBe(200)
+    const member = await deps.db.withTenant({ organizationId: host.organizationId }, (tx) =>
+      tx.member.findFirstOrThrow({ where: { userId: user.userId } }),
+    )
+    const rows = await auditOf(host.organizationId, 'invitation.accept')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      actorUserId: user.userId,
+      entityId: member.id,
+      changes: { role: 'COMMERCIAL', invitationId: created.json().id },
+    })
+  })
+
+  it('does not record an accept past the seat cap', async () => {
+    const host = await brokerage()
+    for (let i = 0; i < 4; i++) await addMember(host.organizationId)
+    expect(await memberCount(host.organizationId)).toBe(5)
+    const email = uniqueEmail()
+    await host.client.post('/api/v1/invitations', { email, role: 'VIEWER' })
+    const person = new TestClient(app)
+    await signedInUser(person, deps, email)
+
+    const response = await person.post('/api/v1/invitations/accept', {
+      token: await tokenFor(email),
+    })
+
+    expect(response.statusCode).toBe(422)
+    expect(response.json().error.code).toBe('USER_QUOTA_REACHED')
+    expect(await auditOf(host.organizationId, 'invitation.accept')).toEqual([])
   })
 
   it('rejects an accept body that is not the token', async () => {
@@ -845,6 +946,14 @@ describe('invitation preview and accept', () => {
     })
 
     expect(response.statusCode).toBeGreaterThanOrEqual(400)
+    const session = await deps.db.session.findFirstOrThrow({ where: { userId: user.userId } })
+    await expect(
+      acceptInvitation(
+        { db: deps.db, maxOrgsPerUser: deps.config.MAX_ORGS_PER_USER },
+        { requestId: 'test', userId: user.userId, sessionId: session.id, isSuperAdmin: false },
+        { token: await tokenFor(email) },
+      ),
+    ).rejects.toThrow(host.organizationId)
     expect(await memberCount(host.organizationId, user.userId)).toBe(0)
     expect((await invitationsOf(host.organizationId))[0]?.status).toBe('PENDING')
   })

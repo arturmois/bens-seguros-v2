@@ -15,7 +15,7 @@ import {
   setActiveOrganizationOutput,
 } from './organization.schema.ts'
 import { getOrganization, renameOrganization } from './organization.ts'
-import { requirePermission, requireTenant } from './tenant-context.ts'
+import { currentTenant, requirePermission, requireTenant } from './tenant-context.ts'
 
 export type OrganizationRoutesDeps = { auth: Auth; config: Config; db: Database }
 
@@ -67,11 +67,7 @@ export function organizationRoutes(deps: OrganizationRoutesDeps): FastifyPluginA
         },
         preHandler: [session, tenant, requirePermission('organization:read')],
       },
-      (request) => {
-        const ctx = request.ctx
-        if (!ctx) throw new Error('tenant context missing')
-        return getOrganization({ db: deps.db }, ctx)
-      },
+      (request) => getOrganization({ db: deps.db }, currentTenant(request)),
     )
 
     app.patch(
@@ -85,11 +81,7 @@ export function organizationRoutes(deps: OrganizationRoutesDeps): FastifyPluginA
         },
         preHandler: [session, tenant, requirePermission('organization:update')],
       },
-      (request) => {
-        const ctx = request.ctx
-        if (!ctx) throw new Error('tenant context missing')
-        return renameOrganization({ db: deps.db }, ctx, request.body.name)
-      },
+      (request) => renameOrganization({ db: deps.db }, currentTenant(request), request.body.name),
     )
   }
 }

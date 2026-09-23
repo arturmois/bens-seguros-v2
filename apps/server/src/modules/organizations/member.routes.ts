@@ -11,7 +11,7 @@ import {
   updateMemberInput,
 } from './member.schema.ts'
 import { listMembers, transferPortfolio, updateMember } from './member.ts'
-import { requirePermission, requireTenant } from './tenant-context.ts'
+import { currentTenant, requirePermission, requireTenant } from './tenant-context.ts'
 
 export type MemberRoutesDeps = { auth: Auth; db: Database }
 
@@ -30,11 +30,7 @@ export function memberRoutes(deps: MemberRoutesDeps): FastifyPluginAsyncZod {
         },
         preHandler: canUpdate,
       },
-      (request) => {
-        const ctx = request.ctx
-        if (!ctx) throw new Error('tenant context missing')
-        return listMembers({ db: deps.db }, ctx)
-      },
+      (request) => listMembers({ db: deps.db }, currentTenant(request)),
     )
 
     app.patch(
@@ -49,11 +45,8 @@ export function memberRoutes(deps: MemberRoutesDeps): FastifyPluginAsyncZod {
         },
         preHandler: canUpdate,
       },
-      (request) => {
-        const ctx = request.ctx
-        if (!ctx) throw new Error('tenant context missing')
-        return updateMember({ db: deps.db }, ctx, request.params.id, request.body)
-      },
+      (request) =>
+        updateMember({ db: deps.db }, currentTenant(request), request.params.id, request.body),
     )
 
     app.post(
@@ -68,11 +61,8 @@ export function memberRoutes(deps: MemberRoutesDeps): FastifyPluginAsyncZod {
         },
         preHandler: [session, tenant, requirePermission('portfolio:transfer')],
       },
-      (request) => {
-        const ctx = request.ctx
-        if (!ctx) throw new Error('tenant context missing')
-        return transferPortfolio({ db: deps.db }, ctx, request.params.id, request.body)
-      },
+      (request) =>
+        transferPortfolio({ db: deps.db }, currentTenant(request), request.params.id, request.body),
     )
   }
 }

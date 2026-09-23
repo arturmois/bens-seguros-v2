@@ -129,6 +129,28 @@ describe('GET and PATCH /api/v1/organization', () => {
     }
   })
 
+  it('records organization.update with the name redacted', async () => {
+    const client = new TestClient(app)
+    const { userId } = await signedInUser(client, deps)
+    await acceptCurrentTerms(client)
+    const created = await client.post('/api/v1/onboarding', { name: 'Nome Antigo' })
+    const organizationId = created.json().id as string
+
+    const response = await client.patch('/api/v1/organization', { name: 'Nome Novo' })
+
+    expect(response.statusCode).toBe(200)
+    const rows = await deps.db.withTenant({ organizationId }, (tx) =>
+      tx.auditLog.findMany({ where: { action: 'organization.update' } }),
+    )
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      actorUserId: userId,
+      entityId: organizationId,
+      changes: { name: '[alterado]' },
+    })
+    expect(JSON.stringify(rows)).not.toContain('Nome Novo')
+  })
+
   it('rejects a rename from a role without organization:update', async () => {
     const client = new TestClient(app)
     const { userId } = await signedInUser(client, deps)

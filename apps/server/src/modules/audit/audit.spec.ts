@@ -81,6 +81,24 @@ describe('audit.record', () => {
     expect(JSON.stringify(row)).not.toContain(ctx.email)
   })
 
+  it('names the key path of an unsupported change', async () => {
+    const ctx = await actor()
+
+    await expect(
+      deps.db.withTenant(ctx, (tx) =>
+        record(tx, ctx, {
+          action: 'member.update',
+          entityId: ctx.userId,
+          changes: { role: ['VIEWER', 'ADMIN'], nested: { value: null } },
+        }),
+      ),
+    ).rejects.toThrow('changes.nested.value')
+    const rows = await deps.db.withTenant(ctx, (tx) =>
+      tx.auditLog.findMany({ where: { actorUserId: ctx.userId } }),
+    )
+    expect(rows).toEqual([])
+  })
+
   it('hides an audit log from the other tenant', async () => {
     const ctx = await actor()
     await deps.db.withTenant(ctx, (tx) =>
