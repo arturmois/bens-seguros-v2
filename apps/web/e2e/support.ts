@@ -77,12 +77,12 @@ export async function emailLink(to: string, subject: string) {
   return `${parsed.pathname}${parsed.search}`
 }
 
-export async function signUp(api: APIRequestContext, email = uniqueEmail()) {
+export async function signUp(api: APIRequestContext, email = uniqueEmail(), name = NAME) {
   const response = await api.post('/api/auth/sign-up/email', {
-    data: { name: NAME, email, password: PASSWORD, callbackURL: '/login' },
+    data: { name, email, password: PASSWORD, callbackURL: '/login' },
   })
   expect(response.status()).toBe(200)
-  return { email, password: PASSWORD, name: NAME }
+  return { email, password: PASSWORD, name }
 }
 
 // A user whose e-mail link was already opened (by the API context, not the page).
@@ -94,11 +94,15 @@ export async function onboard(api: APIRequestContext, name = 'Corretora') {
   return (await response.json()) as { id: string; name: string; slug: string; role: string }
 }
 
+// No active organization now, and none remembered for the next sign-in (org-web door 4).
 export async function clearActiveOrganization(userId: string) {
   const client = new pg.Client({ connectionString: databaseUrl })
   await client.connect()
   try {
     await client.query('UPDATE "Session" SET "activeOrganizationId" = NULL WHERE "userId" = $1', [
+      userId,
+    ])
+    await client.query('UPDATE "User" SET "lastActiveOrganizationId" = NULL WHERE "id" = $1', [
       userId,
     ])
   } finally {

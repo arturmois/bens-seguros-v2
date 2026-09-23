@@ -24,11 +24,10 @@ async function signIn(page: Page, user: { email: string; password: string }) {
   await expect(page).not.toHaveURL(/\/login/)
 }
 
-// A new sign-in does not carry the active organization, so the guard asks which one.
+// A new sign-in starts in the last active organization, or the only one (door 4).
 async function enterApp(page: Page, organizationName: string) {
-  await expect(page).toHaveURL('/select-org')
-  await page.getByRole('button', { name: organizationName }).click()
   await expect(page).toHaveURL('/dashboard')
+  await expect(page.getByRole('banner').getByText(organizationName)).toBeVisible()
 }
 
 async function invitationToken(to: string) {
@@ -53,13 +52,17 @@ function requireBase(baseURL: string | undefined): string {
   return baseURL
 }
 
-async function acceptInvite(baseURL: string | undefined, email: string) {
+async function acceptInvite(
+  baseURL: string | undefined,
+  email: string,
+  options: { name?: string; ownBrokerage?: string } = {},
+) {
   const origin = requireBase(baseURL)
   const guest = await playwrightRequest.newContext({
     baseURL: origin,
     extraHTTPHeaders: { origin: new URL(origin).origin },
   })
-  await signUp(guest, email)
+  await signUp(guest, email, options.name)
   const verify = await guest.get(await emailLink(email, 'Confirme seu e-mail'), { maxRedirects: 0 })
   expect(verify.status()).toBe(302)
   expect(
@@ -69,15 +72,43 @@ async function acceptInvite(baseURL: string | undefined, email: string) {
       })
     ).ok(),
   ).toBeTruthy()
+  const own = options.ownBrokerage ? await onboard(guest, options.ownBrokerage) : undefined
   const token = await invitationToken(email)
   expect((await guest.post('/api/v1/invitations/accept', { data: { token } })).ok()).toBeTruthy()
   await guest.dispose()
-  return { email, password: PASSWORD }
+  return { email, password: PASSWORD, own }
 }
 
 async function invite(api: APIRequestContext, email: string, role: string) {
   const response = await api.post('/api/v1/invitations', { data: { email, role } })
   expect(response.ok()).toBeTruthy()
+}
+
+async function memberId(api: APIRequestContext, email: string) {
+  const response = await api.get('/api/v1/members')
+  expect(response.ok()).toBeTruthy()
+  const { items } = (await response.json()) as { items: { id: string; email: string }[] }
+  const member = items.find((item) => item.email === email)
+  if (!member) throw new Error(`no member ${email}`)
+  return member.id
+}
+
+async function deactivate(api: APIRequestContext, email: string) {
+  const response = await api.patch(`/api/v1/members/${await memberId(api, email)}`, {
+    data: { active: false },
+  })
+  expect(response.ok()).toBeTruthy()
+}
+
+async function meInPage(page: Page) {
+  return page.evaluate(async () => {
+    const response = await fetch('/api/v1/me', { credentials: 'include' })
+    return response.json() as Promise<{
+      activeOrganizationId: string | null
+      role: string | null
+      organizations: { id: string }[]
+    }>
+  })
 }
 
 test.describe('org web', () => {
@@ -191,9 +222,14 @@ test.describe('org web', () => {
     const beta = await onboard(api, 'Beta')
     await signIn(page, user)
     await enterApp(page, beta.name)
-    await page.getByRole('button', { name: beta.name }).click()
-    await page.getByRole('button', { name: alfa.name }).click()
-    await expect(page.getByRole('button', { name: alfa.name })).toBeVisible()
+    const header = page.getByRole('banner')
+    await header.getByRole('button', { name: beta.name }).click()
+    const switched = page.waitForResponse('**/api/v1/me/active-organization')
+    await header.getByRole('button', { name: alfa.name }).click()
+    expect((await switched).status()).toBe(200)
+    // The menu closes after the switch: the only button left is the header with the active name.
+    await expect(header.getByRole('button', { name: beta.name })).toHaveCount(0)
+    await expect(header.getByRole('button', { name: alfa.name })).toHaveCount(1)
     const body = await page.evaluate(async () => {
       const response = await fetch('/api/v1/organization', { credentials: 'include' })
       return response.json() as Promise<{ id: string }>
@@ -201,12 +237,30 @@ test.describe('org web', () => {
     expect(body.id).toBe(alfa.id)
   })
 
+  test('returns to the last brokerage after signing in again', async ({ page, api }) => {
+    const user = await verifiedUser(api)
+    const alfa = await onboard(api, 'Alfa')
+    const beta = await onboard(api, 'Beta')
+    await signIn(page, user)
+    await enterApp(page, beta.name)
+    const header = page.getByRole('banner')
+    await header.getByRole('button', { name: beta.name }).click()
+    const switched = page.waitForResponse('**/api/v1/me/active-organization')
+    await header.getByRole('button', { name: alfa.name }).click()
+    expect((await switched).status()).toBe(200)
+    await header.getByRole('button', { name: 'Sair' }).click()
+    await expect(page).toHaveURL(/\/login/)
+    await signIn(page, user)
+    await expect(page).toHaveURL('/dashboard')
+    await expect(header.getByRole('button', { name: alfa.name })).toBeVisible()
+  })
+
   test('shows a single brokerage as text', async ({ page, api }) => {
     const user = await verifiedUser(api)
     const created = await onboard(api, 'Unica')
     await signIn(page, user)
     await enterApp(page, created.name)
-    await expect(page.getByText(created.name)).toBeVisible()
+    await expect(page.getByRole('banner').getByText(created.name)).toBeVisible()
     await expect(page.getByRole('button', { name: created.name })).toHaveCount(0)
   })
 
@@ -218,33 +272,37 @@ test.describe('org web', () => {
     await expect(page).not.toHaveURL(/\/onboarding/)
   })
 
-  test('asks for a choice when the active membership is gone', async ({ page, api }) => {
-    const user = await verifiedUser(api)
-    await onboard(api, 'Alfa')
-    await onboard(api, 'Beta')
-    await page.route('**/api/v1/me', async (route) => {
-      if (route.request().method() !== 'GET') return route.continue()
-      const response = await route.fetch()
-      const body = await response.json()
-      body.role = null
-      await route.fulfill({ response, json: body })
-    })
-    await signIn(page, user)
+  test('asks for a choice when the active membership is gone', async ({ page, api, baseURL }) => {
+    await verifiedUser(api)
+    const created = await onboard(api, 'Sumida')
+    const email = uniqueEmail('sumida')
+    await invite(api, email, 'ADMIN')
+    const guest = await acceptInvite(baseURL, email, { ownBrokerage: 'Propria' })
+    await signIn(page, guest)
+    await enterApp(page, created.name)
+    await deactivate(api, email)
+    const me = await meInPage(page)
+    expect(me.activeOrganizationId).toBe(created.id)
+    expect(me.role).toBeNull()
+    expect(me.organizations.map((organization) => organization.id)).toEqual([guest.own?.id])
+    await page.goto('/dashboard')
     await expect(page).toHaveURL('/select-org')
   })
 
-  test('sends a user with no active membership to onboarding', async ({ page, api }) => {
-    const user = await verifiedUser(api)
-    await onboard(api, 'Sumida')
-    await page.route('**/api/v1/me', async (route) => {
-      if (route.request().method() !== 'GET') return route.continue()
-      const response = await route.fetch()
-      const body = await response.json()
-      body.role = null
-      body.organizations = []
-      await route.fulfill({ response, json: body })
-    })
-    await signIn(page, user)
+  test('sends a user with no active membership to onboarding', async ({ page, api, baseURL }) => {
+    await verifiedUser(api)
+    const created = await onboard(api, 'Sumida')
+    const email = uniqueEmail('sumida')
+    await invite(api, email, 'ADMIN')
+    const guest = await acceptInvite(baseURL, email)
+    await signIn(page, guest)
+    await enterApp(page, created.name)
+    await deactivate(api, email)
+    const me = await meInPage(page)
+    expect(me.activeOrganizationId).toBe(created.id)
+    expect(me.role).toBeNull()
+    expect(me.organizations).toEqual([])
+    await page.goto('/dashboard')
     await expect(page).toHaveURL('/onboarding')
   })
 
@@ -313,6 +371,26 @@ test.describe('org web', () => {
     expect(calls).toEqual([])
   })
 
+  test('shows the rename failure', async ({ page, api }) => {
+    await page.route('**/api/v1/organization', (route) => {
+      if (route.request().method() !== 'PATCH') return route.continue()
+      return route.fulfill({
+        status: 422,
+        json: { error: { code: 'VALIDATION_ERROR', message: 'Não foi possível renomear agora.' } },
+      })
+    })
+    const user = await verifiedUser(api)
+    const created = await onboard(api, 'Falha Nome')
+    await signIn(page, user)
+    await enterApp(page, created.name)
+    await page.goto('/settings/organization')
+    await page.getByLabel('Nome').fill('Corretora Recusada')
+    await page.getByRole('button', { name: 'Salvar' }).click()
+    await expect(page.getByText('Não foi possível renomear agora.')).toBeVisible()
+    await expect(page.getByLabel('Nome')).toHaveValue('Corretora Recusada')
+    await expect(page.getByText('Nome atualizado.')).toHaveCount(0)
+  })
+
   test('shows the brokerage read-only to a viewer', async ({ page, api, baseURL }) => {
     const owner = await verifiedUser(api)
     const created = await onboard(api, 'Leitura')
@@ -326,7 +404,10 @@ test.describe('org web', () => {
     await signIn(page, viewer)
     await enterApp(page, created.name)
     await page.goto('/settings/organization')
-    await expect(page.getByText(created.name)).toBeVisible()
+    const content = page.locator('section')
+    await expect(content.getByText(created.slug)).toBeVisible()
+    await expect(content.getByText(created.name, { exact: true })).toBeVisible()
+    await expect(content.getByLabel('Nome')).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Salvar' })).toHaveCount(0)
     expect(patches).toEqual([])
     expect(owner.email).not.toBe(viewer.email)
@@ -553,20 +634,28 @@ test.describe('org web', () => {
     const created = await onboard(api, 'Carteira')
     const email = uniqueEmail('carteira')
     await invite(api, email, 'ADMIN')
-    await acceptInvite(baseURL, email)
+    await acceptInvite(baseURL, email, { name: 'Carla Origem' })
+    const origin = await memberId(api, email)
+    const destination = await memberId(api, owner.email)
+    // The server moves nothing yet (no table with a salesperson); the count shown is the one returned.
+    await page.route('**/transfer-portfolio', async (route) => {
+      const response = await route.fetch()
+      await route.fulfill({ response, json: { ...(await response.json()), transferred: 7 } })
+    })
     await signIn(page, owner)
     await enterApp(page, created.name)
     await page.goto('/settings/members')
     const row = page.getByRole('listitem').filter({ hasText: email })
     await row.getByRole('button', { name: 'Transferir carteira' }).click()
     const dialog = page.getByRole('dialog', {
-      name: `Transferir a carteira de ${NAME} para ${NAME}?`,
+      name: `Transferir a carteira de Carla Origem para ${NAME}?`,
     })
     const moved = page.waitForRequest((request) => request.url().includes('/transfer-portfolio'))
     await dialog.getByRole('button', { name: 'Transferir' }).click()
-    const body = (await moved).postDataJSON() as { toMemberId: string }
-    expect(body.toMemberId).toEqual(expect.any(String))
-    await expect(page.getByText('Transferidos: 0.')).toBeVisible()
+    const request = await moved
+    expect(new URL(request.url()).pathname).toBe(`/api/v1/members/${origin}/transfer-portfolio`)
+    expect(request.postDataJSON()).toEqual({ toMemberId: destination })
+    await expect(page.getByText('Transferidos: 7.')).toBeVisible()
   })
 
   test('shows team loading and error', async ({ page, api }) => {
@@ -608,27 +697,61 @@ test.describe('org web', () => {
     const email = uniqueEmail('falha')
     await invite(api, email, 'ADMIN')
     await acceptInvite(baseURL, email)
-    await page.route('**/api/v1/members/**', (route) => {
-      if (route.request().method() !== 'PATCH') return route.continue()
-      return route.fulfill({
-        status: 422,
-        json: {
-          error: {
-            code: 'USER_QUOTA_REACHED',
-            message: 'O plano não tem vagas para outro usuário.',
-          },
-        },
-      })
+    const pendingEmail = uniqueEmail('falha-convite')
+    await invite(api, pendingEmail, 'ADMIN')
+    const failures: Record<string, string> = {
+      deactivate: 'O plano não tem vagas para outro usuário.',
+      role: 'Não é possível mudar este papel.',
+      revoke: 'Não foi possível revogar este convite.',
+      transfer: 'Não foi possível transferir a carteira.',
+    }
+    const fail = (message: string) => ({
+      status: 422,
+      json: { error: { code: 'UNPROCESSABLE', message } },
     })
+    await page.route('**/api/v1/members/**', (route) => {
+      const request = route.request()
+      if (request.url().includes('/transfer-portfolio'))
+        return route.fulfill(fail(failures.transfer ?? ''))
+      if (request.method() !== 'PATCH') return route.continue()
+      const body = request.postDataJSON() as { role?: string }
+      return route.fulfill(fail((body.role ? failures.role : failures.deactivate) ?? ''))
+    })
+    await page.route('**/api/v1/invitations/**', (route) =>
+      route.request().method() === 'DELETE'
+        ? route.fulfill(fail(failures.revoke ?? ''))
+        : route.continue(),
+    )
     await signIn(page, owner)
     await enterApp(page, created.name)
     await page.goto('/settings/members')
     const row = page.getByRole('listitem').filter({ hasText: email })
+
     await row.getByRole('button', { name: 'Desativar' }).click()
-    const dialog = page.getByRole('dialog', { name: `Desativar ${NAME}?` })
+    let dialog = page.getByRole('dialog', { name: `Desativar ${NAME}?` })
     await dialog.getByRole('button', { name: 'Desativar' }).click()
-    await expect(dialog.getByText('O plano não tem vagas para outro usuário.')).toBeVisible()
+    await expect(dialog.getByText(failures.deactivate ?? '')).toBeVisible()
     await expect(dialog).toBeVisible()
+    await dialog.getByRole('button', { name: 'Cancelar' }).click()
+
+    await row.getByRole('button', { name: 'Transferir carteira' }).click()
+    dialog = page.getByRole('dialog', { name: `Transferir a carteira de ${NAME} para ${NAME}?` })
+    await dialog.getByRole('button', { name: 'Transferir' }).click()
+    await expect(dialog.getByText(failures.transfer ?? '')).toBeVisible()
+    await expect(dialog).toBeVisible()
+    await dialog.getByRole('button', { name: 'Cancelar' }).click()
+
+    const invitation = page.getByRole('listitem').filter({ hasText: pendingEmail })
+    await invitation.getByRole('button', { name: 'Revogar' }).click()
+    dialog = page.getByRole('dialog', { name: `Revogar o convite para ${pendingEmail}?` })
+    await dialog.getByRole('button', { name: 'Revogar' }).click()
+    await expect(dialog.getByText(failures.revoke ?? '')).toBeVisible()
+    await expect(dialog).toBeVisible()
+    await dialog.getByRole('button', { name: 'Cancelar' }).click()
+    await expect(invitation).toHaveCount(1)
+
+    await page.getByLabel(`Papel de ${email}`).selectOption({ label: 'Comercial' })
+    await expect(page.getByText(failures.role ?? '')).toBeVisible()
   })
 
   test('shows the invitation before sign-in', async ({ page, api }) => {
@@ -687,9 +810,11 @@ test.describe('org web', () => {
   })
 
   test('shows an unknown invitation as not found', async ({ page, api: _api }) => {
-    await page.goto('/accept-invitation?token=nao-existe')
-    await expect(page.getByText('Convite não encontrado.')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Aceitar convite' })).toHaveCount(0)
+    for (const url of ['/accept-invitation?token=nao-existe', '/accept-invitation']) {
+      await page.goto(url)
+      await expect(page.getByText('Convite não encontrado.')).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Aceitar convite' })).toHaveCount(0)
+    }
   })
 
   test('shows an expired invitation', async ({ page, api: _api }) => {

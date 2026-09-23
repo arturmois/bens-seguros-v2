@@ -1,4 +1,4 @@
-import { emailLink, expect, inbox, NAME, test, uniqueEmail, verifiedUser } from './support'
+import { emailLink, expect, inbox, NAME, onboard, test, uniqueEmail, verifiedUser } from './support'
 
 const sent = 'Se o e-mail estiver cadastrado, você receberá um link para redefinir a senha.'
 const NEW_PASSWORD = 'nova-senha-789'
@@ -21,6 +21,8 @@ test.describe('recuperação de senha', () => {
 
   test('resets the password from the e-mail link', async ({ page, api }) => {
     const user = await verifiedUser(api)
+    // With a brokerage, signing in lands on the dashboard (org-web door 3).
+    await onboard(api)
     await page.goto('/forgot-password')
     await page.getByLabel('E-mail').fill(user.email)
     await page.getByRole('button', { name: 'Enviar link' }).click()
