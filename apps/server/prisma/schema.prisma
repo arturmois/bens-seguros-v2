@@ -20,6 +20,7 @@ model Organization {
   updatedAt DateTime @updatedAt
 
   members      Member[]
+  invitations  Invitation[]
   subscription Subscription?
   sessions     Session[]
 }
@@ -64,6 +65,31 @@ model Plan {
 
 enum SubscriptionStatus {
   TRIALING
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+}
+
+// Tenant-scoped (ADR-004, AD-007). The raw token is never stored. A pending invite is unique per
+// e-mail inside the organization (partial index in the migration).
+model Invitation {
+  id             String           @id @default(uuid(7)) @db.Uuid
+  organizationId String           @default(dbgenerated("(current_setting('app.tenant_id'::text))::uuid")) @db.Uuid
+  email          String
+  role           Role
+  tokenHash      String
+  status         InvitationStatus @default(PENDING)
+  expiresAt      DateTime
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, tokenHash])
 }
 
 model Subscription {

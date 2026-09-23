@@ -2,18 +2,21 @@ import { z } from 'zod'
 import type { Transaction } from '../infrastructure/database.ts'
 import type { EmailMessage, Mailer } from '../infrastructure/email.ts'
 import type { Queue } from '../infrastructure/queue.ts'
+import InvitationEmail from './invitation.tsx'
 import ResetPassword from './reset-password.tsx'
 import VerifyEmail from './verify-email.tsx'
 
 export const SEND_EMAIL = 'email.send'
 
 const linkProps = z.object({ name: z.string().min(1), url: z.url() })
+const invitationProps = z.object({ organizationName: z.string().min(1), url: z.url() })
 
 // Job payload (AD-003): a template key and its props, never a rendered element or HTML, so a
 // retry renders the current template and the queue stays small.
 export const emailPayload = z.discriminatedUnion('template', [
   z.object({ template: z.literal('verify-email'), to: z.email(), props: linkProps }),
   z.object({ template: z.literal('reset-password'), to: z.email(), props: linkProps }),
+  z.object({ template: z.literal('invitation'), to: z.email(), props: invitationProps }),
 ])
 
 export type EmailPayload = z.infer<typeof emailPayload>
@@ -31,6 +34,12 @@ function toMessage(payload: EmailPayload): EmailMessage {
         to: payload.to,
         subject: 'Redefina sua senha',
         body: <ResetPassword {...payload.props} />,
+      }
+    case 'invitation':
+      return {
+        to: payload.to,
+        subject: `Convite para ${payload.props.organizationName}`,
+        body: <InvitationEmail {...payload.props} />,
       }
   }
 }

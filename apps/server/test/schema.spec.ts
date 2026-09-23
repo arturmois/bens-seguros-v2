@@ -111,6 +111,45 @@ describe('tenant tables', () => {
     expect(rows).toEqual([{ protected: true }])
   })
 
+  it('isolates invitations by tenant or token hash', async () => {
+    const schema = workerSchema()
+    const policy = await withOwnerClient((client) =>
+      client.query<{ qual: string | null; with_check: string | null }>(
+        `SELECT qual, with_check
+           FROM pg_policies
+          WHERE schemaname = $1 AND tablename = 'Invitation' AND policyname = 'tenant_isolation'`,
+        [schema],
+      ),
+    )
+    const indexes = await withOwnerClient((client) =>
+      client.query<{ indexdef: string }>(
+        `SELECT indexdef FROM pg_indexes WHERE schemaname = $1 AND tablename = 'Invitation'`,
+        [schema],
+      ),
+    )
+
+    expect(policy.rows).toHaveLength(1)
+    expect(policy.rows[0]?.qual).toContain('app.invitation_token')
+    expect(policy.rows[0]?.with_check).not.toContain('app.invitation_token')
+    expect(
+      indexes.rows.some(
+        (row) =>
+          row.indexdef.includes('UNIQUE') &&
+          row.indexdef.includes('email') &&
+          row.indexdef.includes('status') &&
+          row.indexdef.includes('PENDING'),
+      ),
+    ).toBe(true)
+    expect(
+      indexes.rows.some(
+        (row) =>
+          row.indexdef.includes('UNIQUE') &&
+          row.indexdef.includes('"organizationId"') &&
+          row.indexdef.includes('"tokenHash"'),
+      ),
+    ).toBe(true)
+  })
+
   it('every tenant table is protected by row security', async () => {
     const unprotected = await withOwnerClient((client) =>
       findUnprotectedTenantTables(client, workerSchema()),

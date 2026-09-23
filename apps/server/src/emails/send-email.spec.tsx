@@ -63,6 +63,24 @@ describe('email.send', () => {
     expect(body.Text).toContain(url)
   })
 
+  it('sends the invitation e-mail', async () => {
+    const to = recipient()
+    const url = `https://app.bens.test/accept-invitation?token=${randomUUID()}`
+
+    await sendEmail(deps.mailer, {
+      template: 'invitation',
+      to,
+      props: { organizationName: 'Corretora Azul', url },
+    })
+
+    const [summary] = await inbox(to)
+    expect(summary?.Subject).toBe('Convite para Corretora Azul')
+    expect(summary?.To.map((item) => item.Address)).toEqual([to])
+    const body = await message(summary?.ID ?? '')
+    expect(body.HTML).toContain(`href="${url}"`)
+    expect(body.Text).toContain(url)
+  })
+
   it('rejects an invalid payload without sending', async () => {
     const unknownTemplate = recipient()
     const missingUrl = recipient()

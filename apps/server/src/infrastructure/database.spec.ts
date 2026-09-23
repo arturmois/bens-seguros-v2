@@ -92,6 +92,49 @@ describe('row level security', () => {
     await expect(deps.db.withoutTenant((tx) => tx.member.findMany())).rejects.toThrow()
   })
 
+  it('reads an invitation by token hash and hides the other tenant', async () => {
+    const hashA = `${randomUUID()}${randomUUID()}`.replaceAll('-', '')
+    const hashB = `${randomUUID()}${randomUUID()}`.replaceAll('-', '')
+    const expiresAt = new Date(Date.now() + 86_400_000)
+    const rowA = await deps.db.withTenant(tenantA, (tx) =>
+      tx.invitation.create({
+        data: { email: `${randomUUID()}@example.com`, role: 'VIEWER', tokenHash: hashA, expiresAt },
+      }),
+    )
+    await deps.db.withTenant(tenantB, (tx) =>
+      tx.invitation.create({
+        data: { email: `${randomUUID()}@example.com`, role: 'VIEWER', tokenHash: hashB, expiresAt },
+      }),
+    )
+
+    const byToken = await deps.db.withInvitation(hashA, (tx) =>
+      tx.invitation.findFirst({ where: { tokenHash: hashA } }),
+    )
+    const otherHash = await deps.db.withInvitation(hashA, (tx) =>
+      tx.invitation.findFirst({ where: { tokenHash: hashB } }),
+    )
+    const fromA = await deps.db.withTenant(tenantA, (tx) => tx.invitation.findMany())
+
+    expect(byToken?.id).toBe(rowA.id)
+    expect(otherHash).toBeNull()
+    expect(fromA.map((row) => row.id)).toContain(rowA.id)
+    expect(fromA.map((row) => row.tokenHash)).not.toContain(hashB)
+    await expect(deps.db.invitation.findMany()).rejects.toThrow()
+    await expect(deps.db.withoutTenant((tx) => tx.invitation.findMany())).rejects.toThrow()
+    await expect(
+      deps.db.withInvitation(hashA, (tx) =>
+        tx.invitation.create({
+          data: {
+            email: `${randomUUID()}@example.com`,
+            role: 'VIEWER',
+            tokenHash: `${randomUUID()}${randomUUID()}`.replaceAll('-', ''),
+            expiresAt,
+          },
+        }),
+      ),
+    ).rejects.toThrow()
+  })
+
   it('lists only the caller organizations', async () => {
     const user = await createUser()
     await createMember(tenantA, user.id)

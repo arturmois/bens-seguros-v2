@@ -283,6 +283,8 @@ describe('api v1 permission gate', () => {
       expect(() => {
         started.app.get('/api/v1/bare', async () => ({ ok: true }))
       }).toThrow(/requirePermission/)
+      await started.app.ready()
+      expect(started.app.printRoutes()).toMatch(/invitations[\s\S]*accept \(POST\)/)
     } finally {
       await started.close()
     }

@@ -23,6 +23,7 @@ const SESSION_ONLY = new Set([
   'acceptTerms',
   'onboardOrganization',
   'setActiveOrganization',
+  'acceptInvitation',
 ])
 
 type TenantDeps = { db: Database }

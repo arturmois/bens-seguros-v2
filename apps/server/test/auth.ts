@@ -38,7 +38,11 @@ export class TestClient {
     return [...this.cookies].map(([name, value]) => `${name}=${value}`).join('; ')
   }
 
-  async request(method: 'GET' | 'POST' | 'PATCH', url: string, options: RequestOptions = {}) {
+  async request(
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+    url: string,
+    options: RequestOptions = {},
+  ) {
     const response = await this.app.inject({
       method,
       url,
@@ -72,6 +76,10 @@ export class TestClient {
   patch(url: string, payload: unknown = {}, options: Omit<RequestOptions, 'payload'> = {}) {
     return this.request('PATCH', url, { ...options, payload })
   }
+
+  delete(url: string, options: Omit<RequestOptions, 'payload'> = {}) {
+    return this.request('DELETE', url, options)
+  }
 }
 
 export async function acceptCurrentTerms(client: TestClient) {
@@ -98,11 +106,18 @@ export function sessionCookieOf(header: string | string[] | undefined) {
   )
 }
 
-const emailJob = z.object({
-  template: z.string(),
-  to: z.string(),
-  props: z.object({ name: z.string(), url: z.url() }),
-})
+const emailJob = z.discriminatedUnion('template', [
+  z.object({
+    template: z.enum(['verify-email', 'reset-password']),
+    to: z.string(),
+    props: z.object({ name: z.string(), url: z.url() }),
+  }),
+  z.object({
+    template: z.literal('invitation'),
+    to: z.string(),
+    props: z.object({ organizationName: z.string(), url: z.url() }),
+  }),
+])
 
 function bossSchema(deps: Deps) {
   return `${new URL(deps.config.DATABASE_URL).searchParams.get('schema')}_pgboss`

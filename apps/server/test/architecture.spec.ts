@@ -98,7 +98,12 @@ function filesCitingTenantSetting(files: SourceFile[]) {
     .filter(
       (file) => file.path !== 'infrastructure/database.ts' && !file.path.startsWith('generated/'),
     )
-    .filter((file) => file.source.includes('app.tenant_id') || file.source.includes('app.user_id'))
+    .filter(
+      (file) =>
+        file.source.includes('app.tenant_id') ||
+        file.source.includes('app.user_id') ||
+        file.source.includes('app.invitation_token'),
+    )
     .map((file) => file.path)
 }
 
@@ -121,6 +126,22 @@ describe('tenant settings and ids', () => {
         { path: 'infrastructure/database.ts', source: "set_config('app.tenant_id', id, true)" },
       ]),
     ).toEqual(['modules/x/x.repository.ts'])
+  })
+
+  it('only the database module sets the invitation token', () => {
+    expect(filesCitingTenantSetting(readSourceTree(srcRoot))).toEqual([])
+    expect(
+      filesCitingTenantSetting([
+        {
+          path: 'modules/x/invitation.ts',
+          source: "set_config('app.invitation_token', hash, true)",
+        },
+        {
+          path: 'infrastructure/database.ts',
+          source: "set_config('app.invitation_token', hash, true)",
+        },
+      ]),
+    ).toEqual(['modules/x/invitation.ts'])
   })
 
   it('input schemas never accept an id', async () => {

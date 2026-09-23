@@ -48,6 +48,15 @@ export function createDatabase(databaseUrl: string) {
         })
       },
 
+      // Invite lookup before the caller is a member (AD-007). The hash is the capability; the
+      // organization id comes back from the row. Writes still need `withTenant`.
+      withInvitation<T>(tokenHash: string, run: (tx: Transaction) => Promise<T>): Promise<T> {
+        return client.$transaction(async (tx) => {
+          await tx.$executeRaw`SELECT set_config('app.invitation_token', ${tokenHash}, true)`
+          return run(tx)
+        })
+      },
+
       // A transaction with no tenant, for user-level tables (identity) and the queue: every
       // tenant-scoped table fails inside it, as outside `withTenant`.
       withoutTenant<T>(run: (tx: Transaction) => Promise<T>): Promise<T> {
