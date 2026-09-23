@@ -31,13 +31,7 @@ export async function getMe(deps: { db: Database }, user: UserContext): Promise<
       name: membership.organization.name,
       role: membership.role,
     }))
-    .sort((left, right) => {
-      if (left.name < right.name) return -1
-      if (left.name > right.name) return 1
-      if (left.id < right.id) return -1
-      if (left.id > right.id) return 1
-      return 0
-    })
+    .sort(byNameThenId)
   const active = organizations.find((organization) => organization.id === organizationId)
   return {
     ...session.user,
@@ -48,4 +42,16 @@ export async function getMe(deps: { db: Database }, user: UserContext): Promise<
     organizations,
     terms: await termsState(deps, session.user.id),
   }
+}
+
+// Door 1 of org-web: `name` ascending, then `id` ascending.
+export function byNameThenId(
+  left: { id: string; name: string },
+  right: { id: string; name: string },
+) {
+  if (left.name < right.name) return -1
+  if (left.name > right.name) return 1
+  if (left.id < right.id) return -1
+  if (left.id > right.id) return 1
+  return 0
 }

@@ -13,6 +13,7 @@ import { createOrganization } from '../../../test/factories.ts'
 import type { App } from '../../app.ts'
 import type { Deps } from '../../dependencies.ts'
 import { permissionsFor, type Role } from '../../shared/permissions.ts'
+import { byNameThenId } from './me.ts'
 import { currentUser, requireSession } from './session-context.ts'
 
 let app: App
@@ -223,8 +224,9 @@ describe('GET /api/v1/me', () => {
     await acceptCurrentTerms(named)
     expect((await named.get('/api/v1/me')).json().organizations).toEqual([])
 
-    const alfa = await named.post('/api/v1/onboarding', { name: 'Alfa' })
+    // Created in reverse order, so insertion order is not the expected one.
     const beta = await named.post('/api/v1/onboarding', { name: 'Beta' })
+    const alfa = await named.post('/api/v1/onboarding', { name: 'Alfa' })
     expect(alfa.statusCode).toBe(200)
     expect(beta.statusCode).toBe(200)
     expect((await named.get('/api/v1/me')).json().organizations).toEqual([
@@ -266,6 +268,24 @@ describe('GET /api/v1/me', () => {
     expect((await guest.get('/api/v1/me')).json().organizations).toEqual([
       { id: ids[0], name: 'Igual', role: 'OWNER' },
       { id: ids[1], name: 'Igual', role: 'OWNER' },
+    ])
+  })
+})
+
+describe('byNameThenId', () => {
+  it('orders organizations by name, then by id', () => {
+    const rows = [
+      { id: 'c', name: 'Beta' },
+      { id: 'b', name: 'Alfa' },
+      { id: 'a', name: 'Beta' },
+      { id: 'a', name: 'Alfa' },
+    ]
+
+    expect(rows.toSorted(byNameThenId)).toEqual([
+      { id: 'a', name: 'Alfa' },
+      { id: 'b', name: 'Alfa' },
+      { id: 'a', name: 'Beta' },
+      { id: 'c', name: 'Beta' },
     ])
   })
 })
