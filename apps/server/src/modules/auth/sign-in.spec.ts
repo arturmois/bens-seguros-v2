@@ -1,6 +1,15 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { buildTestApp } from '../../../test/app.ts'
-import { PASSWORD, sessionCookieOf, signedInUser, signUp, TestClient } from '../../../test/auth.ts'
+import {
+  acceptCurrentTerms,
+  lastEmailUrl,
+  PASSWORD,
+  sessionCookieOf,
+  signedInUser,
+  signUp,
+  TestClient,
+  uniqueEmail,
+} from '../../../test/auth.ts'
 import type { App } from '../../app.ts'
 import type { Deps } from '../../dependencies.ts'
 
@@ -138,5 +147,121 @@ describe('session cookie under https', () => {
     const plainCookie = sessionCookieOf(plain.headers['set-cookie'])
     expect(plainCookie).toMatch(/^better-auth\.session_token=/)
     expect(plainCookie).not.toMatch(/;\s*Secure/i)
+  })
+})
+
+describe('initial organization of a new session', () => {
+  async function signInAgain(email: string) {
+    const client = new TestClient(app)
+    const response = await client.post('/api/auth/sign-in/email', { email, password: PASSWORD })
+    expect(response.statusCode).toBe(200)
+    return client
+  }
+
+  async function activeOrganizationOf(client: TestClient) {
+    const me = await client.get('/api/v1/me')
+    expect(me.statusCode).toBe(200)
+    return me.json().activeOrganizationId as string | null
+  }
+
+  async function lastActiveOrganizationOf(userId: string) {
+    const user = await deps.db.user.findUniqueOrThrow({ where: { id: userId } })
+    return user.lastActiveOrganizationId
+  }
+
+  async function forgetLastActiveOrganization(userId: string) {
+    await deps.db.user.update({ where: { id: userId }, data: { lastActiveOrganizationId: null } })
+  }
+
+  // Signed in, terms accepted, and a member of every organization created through onboarding.
+  async function ownerOf(...names: string[]) {
+    const client = new TestClient(app)
+    const user = await signedInUser(client, deps)
+    await acceptCurrentTerms(client)
+    const ids: string[] = []
+    for (const name of names) {
+      const created = await client.post('/api/v1/onboarding', { name })
+      expect(created.statusCode).toBe(200)
+      ids.push(created.json().id)
+    }
+    return { client, ...user, ids }
+  }
+
+  // `guest` joins the owner's active organization through a real invitation.
+  async function join(owner: TestClient, guest: TestClient, guestEmail: string) {
+    const invited = await owner.post('/api/v1/invitations', { email: guestEmail, role: 'ADMIN' })
+    expect(invited.statusCode).toBe(200)
+    const token = new URL(
+      await lastEmailUrl(deps, guestEmail, 'invitation'),
+      'http://localhost',
+    ).searchParams.get('token')
+    const accepted = await guest.post('/api/v1/invitations/accept', { token })
+    expect(accepted.statusCode).toBe(200)
+  }
+
+  it('starts the session in the last active organization', async () => {
+    const { client, email, ids } = await ownerOf('Primeira', 'Segunda')
+    const [first] = ids
+    const switched = await client.post('/api/v1/me/active-organization', { organizationId: first })
+    expect(switched.statusCode).toBe(200)
+
+    expect(await activeOrganizationOf(await signInAgain(email))).toBe(first)
+  })
+
+  it('falls back to the only active organization', async () => {
+    const owner = await ownerOf('Da Dona')
+    const guestClient = new TestClient(app)
+    const guestEmail = uniqueEmail('inicial')
+    const guest = await signedInUser(guestClient, deps, guestEmail)
+    await acceptCurrentTerms(guestClient)
+    const own = await guestClient.post('/api/v1/onboarding', { name: 'Da Convidada' })
+    expect(own.statusCode).toBe(200)
+    await join(owner.client, guestClient, guestEmail)
+    expect(await lastActiveOrganizationOf(guest.userId)).toBe(owner.ids[0])
+
+    const members = await owner.client.get('/api/v1/members')
+    const membership = members
+      .json()
+      .items.find((item: { email: string }) => item.email === guestEmail)
+    const deactivated = await owner.client.patch(`/api/v1/members/${membership.id}`, {
+      active: false,
+    })
+    expect(deactivated.statusCode).toBe(200)
+
+    expect(await activeOrganizationOf(await signInAgain(guestEmail))).toBe(own.json().id)
+
+    const single = await ownerOf('Sozinha')
+    await forgetLastActiveOrganization(single.userId)
+    expect(await activeOrganizationOf(await signInAgain(single.email))).toBe(single.ids[0])
+  })
+
+  it('leaves the organization open when there is a choice', async () => {
+    const two = await ownerOf('Uma', 'Outra')
+    await forgetLastActiveOrganization(two.userId)
+    expect(await activeOrganizationOf(await signInAgain(two.email))).toBeNull()
+
+    const none = new TestClient(app)
+    const { email } = await signedInUser(none, deps)
+    expect(await activeOrganizationOf(none)).toBeNull()
+    expect(await activeOrganizationOf(await signInAgain(email))).toBeNull()
+  })
+
+  it('remembers the organization that was made active', async () => {
+    const owner = await ownerOf('Lembrada', 'Depois')
+    const [first, second] = owner.ids
+    expect(await lastActiveOrganizationOf(owner.userId)).toBe(second)
+
+    const switched = await owner.client.post('/api/v1/me/active-organization', {
+      organizationId: first,
+    })
+    expect(switched.statusCode).toBe(200)
+    expect(await lastActiveOrganizationOf(owner.userId)).toBe(first)
+
+    const guestClient = new TestClient(app)
+    const guestEmail = uniqueEmail('lembra')
+    const guest = await signedInUser(guestClient, deps, guestEmail)
+    await acceptCurrentTerms(guestClient)
+    await join(owner.client, guestClient, guestEmail)
+    expect(await lastActiveOrganizationOf(guest.userId)).toBe(first)
   })
 })

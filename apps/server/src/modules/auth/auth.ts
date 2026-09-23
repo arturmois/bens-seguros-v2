@@ -7,6 +7,7 @@ import { type EmailPayload, enqueueEmail } from '../../emails/send-email.tsx'
 import type { Database } from '../../infrastructure/database.ts'
 import type { Queue } from '../../infrastructure/queue.ts'
 import type { Config } from '../../shared/config.ts'
+import { initialOrganization } from './active-organization.ts'
 
 export type AuthDeps = {
   config: Config
@@ -69,6 +70,20 @@ export function createAuth(deps: AuthDeps) {
       additionalFields: {
         // Written only by the organizations module (Phase 4), after checking the membership.
         activeOrganizationId: { type: 'string', required: false, input: false },
+      },
+    },
+    // Every new session (sign-in, e-mail link, 2FA) starts in an organization the user still belongs
+    // to; the web guard only asks when there is a real choice (org-web door 4).
+    databaseHooks: {
+      session: {
+        create: {
+          before: async (session) => ({
+            data: {
+              ...session,
+              activeOrganizationId: await initialOrganization(db, session.userId),
+            },
+          }),
+        },
       },
     },
     user: {
