@@ -12,3 +12,5 @@ apps/server/src/generated/
 test-results/
 playwright-report/
 !.env.prod.example
+.harness-eval/
+__pycache__/

@@ -12,11 +12,13 @@ Legado (somente referência de regras, não de arquitetura): `github.com/arturmo
 - **Módulos:** `apps/server/src/modules/<x>/`. Um módulo importa outro só via `modules/<y>/index.ts` e escreve apenas nas próprias tabelas. Use case = função `(deps, ctx, input)`. Sem classes, sem DI container, sem decorators.
 - **Tenant:**
   - o PostgreSQL isola por RLS (ADR-004): todo acesso a tabela com `organizationId` passa por `db.withTenant(ctx, tx => …)`; o repository recebe esse `tx` e **não** filtra nem grava `organizationId` — só `scopeFor(ctx)` (carteira do COMMERCIAL);
+  - fora do tenant existem só `withUser` (membership do próprio usuário, AD-006), `withInvitation` (convite pelo hash do token, AD-007) e `withoutTenant` (tabelas de identidade e fila). Módulo de domínio usa só `withTenant`. Novo acesso fora do tenant (webhook, cron que varre organizações) pede AD e política RLS, não um helper novo;
+  - a organização ativa vem da sessão (`activeOrganizationId`, definida no hook do Better Auth, AD-010) e é validada contra `Member` por `requireTenant`;
   - toda tabela nova com `organizationId` leva, na própria migration, RLS `ENABLE` + `FORCE` e a política `tenant_isolation` (o teste de schema falha sem elas); único sempre inclui `organizationId`; FK para `Organization` é `onDelete: Restrict, onUpdate: Restrict`;
   - ids são gerados no server: schema de entrada (`<x>Input`) nunca aceita `id`;
   - o tenant nunca vem do request;
   - registro de outro tenant ou fora da carteira → 404.
-- **Toda rota:** schema Zod `.strict()`, `operationId` estável e `requirePermission(...)`.
+- **Toda rota:** schema Zod `.strict()`, `operationId` estável e `requirePermission(...)` (o boot falha sem ela em `/api/v1`; a lista `SESSION_ONLY`, de rotas sem tenant, não cresce sem AD).
 - **Toda transação sensível:** `audit.record(tx, ctx, …)` **sem PII**.
 - **Jobs:** apenas via `infrastructure/queue.ts` (`enqueue(tx, …)` dentro da transação). Handlers idempotentes. Nunca importar `pg-boss` direto.
 - **Dinheiro:** inteiros em centavos; percentuais em basis points; operações via `shared/money.ts`.
@@ -43,6 +45,7 @@ Na dúvida entre lean e driven, escolha o **lean**. Se a escolha envolver decis�
 - **Regra pura:** teste unitário cobrindo todas as transições.
 - **Endpoint:** teste de integração com PostgreSQL real (`app.inject`), incluindo `withTwoTenants` e, onde houver carteira, `withTwoSalespeople`.
 - **Não mockar repositories.**
+- **O teste falha se o comportamento for removido:** semeie dados que um valor constante ou a ordem de inserção não satisfaçam, e crie no banco a precondição que o critério descreve, não num mock de resposta (L-031, L-032, L-033).
 
 ## Antes de declarar pronto
 

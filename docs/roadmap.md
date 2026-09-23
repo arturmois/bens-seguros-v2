@@ -137,8 +137,8 @@ As fases 5 e 6 podem correr em paralelo depois da 4. A fase 11 depende da 6 (con
 - **Arquivos principais:**
   - `shared/permissions.ts`;
   - `modules/organizations/*` (org, logo, membros, convites, onboarding, `transfer-portfolio.ts`);
-  - `modules/audit/{audit.ts, audit.repository.ts}`;
-  - `test/{with-two-tenants,with-two-salespeople}.ts`;
+  - `modules/audit/audit.ts`;
+  - `test/factories.ts` (`withTwoTenants`, `withTwoSalespeople`);
   - web `routes/(onboarding)/*`, `routes/_app.tsx`, `settings/{organization,members}`.
 - **Dependências:** Fase 3.
 - **Implementação:**
@@ -165,6 +165,11 @@ As fases 5 e 6 podem correr em paralelo depois da 4. A fase 11 depende da 6 (con
 - **Objetivo:** confirmar que o harness continua correto depois que as convenções de tenancy (`scopeFor`, `withTwoTenants`, `withTwoSalespeople`, `requirePermission`) passaram a existir de verdade. São as regras mais críticas para os agentes nas fases de domínio.
 - **Como:** `harness-eval` numa sessão nova, com Q2 = **`A only`** (determinístico, ~0 tokens de modelo). Rodar `C` só se o `CLAUDE.md` ou as skills mudaram muito desde o H1.
 - **Critério de aceite:** Track A sem BROKEN.
+- **Resultado (2026-09-23):** rodado com Q2 = `A + C` (o `CLAUDE.md` mudou com o RLS e o processo lean/driven obrigatório; não havia registro do H1). Os relatórios ficam fora do git, em `.harness-eval/runs/2026-09-23-h2/`.
+  - Track A: 19 BROKEN no script, todos falso positivo (diretório checado como arquivo, exemplos genéricos da própria `harness-eval`, script fora do `package.json` da raiz, caminho relativo a `apps/server`). Todo caminho, helper e comando citado no `CLAUDE.md` existe.
+  - Track C (os dois juízes em `claude-opus-5-5`; trap PASS com 1 erro, fan-in PASS): 10 Keep-core (`CLAUDE.md` entre eles), 6 Slim, 7 Mixed, 15 Hold.
+  - **Aplicado:** o exemplo de use case do `architecture.md` usava `deps.db.$transaction` (falha sob RLS) e passou a usar `withTenant`; o `CLAUDE.md` diz quando valem `withUser`/`withInvitation`/`withoutTenant`, a organização ativa (AD-010) e a `SESSION_ONLY`, e ganhou a regra de teste que discrimina (lições L-031–L-033, que se repetiram em três features com ids diferentes e por isso nunca seriam promovidas); `vercel-react-best-practices` removida (quase só Next/RSC, e o conselho de SWR conflita com Orval + TanStack Query); caminhos da Fase 4 corrigidos.
+  - **Mantido:** as skills vendoradas marcadas Slim/Mixed (`GLOSSARY`, `code-analysis`, `context-limits`, `domain-modeling`, `tlc-discover`, `ADR-FORMAT`, `coding-principles`, `tasks.md`), porque o dono é o upstream (`skills-lock.json`) e só custam contexto quando carregadas; `grill-me` (tem `disable-model-invocation`) e `agent-browser` (útil para testar a UI); `tlc-spec-driven` (o `CLAUDE.md` a nomeia; os juízes divergiram); o histórico das Fases 1–4 deste roadmap (Mixed pedia corte, mas os `plan.md` citam essas seções); as regras do `CLAUDE.md` que o `architecture.spec`, o `schema.spec`, o boot e o biome já garantem (os juízes marcaram Keep-core; tirá-las economiza ~60 tokens e custa uma rodada vermelha por agente); a sobreposição com o superpowers (plugin global, fora do repo; o `CLAUDE.md` prevalece).
 
 ## Fase 5 — Billing
 

@@ -54,12 +54,6 @@
       "sourceType": "github",
       "skillPath": "packages/skills-catalog/skills/(development)/tlc-spec-lean/SKILL.md",
       "computedHash": "38fc6cf1c7fc1e18d3a4b8e9ffbbf7c48e51ca364324a601976c55b3ea644e86"
-    },
-    "vercel-react-best-practices": {
-      "source": "vercel-labs/agent-skills",
-      "sourceType": "github",
-      "skillPath": "skills/react-best-practices/SKILL.md",
-      "computedHash": "3219a1944e404ffc14d1d9d6aef6dd2e3855b81387ee0a044ccbfe14d34c2357"
     }
   }
 }

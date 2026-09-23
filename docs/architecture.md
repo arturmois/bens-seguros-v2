@@ -118,7 +118,7 @@ bens-seguros-v2/
 ```text
 modules/clients/
 ├── client.schema.ts        # Zod: inputs/outputs/params (fonte da verdade da API)
-├── client.repository.ts    # funções Prisma; sempre recebem (db, ctx)
+├── client.repository.ts    # funções Prisma; sempre recebem (tx, ctx), o tx de db.withTenant
 ├── create-client.ts        # 1 use case = 1 função
 ├── update-client.ts  list-clients.ts  delete-client.ts  lgpd-delete-client.ts
 ├── client.presenter.ts     # mascaramento de PII por role (só onde há PII)
@@ -137,7 +137,7 @@ modules/clients/
 ```ts
 // modules/commissions/approve-commission.ts
 export async function approveCommission(deps: Deps, ctx: RequestContext, id: string) {
-  return deps.db.$transaction(async (tx) => {
+  return deps.db.withTenant(ctx, async (tx) => {                              // RLS: fora do withTenant a tabela falha
     const commission = await commissionRepository.findById(tx, ctx, id)       // 404 fora do tenant/escopo
     const next = nextApprovalStatus(commission.status, ctx.permissions)       // puro; lança AppError
     const updated = await commissionRepository.setStatus(tx, ctx, id, next, { by: ctx.userId })
