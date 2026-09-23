@@ -3,6 +3,7 @@ import type { Database } from '../src/infrastructure/database.ts'
 import { uuidv7 } from '../src/shared/id.ts'
 import { permissionsFor } from '../src/shared/permissions.ts'
 import type { RequestContext } from '../src/shared/request-context.ts'
+import { uniqueEmail } from './auth.ts'
 
 export async function createOrganization(db: Database, name = `Corretora ${randomUUID()}`) {
   const id = uuidv7()
@@ -27,4 +28,31 @@ export function contextFor(organizationId: string): RequestContext {
 export async function withTwoTenants(db: Database) {
   const [a, b] = await Promise.all([createOrganization(db), createOrganization(db)])
   return { tenantA: contextFor(a.id), tenantB: contextFor(b.id) }
+}
+
+// Two COMMERCIAL members of one organization (ADR-010). Later portfolio tests read A and miss B.
+export async function withTwoSalespeople(db: Database, organizationId: string) {
+  const [salespersonA, salespersonB] = await Promise.all([
+    createSalesperson(db, organizationId),
+    createSalesperson(db, organizationId),
+  ])
+  return { salespersonA, salespersonB }
+}
+
+async function createSalesperson(db: Database, organizationId: string): Promise<RequestContext> {
+  const user = await db.user.create({
+    data: { name: 'Vendedor', email: uniqueEmail('vendedor') },
+  })
+  await db.withTenant({ organizationId }, (tx) =>
+    tx.member.create({ data: { userId: user.id, role: 'COMMERCIAL', active: true } }),
+  )
+  return {
+    requestId: randomUUID(),
+    userId: user.id,
+    sessionId: randomUUID(),
+    isSuperAdmin: false,
+    organizationId,
+    role: 'COMMERCIAL',
+    permissions: permissionsFor('COMMERCIAL'),
+  }
 }

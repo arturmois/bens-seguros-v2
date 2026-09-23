@@ -1,0 +1,595 @@
+import { randomUUID } from 'node:crypto'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { buildTestApp } from '../../../test/app.ts'
+import { acceptCurrentTerms, signedInUser, TestClient, uniqueEmail } from '../../../test/auth.ts'
+import { withTwoSalespeople, withTwoTenants } from '../../../test/factories.ts'
+import type { App } from '../../app.ts'
+import type { Deps } from '../../dependencies.ts'
+import type { Role } from '../../shared/permissions.ts'
+import { portfolioMoves } from './portfolio.ts'
+
+let app: App
+let deps: Deps
+let close: () => Promise<void>
+
+beforeAll(async () => {
+  ;({ app, deps, close } = await buildTestApp({ workers: true }))
+  await app.ready()
+})
+
+afterAll(() => close())
+
+async function brokerage() {
+  const client = new TestClient(app)
+  const user = await signedInUser(client, deps)
+  await acceptCurrentTerms(client)
+  const created = await client.post('/api/v1/onboarding', {
+    name: `Corretora ${randomUUID().slice(0, 8)}`,
+  })
+  expect(created.statusCode).toBe(200)
+  const owner = await deps.db.withTenant({ organizationId: created.json().id as string }, (tx) =>
+    tx.member.findFirstOrThrow({ where: { userId: user.userId } }),
+  )
+  return {
+    client,
+    userId: user.userId,
+    email: user.email,
+    organizationId: created.json().id as string,
+    memberId: owner.id,
+  }
+}
+
+async function setRole(organizationId: string, userId: string, role: Role) {
+  await deps.db.withTenant({ organizationId }, (tx) =>
+    tx.member.updateMany({ where: { userId }, data: { role } }),
+  )
+}
+
+async function addMember(organizationId: string, role: Role = 'COMMERCIAL', active = true) {
+  const user = await deps.db.user.create({
+    data: { name: 'Membro', email: uniqueEmail('membro') },
+  })
+  const member = await deps.db.withTenant({ organizationId }, (tx) =>
+    tx.member.create({ data: { userId: user.id, role, active } }),
+  )
+  return { user, member }
+}
+
+async function colleague(organizationId: string, role: Role) {
+  const client = new TestClient(app)
+  const user = await signedInUser(client, deps)
+  await acceptCurrentTerms(client)
+  const member = await deps.db.withTenant({ organizationId }, (tx) =>
+    tx.member.create({ data: { userId: user.userId, role, active: true } }),
+  )
+  await deps.db.session.updateMany({
+    where: { userId: user.userId },
+    data: { activeOrganizationId: organizationId },
+  })
+  return { client, userId: user.userId, email: user.email, memberId: member.id }
+}
+
+async function auditsOf(organizationId: string, entityId: string) {
+  return deps.db.withTenant({ organizationId }, (tx) =>
+    tx.auditLog.findMany({ where: { entityId }, orderBy: { createdAt: 'asc' } }),
+  )
+}
+
+async function memberOf(organizationId: string, id: string) {
+  return deps.db.withTenant({ organizationId }, (tx) =>
+    tx.member.findFirstOrThrow({ where: { id } }),
+  )
+}
+
+describe('PATCH /api/v1/members/:id', () => {
+  it('changes a member role and records the audit', async () => {
+    const host = await brokerage()
+    const admin = await colleague(host.organizationId, 'ADMIN')
+    const target = await addMember(host.organizationId, 'VIEWER')
+    const roles = ['ADMIN', 'MANAGER', 'COMMERCIAL', 'VIEWER'] as const
+    let previous: Role = 'VIEWER'
+
+    for (const caller of [host, admin]) {
+      for (const role of roles) {
+        const response = await caller.client.patch(`/api/v1/members/${target.member.id}`, { role })
+        expect(response.statusCode, role).toBe(200)
+        expect(response.json().role).toBe(role)
+        const trail = await auditsOf(host.organizationId, target.member.id)
+        expect(trail.at(-1)?.action).toBe('member.update')
+        expect(trail.at(-1)?.changes).toMatchObject({ role: [previous, role] })
+        previous = role
+      }
+    }
+  })
+
+  it('deactivates a member', async () => {
+    const host = await brokerage()
+    const target = await addMember(host.organizationId, 'VIEWER')
+
+    const response = await host.client.patch(`/api/v1/members/${target.member.id}`, {
+      active: false,
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json().active).toBe(false)
+    expect((await auditsOf(host.organizationId, target.member.id)).at(-1)?.changes).toMatchObject({
+      active: [true, false],
+    })
+  })
+
+  it('reactivates a member under the seat cap', async () => {
+    const host = await brokerage()
+    const target = await addMember(host.organizationId, 'VIEWER', false)
+
+    const response = await host.client.patch(`/api/v1/members/${target.member.id}`, {
+      active: true,
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json().active).toBe(true)
+    expect((await auditsOf(host.organizationId, target.member.id)).at(-1)?.changes).toMatchObject({
+      active: [false, true],
+    })
+  })
+
+  it('rejects a reactivation past the seat cap', async () => {
+    const host = await brokerage()
+    for (let i = 0; i < 4; i++) await addMember(host.organizationId)
+    const target = await addMember(host.organizationId, 'VIEWER', false)
+    const before = await auditsOf(host.organizationId, target.member.id)
+
+    const response = await host.client.patch(`/api/v1/members/${target.member.id}`, {
+      role: 'ADMIN',
+      active: true,
+    })
+
+    expect(response.statusCode).toBe(422)
+    expect(response.json()).toEqual({
+      error: {
+        code: 'USER_QUOTA_REACHED',
+        message: 'O plano não tem vagas para outro usuário.',
+      },
+    })
+    const member = await memberOf(host.organizationId, target.member.id)
+    expect(member.active).toBe(false)
+    expect(member.role).toBe('VIEWER')
+    expect(await auditsOf(host.organizationId, target.member.id)).toEqual(before)
+  })
+
+  it('keeps a single reactivation when two race for the last seat', async () => {
+    const host = await brokerage()
+    for (let i = 0; i < 3; i++) await addMember(host.organizationId)
+    const first = await addMember(host.organizationId, 'VIEWER', false)
+    const second = await addMember(host.organizationId, 'VIEWER', false)
+
+    const results = await Promise.all(
+      [first, second].map((target) =>
+        host.client.patch(`/api/v1/members/${target.member.id}`, { active: true }),
+      ),
+    )
+
+    const codes = results.map((result) => result.statusCode).sort()
+    expect(codes).toEqual([200, 422])
+    expect(results.find((result) => result.statusCode === 422)?.json().error.code).toBe(
+      'USER_QUOTA_REACHED',
+    )
+    const active = await deps.db.withTenant({ organizationId: host.organizationId }, (tx) =>
+      tx.member.count({ where: { active: true } }),
+    )
+    expect(active).toBe(5)
+  })
+
+  it('rejects a change to the owner', async () => {
+    const host = await brokerage()
+    const before = await auditsOf(host.organizationId, host.memberId)
+
+    for (const body of [{ role: 'ADMIN' }, { active: false }]) {
+      const response = await host.client.patch(`/api/v1/members/${host.memberId}`, body)
+      expect(response.statusCode).toBe(422)
+      expect(response.json()).toEqual({
+        error: {
+          code: 'OWNER_IMMUTABLE',
+          message: 'O proprietário não pode ser alterado nem desativado.',
+        },
+      })
+    }
+
+    const owner = await memberOf(host.organizationId, host.memberId)
+    expect(owner.role).toBe('OWNER')
+    expect(owner.active).toBe(true)
+    expect(await auditsOf(host.organizationId, host.memberId)).toEqual(before)
+  })
+
+  it('rejects a member body that is not a role or an active flag', async () => {
+    const host = await brokerage()
+    const target = await addMember(host.organizationId, 'VIEWER')
+    const bodies = [{ role: 'OWNER' }, {}, { role: 'VIEWER', extra: true }]
+
+    for (const body of bodies) {
+      const response = await host.client.patch(`/api/v1/members/${target.member.id}`, body)
+      expect(response.statusCode).toBe(400)
+      expect(response.json().error.code).toBe('VALIDATION_ERROR')
+    }
+
+    expect((await memberOf(host.organizationId, target.member.id)).role).toBe('VIEWER')
+  })
+
+  it('rejects a member change from a role without member:update', async () => {
+    const host = await brokerage()
+    const target = await addMember(host.organizationId, 'VIEWER')
+
+    for (const role of ['MANAGER', 'COMMERCIAL', 'VIEWER'] as const) {
+      const caller = await colleague(host.organizationId, role)
+      const response = await caller.client.patch(`/api/v1/members/${target.member.id}`, {
+        role: 'ADMIN',
+      })
+      expect(response.statusCode, role).toBe(403)
+      expect(response.json().error.code).toBe('FORBIDDEN')
+    }
+
+    expect((await memberOf(host.organizationId, target.member.id)).role).toBe('VIEWER')
+  })
+
+  it('requires a session', async () => {
+    const client = new TestClient(app)
+    const id = randomUUID()
+    const requests = [
+      client.patch(`/api/v1/members/${id}`, { role: 'VIEWER' }),
+      client.get('/api/v1/members'),
+      client.post(`/api/v1/members/${id}/transfer-portfolio`, { toMemberId: randomUUID() }),
+    ]
+    for (const pending of requests) {
+      const response = await pending
+      expect(response.statusCode).toBe(401)
+      expect(response.json().error.code).toBe('UNAUTHENTICATED')
+    }
+  })
+
+  it('blocks a member change while terms are pending', async () => {
+    const client = new TestClient(app)
+    await signedInUser(client, deps)
+    const onboarded = await client.post('/api/v1/onboarding', { name: 'Sem Termos' })
+    expect(onboarded.statusCode).toBe(200)
+    const organizationId = onboarded.json().id as string
+    const target = await addMember(organizationId, 'VIEWER')
+
+    const response = await client.patch(`/api/v1/members/${target.member.id}`, { role: 'ADMIN' })
+
+    expect(response.statusCode).toBe(403)
+    expect(response.json().error.code).toBe('TERMS_NOT_ACCEPTED')
+    expect((await memberOf(organizationId, target.member.id)).role).toBe('VIEWER')
+  })
+
+  it('returns not found for an unknown member', async () => {
+    const host = await brokerage()
+
+    const response = await host.client.patch(`/api/v1/members/${randomUUID()}`, { role: 'ADMIN' })
+
+    expect(response.statusCode).toBe(404)
+    expect(response.json()).toEqual({
+      error: { code: 'NOT_FOUND', message: 'Membro não encontrado.' },
+    })
+  })
+
+  it('does not record an audit when the member is unchanged', async () => {
+    const host = await brokerage()
+    const target = await addMember(host.organizationId, 'VIEWER')
+    const before = await auditsOf(host.organizationId, target.member.id)
+
+    const response = await host.client.patch(`/api/v1/members/${target.member.id}`, {
+      role: 'VIEWER',
+      active: true,
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(await auditsOf(host.organizationId, target.member.id)).toEqual(before)
+  })
+
+  it('deactivates the caller and the next organization read is not found', async () => {
+    const host = await brokerage()
+    const admin = await colleague(host.organizationId, 'ADMIN')
+
+    const response = await admin.client.patch(`/api/v1/members/${admin.memberId}`, {
+      active: false,
+    })
+    const organization = await admin.client.get('/api/v1/organization')
+
+    expect(response.statusCode).toBe(200)
+    expect(organization.statusCode).toBe(404)
+    expect(organization.json().error.code).toBe('NOT_FOUND')
+  })
+
+  it('does not change the other tenant member', async () => {
+    const host = await brokerage()
+    const { tenantB } = await withTwoTenants(deps.db)
+    const foreign = await addMember(tenantB.organizationId, 'VIEWER')
+
+    const response = await host.client.patch(`/api/v1/members/${foreign.member.id}`, {
+      role: 'ADMIN',
+    })
+
+    expect(response.statusCode).toBe(404)
+    expect((await memberOf(tenantB.organizationId, foreign.member.id)).role).toBe('VIEWER')
+  })
+})
+
+describe('GET /api/v1/members', () => {
+  it('lists members newest first including inactive', async () => {
+    const host = await brokerage()
+    const older = await addMember(host.organizationId, 'VIEWER')
+    const newer = await addMember(host.organizationId, 'MANAGER')
+    const deactivated = await host.client.patch(`/api/v1/members/${newer.member.id}`, {
+      active: false,
+    })
+    expect(deactivated.statusCode).toBe(200)
+
+    const listed = await host.client.get('/api/v1/members')
+    expect(listed.statusCode).toBe(200)
+    expect(listed.json().items.map((item: { id: string }) => item.id)).toEqual([
+      newer.member.id,
+      older.member.id,
+      host.memberId,
+    ])
+    expect(listed.json().items[0]).toMatchObject({
+      id: newer.member.id,
+      userId: newer.user.id,
+      role: 'MANAGER',
+      active: false,
+      email: newer.user.email,
+      name: 'Membro',
+      commissionSplitBp: 0,
+    })
+
+    await setRole(host.organizationId, host.userId, 'ADMIN')
+    const asAdmin = await host.client.get('/api/v1/members')
+    expect(asAdmin.statusCode).toBe(200)
+    expect(asAdmin.json().items).toHaveLength(3)
+  })
+
+  it('rejects listing members without member:update', async () => {
+    const host = await brokerage()
+    for (const role of ['MANAGER', 'COMMERCIAL', 'VIEWER'] as const) {
+      const caller = await colleague(host.organizationId, role)
+      const response = await caller.client.get('/api/v1/members')
+      expect(response.statusCode, role).toBe(403)
+      expect(response.json().error.code).toBe('FORBIDDEN')
+    }
+  })
+
+  it('blocks listing members while terms are pending', async () => {
+    const client = new TestClient(app)
+    await signedInUser(client, deps)
+    const onboarded = await client.post('/api/v1/onboarding', { name: 'Sem Termos Lista' })
+    expect(onboarded.statusCode).toBe(200)
+
+    const response = await client.get('/api/v1/members')
+
+    expect(response.statusCode).toBe(403)
+    expect(response.json().error.code).toBe('TERMS_NOT_ACCEPTED')
+  })
+
+  it('hides the other tenant from the member list', async () => {
+    const host = await brokerage()
+    const { tenantB } = await withTwoTenants(deps.db)
+    const foreign = await addMember(tenantB.organizationId, 'VIEWER')
+
+    const listed = await host.client.get('/api/v1/members')
+
+    expect(listed.statusCode).toBe(200)
+    expect(listed.json().items.some((item: { id: string }) => item.id === foreign.member.id)).toBe(
+      false,
+    )
+  })
+})
+
+describe('POST /api/v1/members/:id/transfer-portfolio', () => {
+  it('transfers an empty portfolio and records the audit', async () => {
+    const host = await brokerage()
+    const admin = await colleague(host.organizationId, 'ADMIN')
+    const target = await addMember(host.organizationId, 'COMMERCIAL')
+    portfolioMoves.length = 0
+
+    for (const caller of [host, admin]) {
+      const response = await caller.client.post(
+        `/api/v1/members/${caller.memberId}/transfer-portfolio`,
+        { toMemberId: target.member.id },
+      )
+      expect(response.statusCode).toBe(200)
+      expect(response.json()).toEqual({ transferred: 0 })
+      const trail = await auditsOf(host.organizationId, caller.memberId)
+      expect(trail.at(-1)?.action).toBe('portfolio.transfer')
+      expect(trail.at(-1)?.changes).toEqual({
+        fromMemberId: caller.memberId,
+        toMemberId: target.member.id,
+        transferred: 0,
+      })
+    }
+  })
+
+  it('adds the rows a registered move reports', async () => {
+    const host = await brokerage()
+    const target = await addMember(host.organizationId, 'COMMERCIAL')
+    portfolioMoves.length = 0
+    portfolioMoves.push(async (tx, fromUserId) => {
+      await tx.member.updateMany({ where: { userId: fromUserId }, data: { commissionSplitBp: 2 } })
+      return 2
+    })
+
+    try {
+      const response = await host.client.post(
+        `/api/v1/members/${host.memberId}/transfer-portfolio`,
+        { toMemberId: target.member.id },
+      )
+      expect(response.statusCode).toBe(200)
+      expect(response.json()).toEqual({ transferred: 2 })
+      expect((await memberOf(host.organizationId, host.memberId)).commissionSplitBp).toBe(2)
+      expect((await auditsOf(host.organizationId, host.memberId)).at(-1)?.changes).toMatchObject({
+        transferred: 2,
+      })
+    } finally {
+      portfolioMoves.length = 0
+    }
+  })
+
+  it('rolls back the transfer when a move throws', async () => {
+    const host = await brokerage()
+    const target = await addMember(host.organizationId, 'COMMERCIAL')
+    const before = await auditsOf(host.organizationId, host.memberId)
+    portfolioMoves.length = 0
+    portfolioMoves.push(async (tx, fromUserId) => {
+      await tx.member.updateMany({ where: { userId: fromUserId }, data: { commissionSplitBp: 9 } })
+      return 1
+    })
+    portfolioMoves.push(() => Promise.reject(new Error('move failed')))
+
+    try {
+      const response = await host.client.post(
+        `/api/v1/members/${host.memberId}/transfer-portfolio`,
+        { toMemberId: target.member.id },
+      )
+      expect(response.statusCode).toBe(500)
+      expect((await memberOf(host.organizationId, host.memberId)).commissionSplitBp).toBe(0)
+      expect(await auditsOf(host.organizationId, host.memberId)).toEqual(before)
+    } finally {
+      portfolioMoves.length = 0
+    }
+  })
+
+  it('rejects a transfer to the same member', async () => {
+    const host = await brokerage()
+    const before = await auditsOf(host.organizationId, host.memberId)
+
+    const response = await host.client.post(`/api/v1/members/${host.memberId}/transfer-portfolio`, {
+      toMemberId: host.memberId,
+    })
+
+    expect(response.statusCode).toBe(422)
+    expect(response.json()).toEqual({
+      error: {
+        code: 'SAME_MEMBER',
+        message: 'A carteira não pode ser transferida para o mesmo membro.',
+      },
+    })
+    expect(await auditsOf(host.organizationId, host.memberId)).toEqual(before)
+  })
+
+  it('rejects a transfer to an inactive member', async () => {
+    const host = await brokerage()
+    const target = await addMember(host.organizationId, 'COMMERCIAL', false)
+    const before = await auditsOf(host.organizationId, host.memberId)
+
+    const response = await host.client.post(`/api/v1/members/${host.memberId}/transfer-portfolio`, {
+      toMemberId: target.member.id,
+    })
+
+    expect(response.statusCode).toBe(422)
+    expect(response.json()).toEqual({
+      error: {
+        code: 'TARGET_INACTIVE',
+        message: 'O destino da carteira precisa estar ativo.',
+      },
+    })
+    expect(await auditsOf(host.organizationId, host.memberId)).toEqual(before)
+  })
+
+  it('returns not found when the transfer target is missing', async () => {
+    const host = await brokerage()
+    const target = await addMember(host.organizationId, 'COMMERCIAL')
+    const { tenantB } = await withTwoTenants(deps.db)
+    const foreign = await addMember(tenantB.organizationId, 'COMMERCIAL')
+
+    const missingTarget = await host.client.post(
+      `/api/v1/members/${host.memberId}/transfer-portfolio`,
+      { toMemberId: randomUUID() },
+    )
+    const missingSource = await host.client.post(
+      `/api/v1/members/${randomUUID()}/transfer-portfolio`,
+      { toMemberId: target.member.id },
+    )
+
+    expect(missingTarget.statusCode).toBe(404)
+    expect(missingTarget.json().error.code).toBe('NOT_FOUND')
+    expect(missingSource.statusCode).toBe(404)
+    expect((await memberOf(tenantB.organizationId, foreign.member.id)).role).toBe('COMMERCIAL')
+  })
+
+  it('rejects a transfer from a role without portfolio:transfer', async () => {
+    const host = await brokerage()
+    const target = await addMember(host.organizationId, 'COMMERCIAL')
+
+    for (const role of ['MANAGER', 'COMMERCIAL', 'VIEWER'] as const) {
+      const caller = await colleague(host.organizationId, role)
+      const response = await caller.client.post(
+        `/api/v1/members/${host.memberId}/transfer-portfolio`,
+        { toMemberId: target.member.id },
+      )
+      expect(response.statusCode, role).toBe(403)
+      expect(response.json().error.code).toBe('FORBIDDEN')
+    }
+  })
+
+  it('blocks a transfer while terms are pending', async () => {
+    const client = new TestClient(app)
+    await signedInUser(client, deps)
+    const onboarded = await client.post('/api/v1/onboarding', { name: 'Sem Termos Carteira' })
+    expect(onboarded.statusCode).toBe(200)
+
+    const response = await client.post(`/api/v1/members/${randomUUID()}/transfer-portfolio`, {
+      toMemberId: randomUUID(),
+    })
+
+    expect(response.statusCode).toBe(403)
+    expect(response.json().error.code).toBe('TERMS_NOT_ACCEPTED')
+  })
+
+  it('rejects a transfer body that is not a member id', async () => {
+    const host = await brokerage()
+    const before = await auditsOf(host.organizationId, host.memberId)
+    const bodies = [{}, { toMemberId: host.memberId, extra: true }]
+
+    for (const body of bodies) {
+      const response = await host.client.post(
+        `/api/v1/members/${host.memberId}/transfer-portfolio`,
+        body,
+      )
+      expect(response.statusCode).toBe(400)
+      expect(response.json().error.code).toBe('VALIDATION_ERROR')
+    }
+
+    expect(await auditsOf(host.organizationId, host.memberId)).toEqual(before)
+  })
+
+  it('does not transfer the other tenant member', async () => {
+    const host = await brokerage()
+    const { tenantB } = await withTwoTenants(deps.db)
+    const foreign = await addMember(tenantB.organizationId, 'COMMERCIAL')
+
+    const response = await host.client.post(
+      `/api/v1/members/${foreign.member.id}/transfer-portfolio`,
+      { toMemberId: host.memberId },
+    )
+
+    expect(response.statusCode).toBe(404)
+    expect((await memberOf(tenantB.organizationId, foreign.member.id)).role).toBe('COMMERCIAL')
+  })
+})
+
+describe('withTwoSalespeople', () => {
+  it('builds two commercial contexts in one organization', async () => {
+    const host = await brokerage()
+    const { salespersonA, salespersonB } = await withTwoSalespeople(deps.db, host.organizationId)
+
+    expect(salespersonA.organizationId).toBe(host.organizationId)
+    expect(salespersonB.organizationId).toBe(host.organizationId)
+    expect(salespersonA.userId).not.toBe(salespersonB.userId)
+    expect(salespersonA.role).toBe('COMMERCIAL')
+    expect(salespersonB.role).toBe('COMMERCIAL')
+    const members = await deps.db.withTenant({ organizationId: host.organizationId }, (tx) =>
+      tx.member.findMany({
+        where: { userId: { in: [salespersonA.userId, salespersonB.userId] } },
+      }),
+    )
+    expect(members).toHaveLength(2)
+    expect(members.every((member) => member.active && member.role === 'COMMERCIAL')).toBe(true)
+  })
+})

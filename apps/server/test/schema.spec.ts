@@ -150,6 +150,46 @@ describe('tenant tables', () => {
     ).toBe(true)
   })
 
+  it('isolates audit logs by tenant', async () => {
+    const schema = workerSchema()
+    const protectedTable = await withOwnerClient((client) =>
+      client.query<{ protected: boolean }>(
+        `SELECT c.relrowsecurity AND c.relforcerowsecurity AND EXISTS (
+            SELECT 1 FROM pg_policies p
+             WHERE p.schemaname = n.nspname AND p.tablename = c.relname
+               AND p.policyname = 'tenant_isolation') AS protected
+           FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = $1 AND c.relname = 'AuditLog'`,
+        [schema],
+      ),
+    )
+    const policy = await withOwnerClient((client) =>
+      client.query<{ qual: string | null; with_check: string | null }>(
+        `SELECT qual, with_check
+           FROM pg_policies
+          WHERE schemaname = $1 AND tablename = 'AuditLog' AND policyname = 'tenant_isolation'`,
+        [schema],
+      ),
+    )
+    const indexes = await withOwnerClient((client) =>
+      client.query<{ indexdef: string }>(
+        `SELECT indexdef FROM pg_indexes WHERE schemaname = $1 AND tablename = 'AuditLog'`,
+        [schema],
+      ),
+    )
+
+    expect(protectedTable.rows).toEqual([{ protected: true }])
+    expect(policy.rows[0]?.qual).toContain('app.tenant_id')
+    expect(policy.rows[0]?.qual).not.toContain('app.invitation_token')
+    expect(policy.rows[0]?.with_check).toContain('app.tenant_id')
+    expect(policy.rows[0]?.with_check).not.toContain('app.invitation_token')
+    expect(
+      indexes.rows.some(
+        (row) => row.indexdef.includes('UNIQUE') && row.indexdef.includes('"organizationId"'),
+      ),
+    ).toBe(true)
+  })
+
   it('every tenant table is protected by row security', async () => {
     const unprotected = await withOwnerClient((client) =>
       findUnprotectedTenantTables(client, workerSchema()),

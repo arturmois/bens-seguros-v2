@@ -11,6 +11,8 @@
 | AD-005 | Aceite pendente de termos bloqueia rota de tenant: o `requireTenant` da Fase 4 responde `403 TERMS_NOT_ACCEPTED`; `/me` e o próprio aceite ficam liberados (só `requireSession`) | active | `.specs/features/terms/plan.md` (Landing 3) |
 | AD-006 | RLS de quem ainda não está dentro do tenant. `Member` usa a política `tenant_isolation`: `USING` é `organizationId = app.tenant_id` ou `userId = app.user_id` (`current_setting(..., true)`); `WITH CHECK` é só o tenant. `Organization` não tem `organizationId`; a política homônima libera a linha quando `id = app.tenant_id` ou existe `Member` daquele `app.user_id`. `app.user_id` só é setado em `database.ts` (`withUser`). Sem isso a troca de organização não lê o próprio membro, e sem RLS qualquer sessão lista as corretoras. O predicado de `Invitation` saiu daqui: é a AD-007 | active | `.specs/features/org-core/plan.md` (Landing 5 e 6) |
 | AD-007 | Convite legível fora do tenant só pelo token. `Invitation.tenant_isolation`: `USING` é `organizationId = app.tenant_id` ou `tokenHash = current_setting('app.invitation_token', true)`; `WITH CHECK` é só o tenant. `app.invitation_token` só é setado em `database.ts` (`withInvitation`). O `organizationId` do `Member` criado no aceite sai dessa linha, nunca do request. Não usa `userId`: a linha não tem usuário até o aceite | active | `.specs/features/invitations/plan.md` (Landing 4) |
+| AD-008 | Trilha sem PII. Toda ação sensível chama `audit.record(tx, ctx, { action, entityId, changes })` dentro da mesma transação do ato. `changes` é jsonb; as chaves `email`, `name`, `phone`, `document`, `documentEncrypted`, `token`, `password`, `ipAddress` e `userAgent` (em qualquer nível) são gravadas como `"[alterado]"`. A linha guarda `actorUserId`, nunca o e-mail. `AuditLog` é tenant-scoped, RLS só por `app.tenant_id` | active | `.specs/features/audit/plan.md` (Landing 1 e 2) |
+| AD-009 | Carteira do COMMERCIAL. `scopeFor(ctx)` devolve `{ salespersonId: ctx.userId }` para `COMMERCIAL` e `{}` para os outros papéis. O repository aplica isso na query e devolve 404 fora da carteira; o RLS não filtra carteira. A transferência soma `portfolioMoves`, lista de `(tx, fromUserId, toUserId) => Promise<number>`, vazia até existir tabela com `salespersonId` | active | `.specs/features/audit/plan.md` (Landing 3 e 4) |
 
 ## Phase 3 — features
 
@@ -33,6 +35,7 @@ Ordem. Cada uma: `plan.md` revisado → `checks.md` → build → Verifier. Perf
 
 ## Handoff
 
+- `audit`: `plan.md`, `checks.md` e código prontos. Verifier ainda não rodou.
 - `invitations`: `verification.md` PASS (`121a060`).
 - `org-core`: `verification.md` PASS (`8869be9`).
 - Fase 3 fechada: `signup-gates` e `terms` com `verification.md` PASS.

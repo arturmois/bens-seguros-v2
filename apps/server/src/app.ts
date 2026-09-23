@@ -17,6 +17,7 @@ import {
   assertRouteDeclaresPermission,
   invitationRoutes,
   loadTenant,
+  memberRoutes,
   organizationRoutes,
 } from './modules/organizations/index.ts'
 import { AppError, errorHandler, notFoundHandler } from './shared/errors.ts'
@@ -111,6 +112,7 @@ export function buildApp(deps: Deps) {
   app.register(authRoutes(deps))
   app.register(organizationRoutes(deps))
   app.register(invitationRoutes(deps))
+  app.register(memberRoutes(deps))
 
   return app
 }

@@ -285,6 +285,7 @@ describe('api v1 permission gate', () => {
       }).toThrow(/requirePermission/)
       await started.app.ready()
       expect(started.app.printRoutes()).toMatch(/invitations[\s\S]*accept \(POST\)/)
+      expect(started.app.printRoutes()).toContain('transfer-portfolio')
     } finally {
       await started.close()
     }
