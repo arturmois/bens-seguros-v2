@@ -39,6 +39,7 @@ Ordem. Cada uma: `plan.md` revisado → `checks.md` → build → Verifier. Perf
 - Fase 4 fechada: `org-core`, `invitations`, `audit` e `org-web` com `verification.md` PASS.
 - `org-web`: `verification.md` PASS na rodada 3 (`c445910`). Rodada 1 FAIL em `90ca899` (regressão do login sem organização ativa → AD-010; testes que não discriminavam), rodada 2 FAIL em `16dbd6f` (dois membros sem prova).
 - Checkpoint H2 fechado: `harness-h2` com `verification.md` PASS na rodada 2 (`a885893`). Rodada 1 FAIL em `e6c1b8e` (o `CLAUDE.md` dizia que `withoutTenant` servia às tabelas de identidade → L-037). Resultado e o que foi mantido: `docs/roadmap.md`, Checkpoint H2.
+- `health-fixes` (correções da auditoria de saúde, entre as Fases 4 e 5): `verification.md` PASS na rodada 2 (`202b2a7`). Rodada 1 FAIL em `9b85471` (testes com `toMatchObject` e ramo do índice único sem prova). AD-008 ganhou a lista fechada de ações auditadas.
 - Próximo: Fase 5 (`prompts/prompt-05.md`).
 - `audit`: `verification.md` PASS (`3ab6b69`).
 - `invitations`: `verification.md` PASS (`121a060`).
