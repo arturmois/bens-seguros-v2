@@ -373,11 +373,13 @@ As fases 5 e 6 podem correr em paralelo depois da 4. A fase 11 depende da 6 (con
   - Asaas e Meta em produção;
   - DNS e TLS;
   - suíte Playwright completa (6 fluxos) contra o staging;
-  - revisão de segurança (`/security-review`).
+  - revisão de segurança (`/security-review`);
+  - **bloqueio de go-live:** preencher os placeholders `[INSERIR …]` (razão social, CNPJ, endereço, e-mail de contato, DPO, foro) em `apps/web/src/features/legal/documents.ts` e subir `TERMS_VERSION` e `PRIVACY_VERSION`, para que todo usuário aceite o texto completo. Adiado em `.specs/features/terms/plan.md`; registrado em `health-fixes`.
 - **Testes:** restore de backup num ambiente limpo; rollback de uma tag; e2e completo.
 - **Critérios de aceite:**
   - a checklist inteira da `migration.md` está marcada;
   - o restore foi testado;
+  - os Termos e a Política publicados não têm nenhum `[INSERIR`;
   - a primeira corretora foi criada em produção.
 - **Riscos:**
   - chaves de cifra perdidas = dados ilegíveis. Guardá-las em cofre, com backup separado e documentado no runbook;

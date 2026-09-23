@@ -117,18 +117,24 @@ bens-seguros-v2/
 
 ### Anatomia de um módulo
 
+O molde é o que `modules/organizations/` já faz (health-fixes, door 2):
+
 ```text
-modules/clients/
-├── client.schema.ts        # Zod: inputs/outputs/params (fonte da verdade da API)
-├── client.repository.ts    # funções Prisma; sempre recebem (tx, ctx), o tx de db.withTenant
-├── create-client.ts        # 1 use case = 1 função
-├── update-client.ts  list-clients.ts  delete-client.ts  lgpd-delete-client.ts
-├── client.presenter.ts     # mascaramento de PII por role (só onde há PII)
-├── client.routes.ts        # rotas Fastify: schema + permissão + chamada do use case
-├── client.jobs.ts          # workers/crons do módulo (quando houver)
-├── index.ts                # API pública para outros módulos
-└── client.spec.ts
+modules/organizations/
+├── invitation.schema.ts    # Zod: inputs/outputs/params (fonte da verdade da API)
+├── invitation.ts           # os use cases da entidade (1 use case = 1 função), Prisma inline no withTenant
+├── invitation.routes.ts    # rotas Fastify: schema + permissão + chamada do use case
+├── invitation.spec.ts      # integração com PostgreSQL real (app.inject)
+├── membership.ts           # regra usada por mais de um arquivo do módulo (assertOrgLimit)
+└── index.ts                # API pública para outros módulos
 ```
+
+Arquivos que só aparecem quando o problema existe:
+
+- `<entidade>.repository.ts`: quando a mesma query serve dois ou mais arquivos de use case. Recebe o `tx` de `db.withTenant` e aplica `scopeFor(ctx)` quando há carteira.
+- `<entidade>.presenter.ts`: só onde há PII mascarada por papel (ex.: `clients`).
+- `<entidade>.jobs.ts`: workers e crons do módulo.
+- Um arquivo por use case (`create-client.ts`…): só quando `<entidade>.ts` passar de ~300 linhas.
 
 - Regra rica ganha **somente** o arquivo que ela pede, como `proposals/proposal-stages.ts` e `commissions/commission-status.ts` (funções puras).
 - O `chat/` tem subpastas (`channels/`, `conversations/`, `bot/`, `whatsapp/`, `widget/`) porque é o módulo mais complexo; a complexidade fica localizada ali.
@@ -137,12 +143,13 @@ modules/clients/
 ### Estilo de código do use case
 
 ```ts
-// modules/commissions/approve-commission.ts
+// modules/commissions/commission.ts
 export async function approveCommission(deps: Deps, ctx: RequestContext, id: string) {
   return deps.db.withTenant(ctx, async (tx) => {                              // RLS: fora do withTenant a tabela falha
-    const commission = await commissionRepository.findById(tx, ctx, id)       // 404 fora do tenant/escopo
+    const commission = await tx.commission.findFirst({ where: { id, ...scopeFor(ctx) } })
+    if (!commission) throw notFound                                           // 404 fora do tenant/escopo
     const next = nextApprovalStatus(commission.status, ctx.permissions)       // puro; lança AppError
-    const updated = await commissionRepository.setStatus(tx, ctx, id, next, { by: ctx.userId })
+    const updated = await tx.commission.update({ where: { id }, data: { status: next, approvedBy: ctx.userId } })
     await audit.record(tx, ctx, { action: 'commission.approve', entityId: id, changes: { status: [commission.status, next] } })
     if (next === 'APPROVED') await queue.enqueue(tx, 'notifications.commission-approved', { commissionId: id, organizationId: ctx.organizationId })
     return updated                                                            // o job só existe se o commit acontecer
@@ -161,8 +168,8 @@ export async function approveCommission(deps: Deps, ctx: RequestContext, id: str
 
 | Módulo | Responsabilidade | Tabelas |
 | --- | --- | --- |
-| `auth` | Better Auth em `/api/auth/*` (e-mail/senha, verificação, reset, 2FA, rate limit persistido); sessão → `RequestContext`; `GET /me`; troca de org ativa; aceite de termos versionado; Turnstile, bloqueio de e-mail temporário, `SIGNUP_MODE` | User, Session (+`activeOrganizationId`), Account, Verification, TwoFactor, TermsAcceptance, RateLimit |
-| `organizations` | Org (nome, slug, logo), membros (role, ativo, `commissionSplitBp`), convites, OWNER único, limite de usuários do plano, **transferência de carteira**, onboarding (org + OWNER + trial) | Organization, Member, Invitation |
+| `auth` | Better Auth em `/api/auth/*` (e-mail/senha, verificação, reset, 2FA, rate limit persistido); sessão → `RequestContext`; `GET /me`; organização inicial da sessão (AD-010); aceite de termos versionado; Turnstile, bloqueio de e-mail temporário, `SIGNUP_MODE` | User, Session (+`activeOrganizationId`), Account, Verification, TwoFactor, TermsAcceptance, RateLimit |
+| `organizations` | Org (nome, slug, logo), membros (role, ativo, `commissionSplitBp`), convites, OWNER único, limite de usuários do plano, **transferência de carteira**, onboarding (org + OWNER + trial), troca da organização ativa | Organization, Member, Invitation |
 | `contacts` | Leads com `status: CHAT_ONLY \| QUALIFIED`; identidades de canal; atribuição de vendedor; promoção a cliente | Contact |
 | `clients` | PF/PJ; `documentEncrypted` + `documentHash` (HMAC); endereço; soft delete; exclusão LGPD; import/export | Client |
 | `insurers` | Seguradoras por org | Insurer |
@@ -183,7 +190,7 @@ export async function approveCommission(deps: Deps, ctx: RequestContext, id: str
 ## 4. Regras de dependência
 
 ```text
-routes ──▶ use cases ──▶ repository do próprio módulo ──▶ Prisma
+routes ──▶ use cases ──▶ Prisma (tabelas do próprio módulo, inline ou repository)
                     ├──▶ modules/Y/index.ts (API pública de outro módulo)
                     └──▶ infrastructure/*, shared/*
 
@@ -192,7 +199,7 @@ infrastructure/  não importa modules/
 modules/X        importa modules/Y apenas via modules/Y/index.ts
 ```
 
-- **Um módulo só escreve nas próprias tabelas.** Leituras cruzadas simples (um `include` para exibição) são permitidas no repository.
+- **Um módulo só escreve nas próprias tabelas.** Leituras cruzadas simples (um `include` para exibição) são permitidas na query.
 - **Sem ciclos.** Um fluxo que envolve vários módulos é orquestrado por quem o inicia. Exemplo: `policies.issuePolicy` chama `proposals.assertIssuable` e `commissions.createForPolicy`.
 - **Efeitos colaterais:**
   - quando precisam da mesma transação: chamada direta;
@@ -261,7 +268,7 @@ A interface expõe apenas o que o BullMQ também consegue fazer, então uma troc
 | `chat.meta-token-refresh` | cron diário |
 | `retention.purge` | cron semanal |
 
-Os jobs recebem `organizationId` no payload e rodam com um `RequestContext` de sistema dentro de `db.withTenant`, pelo mesmo caminho de repository (sem bypass). Crons que varrem todas as orgs listam as organizações e abrem `withTenant` por org.
+Os jobs recebem `organizationId` no payload e rodam com um `RequestContext` de sistema dentro de `db.withTenant`, pelo mesmo caminho das queries dos use cases (sem bypass). Crons que varrem todas as orgs listam as organizações e abrem `withTenant` por org.
 
 ### Rate limit (sem Redis)
 
@@ -310,7 +317,7 @@ Os jobs recebem `organizationId` no payload e rodam com um `RequestContext` de s
   - contatos e propostas com `salespersonId = ctx.userId`;
   - clientes ligados a esses contatos;
   - apólices, sinistros, assistências e comissões dessas apólices.
-- Aplicado por `scopeFor(ctx)` em todos os repositories envolvidos. Registro fora da carteira retorna **404**.
+- Aplicado por `scopeFor(ctx)` em todas as queries envolvidas. Registro fora da carteira retorna **404**.
 - **Transferência de carteira** (ADMIN/OWNER): move contatos, propostas abertas e conversas de um membro para outro numa transação, com auditoria.
 - **Chat:**
   - A fila `WAITING_HUMAN` é compartilhada entre quem tem `chat:attend`.
@@ -331,7 +338,7 @@ A assinatura é lida na mesma query da membership.
 
 1. O tenant vem só da sessão validada contra `Member`.
 2. **RLS forçado** em toda tabela com `organizationId`: política `tenant_isolation` (`USING` + `WITH CHECK` por `current_setting('app.tenant_id')`), criada na migration da tabela.
-3. Todo acesso a tabela tenant-scoped passa por `db.withTenant(ctx, async (tx) => …)`; fora dela a query falha. Repositories **não** filtram nem gravam `organizationId` (default da coluna = tenant da transação). Registro de outro tenant retorna 404 porque o banco não o devolve.
+3. Todo acesso a tabela tenant-scoped passa por `db.withTenant(ctx, async (tx) => …)`; fora dela a query falha. As queries **não** filtram nem gravam `organizationId` (default da coluna = tenant da transação). Registro de outro tenant retorna 404 porque o banco não o devolve.
 4. Runtime, testes e pg-boss conectam como `bens_app` (sem superuser nem `BYPASSRLS`); o boot recusa outro role. Só o Prisma CLI usa o owner (`MIGRATION_DATABASE_URL`).
 5. FKs compostas com `organizationId` em toda relação entre models tenant-scoped; todo índice único de tabela tenant-scoped inclui `organizationId` (exceto a PK: ids são gerados no server, nunca vêm do input); FK para `Organization` é `RESTRICT` (cascade ignoraria o RLS).
 6. `withTwoTenants()`: teste cross-tenant obrigatório por endpoint; teste de schema cobre os itens 2 e 5.
