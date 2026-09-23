@@ -12,8 +12,8 @@ Legado (somente referência de regras, não de arquitetura): `github.com/arturmo
 - **Módulos:** `apps/server/src/modules/<x>/`. Um módulo importa outro só via `modules/<y>/index.ts` e escreve apenas nas próprias tabelas. Use case = função `(deps, ctx, input)`. Sem classes, sem DI container, sem decorators.
 - **Tenant:**
   - o PostgreSQL isola por RLS (ADR-004): todo acesso a tabela com `organizationId` passa por `db.withTenant(ctx, tx => …)`; o repository recebe esse `tx` e **não** filtra nem grava `organizationId` — só `scopeFor(ctx)` (carteira do COMMERCIAL);
-  - fora do tenant existem só `withUser` (membership do próprio usuário, AD-006), `withInvitation` (convite pelo hash do token, AD-007) e `withoutTenant` (tabelas de identidade e fila). Módulo de domínio usa só `withTenant`. Novo acesso fora do tenant (webhook, cron que varre organizações) pede AD e política RLS, não um helper novo;
-  - a organização ativa vem da sessão (`activeOrganizationId`, definida no hook do Better Auth, AD-010) e é validada contra `Member` por `requireTenant`;
+  - fora do tenant: tabelas de identidade (sem RLS: `User`, `Session`…) pelo client direto ou pelo Better Auth; `withUser` (membership do próprio usuário, AD-006); `withInvitation` (convite pelo hash do token, AD-007); `withoutTenant` (fila). Módulo de domínio usa só `withTenant`. Ler tabela com RLS fora do tenant de outro jeito (webhook, cron que varre organizações) pede AD e política RLS, não um helper novo;
+  - a organização ativa vem da sessão (`activeOrganizationId`: inicial no hook de sessão do Better Auth, trocada por `assignActiveOrganization`, AD-010) e é validada contra `Member` por `requireTenant`;
   - toda tabela nova com `organizationId` leva, na própria migration, RLS `ENABLE` + `FORCE` e a política `tenant_isolation` (o teste de schema falha sem elas); único sempre inclui `organizationId`; FK para `Organization` é `onDelete: Restrict, onUpdate: Restrict`;
   - ids são gerados no server: schema de entrada (`<x>Input`) nunca aceita `id`;
   - o tenant nunca vem do request;
