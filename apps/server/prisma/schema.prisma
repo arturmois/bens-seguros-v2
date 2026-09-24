@@ -27,12 +27,16 @@ model Organization {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  members      Member[]
-  invitations  Invitation[]
-  auditLogs    AuditLog[]
-  subscription Subscription?
-  sessions     Session[]
-  lastActiveBy User[]        @relation("UserLastActiveOrganization")
+  members       Member[]
+  invitations   Invitation[]
+  channels      Channel[]
+  contacts      Contact[]
+  conversations Conversation[]
+  messages      Message[]
+  auditLogs     AuditLog[]
+  subscription  Subscription?
+  sessions      Session[]
+  lastActiveBy  User[]         @relation("UserLastActiveOrganization")
 }
 
 enum Role {
@@ -54,6 +58,9 @@ model Member {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   user         User         @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  ownedContacts         Contact[]
+  assignedConversations Conversation[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, userId])
@@ -165,6 +172,7 @@ model User {
   termsAcceptances TermsAcceptance[]
   memberships      Member[]
   auditLogs        AuditLog[]
+  messages         Message[]
 }
 
 model Session {
@@ -258,4 +266,139 @@ model RateLimit {
   key         String @unique
   count       Int
   lastRequest BigInt
+}
+
+// Where a conversation comes in (ADR-013). F2 has only the Web Chat, one per organization
+// (`Channel_one_web_chat`, partial index in the migration); WHATSAPP arrives with F9.
+enum ChannelKind {
+  WEB_CHAT
+}
+
+// Tenant-scoped (ADR-004). Owned by `modules/channels`.
+model Channel {
+  id             String      @id @default(uuid(7)) @db.Uuid
+  organizationId String      @default(dbgenerated("(current_setting('app.tenant_id'::text))::uuid")) @db.Uuid
+  kind           ChannelKind
+  name           String
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  conversations Conversation[]
+
+  @@unique([id, organizationId])
+}
+
+// The broker's customer, identified by the E.164 phone, unique per organization (handoff §9).
+// `ownerId` is the user id of a member of the same organization; null means the lead is in the queue
+// (ADR-016). Tenant-scoped (ADR-004). Owned by `modules/contacts`.
+model Contact {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @default(dbgenerated("(current_setting('app.tenant_id'::text))::uuid")) @db.Uuid
+  phoneE164      String
+  ownerId        String?  @db.Uuid
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  owner         Member?        @relation(fields: [organizationId, ownerId], references: [organizationId, userId], onDelete: Restrict, onUpdate: Restrict)
+  conversations Conversation[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, phoneE164])
+}
+
+// ADR-013: WAITING = waiting for the customer (the last message was ours).
+enum ConversationStatus {
+  OPEN
+  WAITING
+  CLOSED
+}
+
+enum ConversationHandler {
+  AI
+  QUEUE
+  HUMAN
+}
+
+// ADR-013: state (`status`) and who conducts it (`handler`, `assigneeId` when HUMAN) are
+// independent. At most one conversation per contact and channel is not CLOSED
+// (`Conversation_one_open`); the checks tie `assigneeId` to HUMAN and `closedAt` to CLOSED.
+// Tenant-scoped (ADR-004). Owned by `modules/conversations`.
+model Conversation {
+  id             String              @id @default(uuid(7)) @db.Uuid
+  organizationId String              @default(dbgenerated("(current_setting('app.tenant_id'::text))::uuid")) @db.Uuid
+  contactId      String              @db.Uuid
+  channelId      String              @db.Uuid
+  status         ConversationStatus
+  handler        ConversationHandler
+  assigneeId     String?             @db.Uuid
+  lastSeq        Int                 @default(0)
+  lastMessageAt  DateTime?
+  closedAt       DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  contact      Contact      @relation(fields: [contactId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  channel      Channel      @relation(fields: [channelId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  assignee     Member?      @relation(fields: [organizationId, assigneeId], references: [organizationId, userId], onDelete: Restrict, onUpdate: Restrict)
+  messages     Message[]
+
+  @@unique([id, organizationId])
+  // Target of the message foreign key: a message's channel is its conversation's channel.
+  @@unique([id, channelId, organizationId])
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageAuthor {
+  CONTACT
+  AI
+  HUMAN
+  SYSTEM
+}
+
+// UNSUPPORTED is a non-text message, stored without content (handoff §16).
+enum MessageKind {
+  TEXT
+  UNSUPPORTED
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+// ADR-013: `seq` orders a conversation (unique per conversation); `externalId` dedupes the inbound
+// of a channel (`Message_channel_externalId`, partial index in the migration). The checks tie
+// direction, author, delivery status and text together. Tenant-scoped (ADR-004). Owned by
+// `modules/conversations`.
+model Message {
+  id             String           @id @default(uuid(7)) @db.Uuid
+  organizationId String           @default(dbgenerated("(current_setting('app.tenant_id'::text))::uuid")) @db.Uuid
+  conversationId String           @db.Uuid
+  channelId      String           @db.Uuid
+  seq            Int
+  direction      MessageDirection
+  author         MessageAuthor
+  authorUserId   String?          @db.Uuid
+  kind           MessageKind
+  text           String?
+  deliveryStatus DeliveryStatus?
+  externalId     String?
+  failureReason  String?
+  sentAt         DateTime
+  createdAt      DateTime         @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  conversation Conversation @relation(fields: [conversationId, channelId, organizationId], references: [id, channelId, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  authorUser   User?        @relation(fields: [authorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, conversationId, seq])
 }

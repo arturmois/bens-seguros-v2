@@ -1,16 +1,22 @@
 import { randomUUID } from 'node:crypto'
 import type { Database } from '../src/infrastructure/database.ts'
+import { createDefaultChannel } from '../src/modules/channels/index.ts'
 import { newPublicChatKey } from '../src/modules/organizations/public-chat-key.ts'
 import { uuidv7 } from '../src/shared/id.ts'
 import { permissionsFor } from '../src/shared/permissions.ts'
 import type { RequestContext } from '../src/shared/request-context.ts'
 import { uniqueEmail } from './auth.ts'
 
+// Like the onboarding: the organization and its default Web Chat channel.
 export async function createOrganization(db: Database, name = `Corretora ${randomUUID()}`) {
   const id = uuidv7()
-  return db.withTenant({ organizationId: id }, (tx) =>
-    tx.organization.create({ data: { id, name, slug: id, publicChatKey: newPublicChatKey() } }),
-  )
+  return db.withTenant({ organizationId: id }, async (tx) => {
+    const organization = await tx.organization.create({
+      data: { id, name, slug: id, publicChatKey: newPublicChatKey() },
+    })
+    await createDefaultChannel(tx)
+    return organization
+  })
 }
 
 export function contextFor(organizationId: string): RequestContext {

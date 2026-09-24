@@ -6,8 +6,8 @@ import { withTwoSalespeople, withTwoTenants } from '../../../test/factories.ts'
 import type { App } from '../../app.ts'
 import type { Deps } from '../../dependencies.ts'
 import { permissionsFor, type Role } from '../../shared/permissions.ts'
-import { updateMember } from './member.ts'
-import { portfolioMoves } from './portfolio.ts'
+import type { RequestContext } from '../../shared/request-context.ts'
+import { transferPortfolio, updateMember } from './member.ts'
 
 let app: App
 let deps: Deps
@@ -80,6 +80,46 @@ async function memberOf(organizationId: string, id: string) {
   return deps.db.withTenant({ organizationId }, (tx) =>
     tx.member.findFirstOrThrow({ where: { id } }),
   )
+}
+
+function adminContext(host: { userId: string; organizationId: string }): RequestContext {
+  return {
+    requestId: randomUUID(),
+    userId: host.userId,
+    sessionId: randomUUID(),
+    isSuperAdmin: false,
+    organizationId: host.organizationId,
+    role: 'ADMIN',
+    permissions: permissionsFor('ADMIN'),
+  }
+}
+
+let phoneSuffix = 1000000
+// Contacts with the given owners (null = the lead queue), returning their ids in the same order.
+async function seedContacts(organizationId: string, owners: (string | null)[]) {
+  return deps.db.withTenant({ organizationId }, async (tx) => {
+    const ids: string[] = []
+    for (const ownerId of owners) {
+      const contact = await tx.contact.create({
+        data: { phoneE164: `+55119${phoneSuffix++}`, ownerId },
+      })
+      ids.push(contact.id)
+    }
+    return ids
+  })
+}
+
+async function seedContact(organizationId: string, ownerId: string | null) {
+  const [id] = await seedContacts(organizationId, [ownerId])
+  if (!id) throw new Error('seedContacts returned no id')
+  return id
+}
+
+async function ownersOf(organizationId: string) {
+  const rows = await deps.db.withTenant({ organizationId }, (tx) =>
+    tx.contact.findMany({ select: { id: true, ownerId: true } }),
+  )
+  return new Map(rows.map((row) => [row.id, row.ownerId]))
 }
 
 describe('PATCH /api/v1/members/:id', () => {
@@ -591,7 +631,6 @@ describe('POST /api/v1/members/:id/transfer-portfolio', () => {
     const host = await brokerage()
     const admin = await colleague(host.organizationId, 'ADMIN')
     const target = await addMember(host.organizationId, 'COMMERCIAL')
-    portfolioMoves.length = 0
 
     for (const caller of [host, admin]) {
       const response = await caller.client.post(
@@ -613,50 +652,108 @@ describe('POST /api/v1/members/:id/transfer-portfolio', () => {
   it('adds the rows a registered move reports', async () => {
     const host = await brokerage()
     const target = await addMember(host.organizationId, 'COMMERCIAL')
-    portfolioMoves.length = 0
-    portfolioMoves.push(async (tx, fromUserId) => {
-      await tx.member.updateMany({ where: { userId: fromUserId }, data: { active: false } })
-      return 2
-    })
 
-    try {
-      const response = await host.client.post(
-        `/api/v1/members/${host.memberId}/transfer-portfolio`,
-        { toMemberId: target.member.id },
-      )
-      expect(response.statusCode).toBe(200)
-      expect(response.json()).toEqual({ transferred: 2 })
-      expect((await memberOf(host.organizationId, host.memberId)).active).toBe(false)
-      expect((await auditsOf(host.organizationId, host.memberId)).at(-1)?.changes).toMatchObject({
-        transferred: 2,
-      })
-    } finally {
-      portfolioMoves.length = 0
-    }
+    const result = await transferPortfolio(
+      {
+        db: deps.db,
+        portfolioMoves: [
+          async (tx, fromUserId) => {
+            await tx.member.updateMany({ where: { userId: fromUserId }, data: { active: false } })
+            return 2
+          },
+        ],
+      },
+      adminContext(host),
+      host.memberId,
+      { toMemberId: target.member.id },
+    )
+
+    expect(result).toEqual({ transferred: 2 })
+    expect((await memberOf(host.organizationId, host.memberId)).active).toBe(false)
+    expect((await auditsOf(host.organizationId, host.memberId)).at(-1)?.changes).toMatchObject({
+      transferred: 2,
+    })
   })
 
   it('rolls back the transfer when a move throws', async () => {
     const host = await brokerage()
     const target = await addMember(host.organizationId, 'COMMERCIAL')
     const before = await auditsOf(host.organizationId, host.memberId)
-    portfolioMoves.length = 0
-    portfolioMoves.push(async (tx, fromUserId) => {
-      await tx.member.updateMany({ where: { userId: fromUserId }, data: { active: false } })
-      return 1
-    })
-    portfolioMoves.push(() => Promise.reject(new Error('move failed')))
 
-    try {
-      const response = await host.client.post(
-        `/api/v1/members/${host.memberId}/transfer-portfolio`,
+    await expect(
+      transferPortfolio(
+        {
+          db: deps.db,
+          portfolioMoves: [
+            async (tx, fromUserId) => {
+              await tx.member.updateMany({
+                where: { userId: fromUserId },
+                data: { active: false },
+              })
+              return 1
+            },
+            () => Promise.reject(new Error('move failed')),
+          ],
+        },
+        adminContext(host),
+        host.memberId,
         { toMemberId: target.member.id },
-      )
-      expect(response.statusCode).toBe(500)
-      expect((await memberOf(host.organizationId, host.memberId)).active).toBe(true)
-      expect(await auditsOf(host.organizationId, host.memberId)).toEqual(before)
-    } finally {
-      portfolioMoves.length = 0
-    }
+      ),
+    ).rejects.toThrow('move failed')
+    expect((await memberOf(host.organizationId, host.memberId)).active).toBe(true)
+    expect(await auditsOf(host.organizationId, host.memberId)).toEqual(before)
+  })
+
+  it('moves the contacts of the portfolio', async () => {
+    const host = await brokerage()
+    const source = await addMember(host.organizationId, 'COMMERCIAL')
+    const target = await addMember(host.organizationId, 'COMMERCIAL')
+    const other = await addMember(host.organizationId, 'COMMERCIAL')
+    const [first, second, others, queued] = await seedContacts(host.organizationId, [
+      source.user.id,
+      source.user.id,
+      other.user.id,
+      null,
+    ])
+
+    const response = await host.client.post(
+      `/api/v1/members/${source.member.id}/transfer-portfolio`,
+      { toMemberId: target.member.id },
+    )
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toEqual({ transferred: 2 })
+    expect(await ownersOf(host.organizationId)).toEqual(
+      new Map([
+        [first, target.user.id],
+        [second, target.user.id],
+        [others, other.user.id],
+        [queued, null],
+      ]),
+    )
+  })
+
+  it('does not move contacts of the other tenant', async () => {
+    const host = await brokerage()
+    const elsewhere = await brokerage()
+    const source = await addMember(host.organizationId, 'COMMERCIAL')
+    const target = await addMember(host.organizationId, 'COMMERCIAL')
+    // The same user is a member of the other brokerage and owns a contact there.
+    await deps.db.withTenant({ organizationId: elsewhere.organizationId }, (tx) =>
+      tx.member.create({ data: { userId: source.user.id, role: 'COMMERCIAL', active: true } }),
+    )
+    const foreign = await seedContact(elsewhere.organizationId, source.user.id)
+    const own = await seedContact(host.organizationId, source.user.id)
+
+    const response = await host.client.post(
+      `/api/v1/members/${source.member.id}/transfer-portfolio`,
+      { toMemberId: target.member.id },
+    )
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toEqual({ transferred: 1 })
+    expect((await ownersOf(host.organizationId)).get(own)).toBe(target.user.id)
+    expect((await ownersOf(elsewhere.organizationId)).get(foreign)).toBe(source.user.id)
   })
 
   it('rejects a transfer to the same member', async () => {

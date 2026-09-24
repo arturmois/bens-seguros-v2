@@ -13,6 +13,8 @@ import { z } from 'zod'
 import type { Deps } from './dependencies.ts'
 import { createRealtime, type Realtime } from './infrastructure/realtime.ts'
 import { authRoutes, headersOf, resolveSession } from './modules/auth/index.ts'
+import { createDefaultChannel } from './modules/channels/index.ts'
+import { moveContactOwner } from './modules/contacts/index.ts'
 import {
   assertRouteDeclaresPermission,
   brandingRoutes,
@@ -111,10 +113,11 @@ export function buildApp(deps: Deps) {
     )
   })
   app.register(authRoutes(deps))
-  app.register(organizationRoutes(deps))
+  // Cross-module steps of the organizations module, wired here so it imports none of them (AD-017).
+  app.register(organizationRoutes({ ...deps, setupOrganization: [createDefaultChannel] }))
   app.register(brandingRoutes(deps))
   app.register(invitationRoutes(deps))
-  app.register(memberRoutes(deps))
+  app.register(memberRoutes({ ...deps, portfolioMoves: [moveContactOwner] }))
 
   return app
 }

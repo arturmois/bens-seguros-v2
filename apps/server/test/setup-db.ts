@@ -92,10 +92,14 @@ export function prepareTestDatabase(): Promise<void> {
 
 // A throwaway schema built by the migrations that come before `migration`, so a test can seed the
 // data that existed before it and then apply it (backfills). Dropped afterwards.
+// With `owner`, a role that is neither superuser nor BYPASSRLS owns the schema and runs every
+// migration, as a managed database would: FORCE ROW LEVEL SECURITY then applies to it (a superuser
+// ignores row security altogether).
 export async function withSchemaBefore<T>(
   label: string,
   migration: string,
   run: (client: pg.Client, apply: () => Promise<void>, schema: string) => Promise<T>,
+  options: { owner?: string } = {},
 ): Promise<T> {
   const names = migrationNames()
   if (!names.includes(migration)) throw new Error(`Unknown migration ${migration}`)
@@ -103,6 +107,17 @@ export async function withSchemaBefore<T>(
   return withOwnerClient(async (client) => {
     await client.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`)
     await client.query(`CREATE SCHEMA "${schema}"`)
+    if (options.owner) {
+      await client.query(
+        `DO $$ BEGIN
+           IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${options.owner}') THEN
+             CREATE ROLE "${options.owner}" NOLOGIN NOSUPERUSER NOBYPASSRLS;
+           END IF;
+         END $$`,
+      )
+      await client.query(`ALTER SCHEMA "${schema}" OWNER TO "${options.owner}"`)
+      await client.query(`SET ROLE "${options.owner}"`)
+    }
     await client.query(`SET search_path TO "${schema}"`)
     try {
       for (const name of names.filter((candidate) => candidate < migration)) {

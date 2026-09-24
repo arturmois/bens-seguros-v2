@@ -4,6 +4,8 @@ import { signedInUser, TestClient } from '../../../test/auth.ts'
 import { withOwnerClient, workerSchema } from '../../../test/setup-db.ts'
 import type { App } from '../../app.ts'
 import type { Deps } from '../../dependencies.ts'
+import { createDefaultChannel } from '../channels/index.ts'
+import { onboard } from './onboarding.ts'
 
 const DAY = 24 * 60 * 60 * 1000
 
@@ -213,6 +215,63 @@ describe('POST /api/v1/onboarding', () => {
 
     expect(response.statusCode).toBe(401)
     expect(response.json().error.code).toBe('UNAUTHENTICATED')
+  })
+
+  it('creates the default web chat channel', async () => {
+    const client = new TestClient(app)
+    await signedInUser(client, deps)
+
+    const response = await client.post('/api/v1/onboarding', { name: 'Corretora Canal' })
+
+    expect(response.statusCode).toBe(200)
+    const organizationId = response.json().id as string
+    const channels = await deps.db.withTenant({ organizationId }, (tx) =>
+      tx.channel.findMany({ select: { kind: true, name: true, organizationId: true } }),
+    )
+    expect(channels).toEqual([{ kind: 'WEB_CHAT', name: 'Web Chat', organizationId }])
+  })
+
+  it('rolls the default channel back with the organization', async () => {
+    const client = new TestClient(app)
+    const { userId } = await signedInUser(client, deps)
+    const session = await deps.db.session.findFirstOrThrow({ where: { userId } })
+    const channelCount = () =>
+      withOwnerClient(async (owner) => {
+        const { rows } = await owner.query<{ count: string }>(
+          `SELECT count(*) FROM "${workerSchema()}"."Channel"`,
+        )
+        return Number(rows[0]?.count)
+      })
+    const before = await channelCount()
+    let channelStepRan = false
+
+    await expect(
+      onboard(
+        {
+          db: deps.db,
+          maxOrgsPerUser: 3,
+          setupOrganization: [
+            async (tx) => {
+              await createDefaultChannel(tx)
+              channelStepRan = true
+            },
+            () => Promise.reject(new Error('setup failed')),
+          ],
+        },
+        { requestId: 'r', userId, sessionId: session.id, isSuperAdmin: false },
+        { name: 'Corretora Desfeita' },
+      ),
+    ).rejects.toThrow('setup failed')
+
+    expect(channelStepRan).toBe(true)
+    expect(await channelCount()).toBe(before)
+    expect(await membershipCount(userId)).toBe(0)
+    const leftover = await withOwnerClient((owner) =>
+      owner.query(
+        `SELECT id FROM "${workerSchema()}"."Organization" WHERE name = 'Corretora Desfeita'`,
+      ),
+    )
+    expect(leftover.rowCount).toBe(0)
   })
 
   it('rolls back when the subscription insert fails', async () => {

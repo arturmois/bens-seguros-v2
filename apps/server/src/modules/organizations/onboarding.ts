@@ -6,12 +6,17 @@ import { record } from '../audit/index.ts'
 import { assignActiveOrganization } from '../auth/index.ts'
 import { startTrial } from '../billing/index.ts'
 import { assertOrgLimit } from './membership.ts'
+import type { OrganizationSetup } from './portfolio.ts'
 import { newPublicChatKey } from './public-chat-key.ts'
 import { slugCandidate, slugFromName } from './slug.ts'
 
 const MAX_SLUG_ATTEMPTS = 20
 
-type OnboardingDeps = { db: Database; maxOrgsPerUser: number }
+type OnboardingDeps = {
+  db: Database
+  maxOrgsPerUser: number
+  setupOrganization: readonly OrganizationSetup[]
+}
 
 export type OnboardingInput = { name: string }
 
@@ -35,6 +40,7 @@ export async function onboard(
           data: { userId: user.userId, role: 'ADMIN', active: true },
         })
         await startTrial(tx, now)
+        for (const setup of deps.setupOrganization) await setup(tx)
         await assignActiveOrganization(tx, user.sessionId, id)
         await record(tx, user, {
           action: 'organization.create',

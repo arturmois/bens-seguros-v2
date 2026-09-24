@@ -26,6 +26,11 @@ export function isUniqueViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
 }
 
+// No row matched the `where` of an update or delete (P2025): a conditional update that lost.
+export function isRecordNotFound(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025'
+}
+
 function body(code: string, message: string, details?: unknown): ErrorBody {
   return { error: details === undefined ? { code, message } : { code, message, details } }
 }

@@ -15,9 +15,15 @@ import {
   setActiveOrganizationOutput,
 } from './organization.schema.ts'
 import { getOrganization, renameOrganization } from './organization.ts'
+import type { OrganizationSetup } from './portfolio.ts'
 import { currentTenant, requirePermission, requireTenant } from './tenant-context.ts'
 
-export type OrganizationRoutesDeps = { auth: Auth; config: Config; db: Database }
+export type OrganizationRoutesDeps = {
+  auth: Auth
+  config: Config
+  db: Database
+  setupOrganization: readonly OrganizationSetup[]
+}
 
 export function organizationRoutes(deps: OrganizationRoutesDeps): FastifyPluginAsyncZod {
   const session = requireSession(deps.auth)
@@ -36,7 +42,11 @@ export function organizationRoutes(deps: OrganizationRoutesDeps): FastifyPluginA
       },
       (request) =>
         onboard(
-          { db: deps.db, maxOrgsPerUser: deps.config.MAX_ORGS_PER_USER },
+          {
+            db: deps.db,
+            maxOrgsPerUser: deps.config.MAX_ORGS_PER_USER,
+            setupOrganization: deps.setupOrganization,
+          },
           currentUser(request),
           request.body,
         ),

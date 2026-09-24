@@ -649,3 +649,457 @@ describe('AuditLog actor', () => {
     ])
   })
 })
+
+const CONVERSATION_CORE_MIGRATION = '20260924160000_conversation_core'
+
+// Seeds organizations in a schema built by the migrations before the conversation core. Under a
+// non-superuser owner, FORCE applies: each insert needs the organization's own tenant.
+async function seedOrganizations(client: pg.Client, count: number) {
+  const ids: string[] = []
+  for (let index = 0; index < count; index++) {
+    const id = randomUUID()
+    await client.query(`SELECT set_config('app.tenant_id', $1, false)`, [id])
+    await client.query(
+      `INSERT INTO "Organization" (id, name, slug, "publicChatKey", "updatedAt")
+       VALUES ($1, 'Existente', $2, replace(gen_random_uuid()::text, '-', ''), now())`,
+      [id, `existente-${id}`],
+    )
+    ids.push(id)
+  }
+  await client.query(`SELECT set_config('app.tenant_id', '', false)`)
+  return ids
+}
+
+// Read as the superuser, which sees every row.
+async function channelsBySchema(client: pg.Client, schema: string) {
+  await client.query('RESET ROLE')
+  const { rows } = await client.query<{ organizationId: string; kind: string; name: string }>(
+    `SELECT "organizationId", kind, name FROM "${schema}"."Channel" ORDER BY "organizationId"`,
+  )
+  return rows
+}
+
+async function forcedRowSecurity(client: pg.Client, schema: string, tables: string[]) {
+  const { rows } = await client.query<{ table: string; forced: boolean }>(
+    `SELECT c.relname AS table,
+            c.relrowsecurity AND c.relforcerowsecurity AND EXISTS (
+              SELECT 1 FROM pg_policies p
+               WHERE p.schemaname = n.nspname AND p.tablename = c.relname
+                 AND p.policyname = 'tenant_isolation') AS forced
+       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = $1 AND c.relname = ANY ($2)
+      ORDER BY 1`,
+    [schema, tables],
+  )
+  return rows
+}
+
+const probeOwner = () => `${workerSchema()}_owner`
+
+describe('default web chat backfill', () => {
+  it('backfills one web chat channel per organization under forced row security', async () => {
+    const { channels, organizations } = await withSchemaBefore(
+      'channel_rls',
+      CONVERSATION_CORE_MIGRATION,
+      async (client, apply, schema) => {
+        const organizations = await seedOrganizations(client, 3)
+        await apply()
+        return { channels: await channelsBySchema(client, schema), organizations }
+      },
+      { owner: probeOwner() },
+    )
+
+    expect(channels).toEqual(
+      [...organizations]
+        .sort()
+        .map((organizationId) => ({ organizationId, kind: 'WEB_CHAT', name: 'Web Chat' })),
+    )
+  })
+
+  it('backfills one web chat channel per organization as a superuser owner', async () => {
+    const { channels, organizations } = await withSchemaBefore(
+      'channel_super',
+      CONVERSATION_CORE_MIGRATION,
+      async (client, apply, schema) => {
+        const organizations = await seedOrganizations(client, 3)
+        await apply()
+        return { channels: await channelsBySchema(client, schema), organizations }
+      },
+    )
+
+    expect(channels).toEqual(
+      [...organizations]
+        .sort()
+        .map((organizationId) => ({ organizationId, kind: 'WEB_CHAT', name: 'Web Chat' })),
+    )
+  })
+
+  it('keeps organization and channel row security forced after the backfill', async () => {
+    const tables = ['Channel', 'Organization']
+    const probe = await withSchemaBefore(
+      'channel_force',
+      CONVERSATION_CORE_MIGRATION,
+      async (client, apply, schema) => {
+        await seedOrganizations(client, 1)
+        await apply()
+        return forcedRowSecurity(client, schema, tables)
+      },
+      { owner: probeOwner() },
+    )
+    const worker = await withOwnerClient((client) =>
+      forcedRowSecurity(client, workerSchema(), tables),
+    )
+
+    const expected = tables.map((table) => ({ table, forced: true }))
+    expect(probe).toEqual(expected)
+    expect(worker).toEqual(expected)
+  })
+})
+
+// A tenant graph in the worker schema, inserted as the owner (superuser): an organization, two
+// members, a channel, a contact and a conversation.
+async function seedGraph(client: pg.Client) {
+  const schema = workerSchema()
+  const {
+    organizationId,
+    userIds: [memberUser = '', outsider = ''],
+  } = await seedOrganizationWithUsers(client, schema, 2)
+  await client.query(
+    `INSERT INTO "${schema}"."Member" (id, "organizationId", "userId", role, "updatedAt")
+     VALUES ($1, $2, $3, 'COMMERCIAL', now())`,
+    [randomUUID(), organizationId, memberUser],
+  )
+  const channelId = randomUUID()
+  await client.query(
+    `INSERT INTO "${schema}"."Channel" (id, "organizationId", kind, name, "updatedAt")
+     VALUES ($1, $2, 'WEB_CHAT', 'Web Chat', now())`,
+    [channelId, organizationId],
+  )
+  const contactId = await insertContact(client, organizationId, `+55119${randomDigits(8)}`)
+  const conversationId = randomUUID()
+  await client.query(
+    `INSERT INTO "${schema}"."Conversation"
+       (id, "organizationId", "contactId", "channelId", status, handler, "updatedAt")
+     VALUES ($1, $2, $3, $4, 'OPEN', 'QUEUE', now())`,
+    [conversationId, organizationId, contactId, channelId],
+  )
+  return { schema, organizationId, memberUser, outsider, channelId, contactId, conversationId }
+}
+
+function randomDigits(length: number) {
+  return Array.from({ length }, () => Math.floor(Math.random() * 10)).join('')
+}
+
+async function insertContact(
+  client: pg.Client,
+  organizationId: string,
+  phoneE164: string,
+  ownerId: string | null = null,
+) {
+  const id = randomUUID()
+  await client.query(
+    `INSERT INTO "${workerSchema()}"."Contact" (id, "organizationId", "phoneE164", "ownerId", "updatedAt")
+     VALUES ($1, $2, $3, $4, now())`,
+    [id, organizationId, phoneE164, ownerId],
+  )
+  return id
+}
+
+// The SQLSTATE and constraint of a failed statement, or 'ok'.
+function outcome(query: Promise<unknown>) {
+  return query.then(
+    () => 'ok',
+    (error: { code?: string; constraint?: string }) =>
+      `${error.code} ${error.constraint ?? ''}`.trim(),
+  )
+}
+
+describe('conversation tables', () => {
+  it('allows one web chat channel per organization', async () => {
+    const result = await withOwnerClient(async (client) => {
+      const graph = await seedGraph(client)
+      const other = await seedOrganizationWithUsers(client, graph.schema, 0)
+      const insert = (organizationId: string) =>
+        outcome(
+          client.query(
+            `INSERT INTO "${graph.schema}"."Channel" (id, "organizationId", kind, name, "updatedAt")
+             VALUES ($1, $2, 'WEB_CHAT', 'Outro', now())`,
+            [randomUUID(), organizationId],
+          ),
+        )
+      return {
+        second: await insert(graph.organizationId),
+        other: await insert(other.organizationId),
+      }
+    })
+
+    expect(result).toEqual({ second: '23505 Channel_one_web_chat', other: 'ok' })
+  })
+
+  it('stores contact phones only in e164', async () => {
+    const result = await withOwnerClient(async (client) => {
+      const { organizationId } = await seedGraph(client)
+      const insert = (phone: string) => outcome(insertContact(client, organizationId, phone))
+      return {
+        noPlus: await insert('5511987654321'),
+        leadingZero: await insert('+0511987654321'),
+        tooLong: await insert('+55119876543210123'),
+        valid: await insert('+5511987654321'),
+      }
+    })
+
+    expect(result).toEqual({
+      noPlus: '23514 Contact_phoneE164_check',
+      leadingZero: '23514 Contact_phoneE164_check',
+      tooLong: '23514 Contact_phoneE164_check',
+      valid: 'ok',
+    })
+  })
+
+  it('requires the contact owner to be a member of the organization', async () => {
+    const result = await withOwnerClient(async (client) => {
+      const graph = await seedGraph(client)
+      // The outsider is a member of another organization only.
+      const other = await seedOrganizationWithUsers(client, graph.schema, 0)
+      await client.query(
+        `INSERT INTO "${graph.schema}"."Member" (id, "organizationId", "userId", role, "updatedAt")
+         VALUES ($1, $2, $3, 'COMMERCIAL', now())`,
+        [randomUUID(), other.organizationId, graph.outsider],
+      )
+      const insert = (ownerId: string) =>
+        outcome(insertContact(client, graph.organizationId, `+55119${randomDigits(8)}`, ownerId))
+      return { outsider: await insert(graph.outsider), member: await insert(graph.memberUser) }
+    })
+
+    expect(result).toEqual({ outsider: '23503 Contact_organizationId_ownerId_fkey', member: 'ok' })
+  })
+
+  it('ties the conversation assignee and closing to its state', async () => {
+    const result = await withOwnerClient(async (client) => {
+      const graph = await seedGraph(client)
+      const update = (set: string, values: unknown[] = []) =>
+        outcome(
+          client.query(`UPDATE "${graph.schema}"."Conversation" SET ${set} WHERE id = $1`, [
+            graph.conversationId,
+            ...values,
+          ]),
+        )
+      return {
+        outsiderAssignee: await update(`handler = 'HUMAN', "assigneeId" = $2`, [graph.outsider]),
+        assigneeWithoutHuman: await update(`handler = 'QUEUE', "assigneeId" = $2`, [
+          graph.memberUser,
+        ]),
+        humanWithoutAssignee: await update(`handler = 'HUMAN', "assigneeId" = NULL`),
+        closedAtWhileOpen: await update(`status = 'OPEN', "closedAt" = now()`),
+        closedWithoutClosedAt: await update(`status = 'CLOSED', "closedAt" = NULL`),
+        memberAssignee: await update(`handler = 'HUMAN', "assigneeId" = $2`, [graph.memberUser]),
+        closed: await update(`status = 'CLOSED', "closedAt" = now()`),
+      }
+    })
+
+    expect(result).toEqual({
+      outsiderAssignee: '23503 Conversation_organizationId_assigneeId_fkey',
+      assigneeWithoutHuman: '23514 Conversation_assignee_check',
+      humanWithoutAssignee: '23514 Conversation_assignee_check',
+      closedAtWhileOpen: '23514 Conversation_closed_check',
+      closedWithoutClosedAt: '23514 Conversation_closed_check',
+      memberAssignee: 'ok',
+      closed: 'ok',
+    })
+  })
+
+  it('has the conversation unique indexes of adr-013', async () => {
+    const definitions = await withOwnerClient(async (client) => {
+      const { rows } = await client.query<{ name: string; definition: string }>(
+        `SELECT indexname AS name, indexdef AS definition FROM pg_indexes
+          WHERE schemaname = $1 AND tablename IN ('Channel', 'Contact', 'Conversation', 'Message')`,
+        [workerSchema()],
+      )
+      // Drop the worker schema qualifier so the definitions read as in the migration.
+      const qualifier = `${workerSchema()}.`
+      return new Map(rows.map((row) => [row.name, row.definition.replaceAll(qualifier, '')]))
+    })
+
+    expect(definitions.get('Message_organizationId_conversationId_seq_key')).toBe(
+      'CREATE UNIQUE INDEX "Message_organizationId_conversationId_seq_key" ON "Message" USING btree ("organizationId", "conversationId", seq)',
+    )
+    expect(definitions.get('Message_channel_externalId')).toBe(
+      'CREATE UNIQUE INDEX "Message_channel_externalId" ON "Message" USING btree ("organizationId", "channelId", "externalId") WHERE ("externalId" IS NOT NULL)',
+    )
+    expect(definitions.get('Conversation_one_open')).toBe(
+      `CREATE UNIQUE INDEX "Conversation_one_open" ON "Conversation" USING btree ("organizationId", "contactId", "channelId") WHERE (status <> 'CLOSED'::"ConversationStatus")`,
+    )
+    expect(definitions.get('Contact_organizationId_phoneE164_key')).toBe(
+      'CREATE UNIQUE INDEX "Contact_organizationId_phoneE164_key" ON "Contact" USING btree ("organizationId", "phoneE164")',
+    )
+    expect(definitions.get('Channel_one_web_chat')).toBe(
+      `CREATE UNIQUE INDEX "Channel_one_web_chat" ON "Channel" USING btree ("organizationId") WHERE (kind = 'WEB_CHAT'::"ChannelKind")`,
+    )
+  })
+
+  it('enforces the conversation unique indexes', async () => {
+    const result = await withOwnerClient(async (client) => {
+      const graph = await seedGraph(client)
+      const conversation = (status: string) =>
+        outcome(
+          client.query(
+            `INSERT INTO "${graph.schema}"."Conversation"
+               (id, "organizationId", "contactId", "channelId", status, handler, "closedAt", "updatedAt")
+             VALUES ($1, $2, $3, $4, $5::"${graph.schema}"."ConversationStatus", 'QUEUE',
+                     CASE WHEN $5 = 'CLOSED' THEN now() END, now())`,
+            [randomUUID(), graph.organizationId, graph.contactId, graph.channelId, status],
+          ),
+        )
+      const message = (seq: number, externalId: string | null) =>
+        outcome(
+          client.query(
+            `INSERT INTO "${graph.schema}"."Message"
+               (id, "organizationId", "conversationId", "channelId", seq, direction, author, kind,
+                text, "externalId", "sentAt")
+             VALUES ($1, $2, $3, $4, $5, 'INBOUND', 'CONTACT', 'TEXT', 'oi', $6, now())`,
+            [
+              randomUUID(),
+              graph.organizationId,
+              graph.conversationId,
+              graph.channelId,
+              seq,
+              externalId,
+            ],
+          ),
+        )
+      return {
+        secondOpen: await conversation('OPEN'),
+        closedBesideOpen: await conversation('CLOSED'),
+        firstExternal: await message(1, 'wa-1'),
+        sameExternal: await message(2, 'wa-1'),
+        firstNull: await message(3, null),
+        secondNull: await message(4, null),
+        sameSeq: await message(4, 'wa-2'),
+      }
+    })
+
+    expect(result).toEqual({
+      secondOpen: '23505 Conversation_one_open',
+      closedBesideOpen: 'ok',
+      firstExternal: 'ok',
+      sameExternal: '23505 Message_channel_externalId',
+      firstNull: 'ok',
+      secondNull: 'ok',
+      sameSeq: '23505 Message_organizationId_conversationId_seq_key',
+    })
+  })
+
+  it('protects the conversation tables with tenant_isolation', async () => {
+    const tables = ['Channel', 'Contact', 'Conversation', 'Message']
+    const { forced, policies } = await withOwnerClient(async (client) => ({
+      forced: await forcedRowSecurity(client, workerSchema(), tables),
+      policies: (
+        await client.query<{ table: string; qual: string; check: string }>(
+          `SELECT tablename AS table, qual, with_check AS check FROM pg_policies
+            WHERE schemaname = $1 AND tablename = ANY ($2) AND policyname = 'tenant_isolation'
+            ORDER BY 1`,
+          [workerSchema(), tables],
+        )
+      ).rows,
+    }))
+
+    expect(forced).toEqual(tables.map((table) => ({ table, forced: true })))
+    expect(policies.map((policy) => policy.table)).toEqual(tables)
+    for (const policy of policies) {
+      expect(policy.qual, policy.table).toContain('app.tenant_id')
+      expect(policy.check, policy.table).toContain('app.tenant_id')
+    }
+  })
+
+  it('keeps a message consistent with its direction, author, kind and conversation', async () => {
+    const result = await withOwnerClient(async (client) => {
+      const graph = await seedGraph(client)
+      const otherChannel = await seedOrganizationWithUsers(client, graph.schema, 0).then(() =>
+        randomUUID(),
+      )
+      let seq = 0
+      const insert = (columns: {
+        direction: string
+        author: string
+        authorUserId?: string | null
+        kind?: string
+        text?: string | null
+        deliveryStatus?: string | null
+        channelId?: string
+      }) =>
+        outcome(
+          client.query(
+            `INSERT INTO "${graph.schema}"."Message"
+               (id, "organizationId", "conversationId", "channelId", seq, direction, author,
+                "authorUserId", kind, text, "deliveryStatus", "sentAt")
+             VALUES ($1, $2, $3, $4, $5, $6::"${graph.schema}"."MessageDirection",
+                     $7::"${graph.schema}"."MessageAuthor", $8, $9::"${graph.schema}"."MessageKind",
+                     $10, $11::"${graph.schema}"."DeliveryStatus", now())`,
+            [
+              randomUUID(),
+              graph.organizationId,
+              graph.conversationId,
+              columns.channelId ?? graph.channelId,
+              ++seq,
+              columns.direction,
+              columns.author,
+              columns.authorUserId ?? null,
+              columns.kind ?? 'TEXT',
+              columns.text === undefined ? 'oi' : columns.text,
+              columns.deliveryStatus ?? null,
+            ],
+          ),
+        )
+      return {
+        inboundFromSystem: await insert({ direction: 'INBOUND', author: 'SYSTEM' }),
+        outboundFromContact: await insert({
+          direction: 'OUTBOUND',
+          author: 'CONTACT',
+          deliveryStatus: 'SENT',
+        }),
+        inboundDelivered: await insert({
+          direction: 'INBOUND',
+          author: 'CONTACT',
+          deliveryStatus: 'SENT',
+        }),
+        outboundUndelivered: await insert({ direction: 'OUTBOUND', author: 'SYSTEM' }),
+        humanWithoutUser: await insert({
+          direction: 'OUTBOUND',
+          author: 'HUMAN',
+          deliveryStatus: 'SENT',
+        }),
+        systemWithUser: await insert({
+          direction: 'OUTBOUND',
+          author: 'SYSTEM',
+          authorUserId: graph.memberUser,
+          deliveryStatus: 'SENT',
+        }),
+        textWithoutText: await insert({ direction: 'INBOUND', author: 'CONTACT', text: null }),
+        unsupportedWithText: await insert({
+          direction: 'INBOUND',
+          author: 'CONTACT',
+          kind: 'UNSUPPORTED',
+        }),
+        otherChannel: await insert({
+          direction: 'INBOUND',
+          author: 'CONTACT',
+          channelId: otherChannel,
+        }),
+        valid: await insert({ direction: 'INBOUND', author: 'CONTACT' }),
+      }
+    })
+
+    expect(result).toEqual({
+      inboundFromSystem: '23514 Message_direction_check',
+      outboundFromContact: '23514 Message_direction_check',
+      inboundDelivered: '23514 Message_delivery_check',
+      outboundUndelivered: '23514 Message_delivery_check',
+      humanWithoutUser: '23514 Message_author_user_check',
+      systemWithUser: '23514 Message_author_user_check',
+      textWithoutText: '23514 Message_text_check',
+      unsupportedWithText: '23514 Message_text_check',
+      otherChannel: '23503 Message_conversationId_channelId_organizationId_fkey',
+      valid: 'ok',
+    })
+  })
+})

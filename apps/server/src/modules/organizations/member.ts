@@ -3,7 +3,7 @@ import { AppError } from '../../shared/errors.ts'
 import type { Role } from '../../shared/permissions.ts'
 import type { RequestContext } from '../../shared/request-context.ts'
 import { record } from '../audit/index.ts'
-import { portfolioMoves } from './portfolio.ts'
+import type { PortfolioMove } from './portfolio.ts'
 
 const hidden = new AppError(404, 'NOT_FOUND', 'Membro não encontrado.')
 const lastAdmin = new AppError(
@@ -113,7 +113,7 @@ export async function listMembers(deps: { db: Database }, ctx: RequestContext) {
 }
 
 export async function transferPortfolio(
-  deps: { db: Database },
+  deps: { db: Database; portfolioMoves: readonly PortfolioMove[] },
   ctx: RequestContext,
   id: string,
   input: { toMemberId: string },
@@ -133,7 +133,7 @@ export async function transferPortfolio(
     if (!target.active) throw targetInactive
 
     let transferred = 0
-    for (const move of portfolioMoves) {
+    for (const move of deps.portfolioMoves) {
       transferred += await move(tx, source.userId, target.userId)
     }
     await record(tx, ctx, {

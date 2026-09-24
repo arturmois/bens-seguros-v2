@@ -11,9 +11,14 @@ import {
   updateMemberInput,
 } from './member.schema.ts'
 import { listMembers, transferPortfolio, updateMember } from './member.ts'
+import type { PortfolioMove } from './portfolio.ts'
 import { currentTenant, requirePermission, requireTenant } from './tenant-context.ts'
 
-export type MemberRoutesDeps = { auth: Auth; db: Database }
+export type MemberRoutesDeps = {
+  auth: Auth
+  db: Database
+  portfolioMoves: readonly PortfolioMove[]
+}
 
 export function memberRoutes(deps: MemberRoutesDeps): FastifyPluginAsyncZod {
   const session = requireSession(deps.auth)
@@ -62,7 +67,12 @@ export function memberRoutes(deps: MemberRoutesDeps): FastifyPluginAsyncZod {
         preHandler: [session, tenant, requirePermission('portfolio:transfer')],
       },
       (request) =>
-        transferPortfolio({ db: deps.db }, currentTenant(request), request.params.id, request.body),
+        transferPortfolio(
+          { db: deps.db, portfolioMoves: deps.portfolioMoves },
+          currentTenant(request),
+          request.params.id,
+          request.body,
+        ),
     )
   }
 }
