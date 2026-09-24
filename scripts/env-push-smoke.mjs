@@ -64,11 +64,13 @@ set -euo pipefail
 n=$(find "$CALLS" -type f | wc -l)
 printf '%s\\0' "$@" > "$CALLS/$((n + 1))"
 cmd=\${!#}
+# Like the real ssh, read the caller's stdin to the end and forward it (C35, C36).
+input=$(cat; printf x)
+input=\${input%x}
 if [ "\${STUB_CORRUPT:-}" = 1 ]; then
-  input=$(cat)
-  printf '%s\\n' "$input" | sed '$d' | PATH="$REMOTE_STUB:$PATH" bash -c "$cmd"
+  printf '%s' "$input" | sed '$d' | PATH="$REMOTE_STUB:$PATH" bash -c "$cmd"
 else
-  PATH="$REMOTE_STUB:$PATH" bash -c "$cmd"
+  printf '%s' "$input" | PATH="$REMOTE_STUB:$PATH" bash -c "$cmd"
 fi
 `
 
@@ -269,7 +271,7 @@ const steps = {
     }
   },
 
-  // C4, C35
+  // C4, C35, C36
   existing() {
     fresh()
     const text = envText()
@@ -288,6 +290,16 @@ const steps = {
     assert(shared.code === 0, `script then cat: exits 0 (${shared.stderr.trim()})`)
     assert(shared.stdout.endsWith(junk), 'the five stdin lines reach the cat after the script')
     assert(!shared.stderr.includes('Domínio'), 'no prompt is printed')
+
+    // C36: the same with --apply and a remote deploy.env (the compose ssh call must not read it).
+    writeFileSync(join(REMOTE, 'deploy.env'), 'IMAGE_TAG=sha-x\n')
+    const applied = run(['-c', `${join(REPO, 'scripts/env-push.sh')} staging --apply; cat`], {
+      input: junk,
+      command: 'bash',
+    })
+    assert(applied.code === 0, `--apply then cat: exits 0 (${applied.stderr.trim()})`)
+    assert(applied.stdout.endsWith(junk), '--apply: the five stdin lines reach the cat')
+    assert(composeCalls().length === 1, '--apply: compose ran')
   },
 
   // C5

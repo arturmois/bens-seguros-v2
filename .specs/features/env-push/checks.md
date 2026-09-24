@@ -3,7 +3,7 @@
 Profile: standard
 Plan: `.specs/features/env-push/plan.md`
 
-35 checks in 6 slices · 3 one-way doors · 0 open
+36 checks in 7 slices · 3 one-way doors · 0 open
 
 Every command runs from the repo root. Proof tool, new in this feature:
 
@@ -144,12 +144,19 @@ Acrescentado depois do FAIL da rodada 1 (`verification.md`, mutante P1). Nenhum 
 **C35** - With a valid `.env.staging` present, `bash -c 'scripts/env-push.sh staging; cat'` fed five junk lines exits `0`, its stdout ends with the five lines (the script consumed none of stdin), and stderr holds no `Domínio` prompt (AC 4)
 Proof: `node scripts/env-push-smoke.mjs existing` exits 0
 
+### S7 - achados da verificação, rodada 2 · 1 file · ~20 KB · ~5k
+
+Acrescentado depois do FAIL da rodada 2 (mutantes F1 e F8). Nenhum check anterior foi alterado. O stub de `ssh` passa a ler e repassar todo o stdin, como o `ssh` real, então C35 também passa a ver uma chamada de leitura de estado sem `</dev/null`.
+
+**C36** - With a valid `.env.staging` and a remote `deploy.env`, `bash -c 'scripts/env-push.sh staging --apply; cat'` fed five junk lines exits `0`, runs one `docker compose`, and its stdout ends with the five lines (AC 4, AC 20)
+Proof: `node scripts/env-push-smoke.mjs existing` exits 0
+
 ## Coverage
 
 | Set (size) | Member -> proof | Unproven |
 | --- | --- | --- |
 | keys of `.env.prod.example` (14) | C6, table-driven over all 14; C1 key-set equality | - |
-| stdin with an existing file (2) | not rewritten C4 · not consumed C35 | - |
+| stdin with an existing file (3) | not rewritten C4 · not consumed C35 · not consumed with `--apply` C36 | - |
 | generated values (3) | `POSTGRES_PASSWORD` C2 · `APP_DB_PASSWORD` C2 · `BETTER_AUTH_SECRET` C2 | - |
 | answers read (5) | domain C3 · Resend key C3 · sender C3 · Turnstile site C3 · Turnstile secret C3 | - |
 | usage errors (4) | no arg C5 · unknown env C5 · extra arg C5 · unknown flag C5 | - |
@@ -200,3 +207,4 @@ proven only by the first push that should have been refused.
 - S1-S5 ≈ 30k (script ~7 KB, smoke ~18 KB, runbook ~25 KB, `staging-smoke.mjs` ~22 KB read, plan/checks ~25 KB), under the 150k budget - one builder
 - Mechanism: one builder (under budget, no ask)
 - **Round 1 fix (after `verification.md` FAIL):** C35 added for P1 (stdin not consumed when the file exists); the secret prompts (Resend key, Turnstile secret) no longer echo (`read -s`), as the Landing row 2 promised. Known text slips left as they are, since the proofs read the list from the file: `.env.prod.example` has 15 keys, not 14 (C1, C6, Coverage); an unreachable ssh exits through `|| state=$?` and the `*)` branch, not `set -e` (Swept).
+- **Round 2 fix (after `verification.md` FAIL):** the `ssh` stub reads and forwards all of stdin like the real client, which exposes F1 (state call without `</dev/null`) to C35; C36 covers F8 (`--apply` call). F2 (echo of secret prompts) stays without an automated proof: no criterion requires it and the smoke has no terminal; checked by hand in round 2.

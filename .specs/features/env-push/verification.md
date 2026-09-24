@@ -2,8 +2,180 @@
 
 **Verdict**: FAIL
 **Profile**: standard
+**Diff range**: 9bff3ef..8c4aaab (13a9a9a, 3605705, 6b6bc9b, 8c4aaab)
+**Round**: 2 - scoped (fix diff 6b6bc9b..8c4aaab: `scripts/env-push.sh` +10 -4, `scripts/env-push-smoke.mjs` +13 -3, checks.md adds S6/C35)
+**Verifier**: independent sub-agent (author != verifier)
+
+The round-1 finding is fixed: mutant P1 (`cat >/dev/null` before the generate branch) is now
+killed by C35. Every proof passes at `8c4aaab`, and the new silent-prompt branch in `ask` is
+covered by C3 and C19.
+
+A new mutant survives on the same claim. If the `</dev/null` is dropped from the ssh call that
+reads the remote state (`scripts/env-push.sh:147`), `existing` still passes. Real `ssh` without
+`-n` or a stdin redirect reads the caller's stdin and forwards it to the remote. The stub at
+`scripts/env-push-smoke.mjs:66-72` does not: it hands stdin to `bash -c "$cmd"`, and since the
+remote command never reads it, nothing is consumed. So C35 proves "the script does not read
+stdin", but not "the script's `ssh` calls do not read stdin". AC 4 ("SHALL read nothing from
+stdin") covers both. The code at HEAD is correct: every non-send `ssh` call has `</dev/null`
+(`:147`, `:175`). What is missing is a proof that fails if either redirect is removed.
+
+## Binding sources
+
+Carried from 6b6bc9b: none. The fix did not touch the plan's Sources, and the profile is not `ui`.
+
+## Checks
+
+Verified at 8c4aaab. `node scripts/env-push-smoke.mjs all` exited 0 and printed all 15 steps with
+556 `ok -` lines and 0 `not ok` (round 1: 550; the difference is C35's 3 assertions plus the
+generate step's larger secret set). Each step appears in the output on its own line. I refreshed
+the citations in the two files the fix touched: smoke assertions after `:280` moved down 10
+lines, and script lines after `:43` moved down 6.
+
+| Check | Claim | Proof run | Evidence | Result |
+| --- | --- | --- | --- | --- |
+| C1 | generated `.env.staging`, mode 600, key set = example's | `env-push-smoke.mjs generate` exit 0 | `scripts/env-push-smoke.mjs:230` `mode(LOCAL) === 0o600`; `:232-235` key-set equality (output: "holds exactly the 15 keys") | PASS (precision gap: 15 keys, not 14) |
+| C2 | 48-hex passwords that differ; 44-char base64; new on each generation | `generate` exit 0 | `scripts/env-push-smoke.mjs:236-242`, `:267-268` | PASS |
+| C3 | the 12 literal values | `generate` exit 0 | `scripts/env-push-smoke.mjs:256-257` `values[key] === value`; `:259-261` `EMAIL_FROM` regex | PASS |
+| C4 | existing file byte-identical; remote equals it | `existing` exit 0 | `scripts/env-push-smoke.mjs:279` `read(LOCAL) === text`; `:280` `read(REMOTE_ENV) === text` | PASS |
+| C5 | 4 usage errors | `usage` exit 0 | `scripts/env-push-smoke.mjs:299-306` `code === 1`, `/^env-push: uso:/m`, `sshCalls().length === 0` | PASS |
+| C6 | each key absent/empty rejected, no ssh | `validate` exit 0 | `scripts/env-push-smoke.mjs:312-315` loop over `EXAMPLE_KEYS`; `:212-214` | PASS (loop covers 15 keys) |
+| C7 | 3 wrong `APP_URL`s | `validate` exit 0 | `scripts/env-push-smoke.mjs:316-322` | PASS |
+| C8 | 31 rejected, 32 accepted | `validate` exit 0 | `scripts/env-push-smoke.mjs:323` `rejects('secret of 31', …)`; `:324` `accepts('secret of 32', …)` | PASS |
+| C9 | unsafe password characters rejected; `aZ09._~-` accepted | `validate` exit 0 | `scripts/env-push-smoke.mjs:325-330` | PASS |
+| C10 | placeholders rejected | `validate` exit 0 | `scripts/env-push-smoke.mjs:331-340` | PASS |
+| C11 | missing key / known_hosts | `missing-files` exit 0 | `scripts/env-push-smoke.mjs:350-352` `stderr.includes(path)`, `sshCalls().length === 0` | PASS |
+| C12 | remote `.env` byte-identical, 600, no `.env.push` | `send` exit 0 | `scripts/env-push-smoke.mjs:363-366` | PASS |
+| C13 | ssh options and target; override | `send` exit 0 | `scripts/env-push-smoke.mjs:378` `joined.includes(option)`; `:380` `argv.includes('deploy@203.0.113.10')`; `:392-395` `ops@198.51.100.7` | PASS |
+| C14 | no secret in ssh argv | `send` exit 0 | `scripts/env-push-smoke.mjs:383` `!joined.includes(values[key])` | PASS |
+| C15 | truncated transfer | `corrupt` exit 0 | `scripts/env-push-smoke.mjs:406-408` | PASS |
+| C16 | DB guard over 4 keys | `db-guard` exit 0 | `scripts/env-push-smoke.mjs:421-428` | PASS |
+| C17 | volume without `.env` | `volume-guard` exit 0 | `scripts/env-push-smoke.mjs:438-440` | PASS |
+| C18 | same DB values, other key differs → replaced | `replace` exit 0 | `scripts/env-push-smoke.mjs:450-451` | PASS |
+| C19 | no secret in any transcript | `no-leak` exit 0 ("none of the 624 secrets") | `scripts/env-push-smoke.mjs:506` `secrets.size > 20`; `:508` `leaked.length === 0` | PASS |
+| C20 | exact compose argv, cwd, `.env` already new | `apply` exit 0 | `scripts/env-push-smoke.mjs:463-474` | PASS |
+| C21 | no `deploy.env`: no compose, `primeiro deploy` | `apply-first` exit 0 | `scripts/env-push-smoke.mjs:483-486` | PASS |
+| C22 | without `--apply`: no compose | `send` exit 0 | `scripts/env-push-smoke.mjs:386` `composeCalls().length === 0` | PASS |
+| C23 | `up` fails → exit 1, message, remote is new | `apply-fails` exit 0 | `scripts/env-push-smoke.mjs:496-498` | PASS |
+| C24 | shellcheck clean | `docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:stable scripts/env-push.sh` exit 0, no output | `scripts/env-push.sh:136` is the only directive (`disable=SC2029`) | PASS |
+| C25 | `.env` section runs the command, no `nano`/`curl`/`sudo -iu deploy` | `env-push-smoke.mjs runbook` exit 0 | `scripts/env-push-smoke.mjs:521-528`; `docs/runbooks/deploy.md:205` | PASS |
+| C26 | 16 sections, key before `.env` | `staging-smoke.mjs runbook` exit 0 (19 ok, 0 not ok); `env-push-smoke.mjs runbook` exit 0 | `scripts/staging-smoke.mjs:592-594`; `scripts/env-push-smoke.mjs:531` `key >= 0 && key < dotenv` | PASS |
+| C27 | `ops` test with `PasswordAuthentication=no` | `runbook` exit 0 | `scripts/env-push-smoke.mjs:532-535`; `docs/runbooks/deploy.md:80` | PASS |
+| C28 | `01-hardening.conf` + `sshd -T` | `runbook` exit 0 | `scripts/env-push-smoke.mjs:536-542`; `docs/runbooks/deploy.md:90`, `:96` | PASS |
+| C29 | compose `ps -a` | `runbook` exit 0 | `scripts/env-push-smoke.mjs:543-547`; `docs/runbooks/deploy.md:275`, `:334` | PASS |
+| C30 | ruleset bullet says `pull request` | `runbook` exit 0 | `scripts/env-push-smoke.mjs:548-551`; `docs/runbooks/deploy.md:252-253` | PASS |
+| C31 | `Problemas comuns` unhealthy/rollback row | `runbook` exit 0 | `scripts/env-push-smoke.mjs:552-555`; `docs/runbooks/deploy.md:370` | PASS |
+| C32 | ≤ 450 lines | `test "$(wc -l < docs/runbooks/deploy.md)" -le 450` exit 0 (380) | `docs/runbooks/deploy.md:380` last line | PASS |
+| C33 | `ssh-keyscan` → `~/.ssh/bens-known_hosts-staging` | `runbook` exit 0 | `scripts/env-push-smoke.mjs:556-563`; `docs/runbooks/deploy.md:173`, `:225` | PASS |
+| C34 | AD-012 row `active` | the checks.md grep exit 0 | `.specs/STATE.md:18` | PASS |
+| C35 | existing file: `script; cat` gets all 5 stdin lines, no `Domínio` prompt | `existing` exit 0 ("the five stdin lines reach the cat after the script", "no prompt is printed") | `scripts/env-push-smoke.mjs:289` `shared.stdout.endsWith(junk)`; `:290` `!shared.stderr.includes('Domínio')` | PASS as worded, but it does not prove the whole of AC 4 (see F1) |
+
+**Precision gaps and the Handoff's known text slips.** The Handoff leaves two slips in place. I
+judge both acceptable, and neither changes the verdict:
+
+1. "14 keys" in C1, C6, the Coverage row and the plan's Problem. `.env.prod.example` has 15
+   (`grep -cE '^[A-Z_]+=' .env.prod.example` → 15). The proofs read the list from the file
+   (`scripts/env-push-smoke.mjs:50`), and the output confirms all 15 are covered. Only the
+   number in the prose is wrong.
+2. The Swept "dependency failure" row names `set -e`. The real mechanism is `|| state=$?` at
+   `scripts/env-push.sh:147` plus `*) die` at `:157`. The outcome (exit 1) is the same, and it
+   was checked ad hoc in round 1. Only the explanation is wrong.
+3. New: C35 limits "reads nothing from stdin" to what the script itself reads. The stub cannot
+   observe what `ssh` reads (F1 below).
+
+## Coverage
+
+Recomputed at 8c4aaab only for the rows whose authority the fix touched. All other rows are
+carried from 6b6bc9b (see round 1 below).
+
+| Set (size) | Recomputed from | Member -> proof | Unproven |
+| --- | --- | --- | --- |
+| stdin with an existing file (2 in checks.md; 3 in the code) | `scripts/env-push.sh:57` (the generate branch is the only `read`), `:147` and `:175` (ssh calls with `</dev/null`), `:167` (the send call uses `<"$file"`) | not rewritten C4 · not read by the script C35 (P1 killed) · not read by `ssh` - **no proof**: the stub never consumes stdin (F1, F8 survive) | `ssh` stdin at `scripts/env-push.sh:147`, `:175` |
+| answers read (5), now with 2 silent | `scripts/env-push.sh:59-63`, `ask` at `:41-53` | domain C3 · Resend key (silent) C3 · sender C3 · Turnstile site C3 · Turnstile secret (silent) C3. The silent branch's wrong variable (F5) or its newline on stdout (F4) break C3, and echoing the answer to stderr (F3) breaks C19 | - |
+| exit codes, generation branches, and the rest | - | carried from 6b6bc9b | - |
+
+The fix adds one branch point (`ASK_SILENT`, `scripts/env-push.sh:44`). No AC or check requires
+the echo to be off. Round 1 raised this as a mismatch with the Landing rationale, and the Handoff
+now claims the behaviour. The smoke has no terminal, so it cannot see echo (F2 survives, see
+below). I checked it on a real pty (Python `pty.fork`, answers typed into the terminal). At HEAD
+the Resend key and the Turnstile secret were not echoed and the site key was. With `-rs` → `-r`,
+all three were echoed. So the behaviour is correct at HEAD but has no automated proof. It is not
+an obligation of any check, so it is an observation, not a coverage gap.
+
+## Test policy rows
+
+Re-judged the row that classifies the touched files. The other two rows are carried from 6b6bc9b
+(met).
+
+| Row | Files it classifies | Required proof | Expectation met |
+| --- | --- | --- | --- |
+| `scripts/env-push.sh` decides | `scripts/env-push.sh` | run as a process with real bash behind an `ssh` stub | no: the stub (`scripts/env-push-smoke.mjs:62-73`) does not model how `ssh` treats stdin. For the "stdin with an existing file" set, one member has no run that could fail (F1) |
+| real ssh transport | `scripts/env-push.sh:133-137` | argv (C13); first live push | yes (carried from 6b6bc9b). Whether `ssh` drains stdin is not in the row's list (host key, key auth, `restrict`), and the stub could model it cheaply, so it belongs to the row above |
+| runbook text | `docs/runbooks/deploy.md` | read as data | yes (carried from 6b6bc9b; the fix did not touch the runbook) |
+
+## Faults injected
+
+Verified at 8c4aaab. Baseline `git status --porcelain` of the real tree was empty. Every mutant
+was applied with an exact-once string replace in a detached `git worktree` of HEAD in the
+scratchpad. I ran the narrowest step there, reset it with `git checkout -- .` after each mutant,
+and removed the worktree at the end. Afterwards the real tree's porcelain was empty again, apart
+from this report written after that.
+
+| Mutation | Location | Killed |
+| --- | --- | --- |
+| P1 (round-1 survivor) `cat >/dev/null` before the generate branch | `scripts/env-push.sh:55` | yes - `existing`: "the five stdin lines reach the cat after the script" |
+| F6 existing path reads one line (`read -r _`) | `scripts/env-push.sh:55` | yes - `existing`: "the five stdin lines reach the cat after the script" |
+| F7 existing path prints the `Domínio` prompt without reading | `scripts/env-push.sh:55` | yes - `existing`: "no prompt is printed" |
+| F1 `</dev/null` dropped from the remote-state `ssh` call | `scripts/env-push.sh:147` | no - survived: `existing` exit 0. The stub (`scripts/env-push-smoke.mjs:66-72`) passes stdin to a remote command that never reads it, whereas real `ssh` reads stdin unless given `-n` (`man ssh`: "-n Redirects stdin from /dev/null (actually, prevents reading from stdin)") |
+| F8 `</dev/null` dropped from the `--apply` `ssh` call | `scripts/env-push.sh:175` | no - survived: `apply` exit 0. Same cause. C35 does not run `--apply`, and nothing else looks at stdin |
+| F3 silent branch echoes the answer to stderr | `scripts/env-push.sh:46` | yes - `no-leak`: "the output holds none of the 318 secrets" |
+| F4 silent branch writes its newline to stdout | `scripts/env-push.sh:46` | yes - `generate`: "generates and sends" (`TURNSTILE_SECRET_KEY ausente ou vazio`) |
+| F5 silent branch reads into another variable | `scripts/env-push.sh:45` | yes - `generate`: "generates and sends" (`resposta vazia`) |
+| F2 `read -rs` → `read -r` | `scripts/env-push.sh:45` | n/a - no check claims echo off. Echo cannot be observed without a terminal, so it survives `generate`. The pty run above shows HEAD hides both secrets and the mutant shows them |
+| F9 (M1 re-run) DB guard drops `POSTGRES_PASSWORD` | `scripts/env-push.sh:150` | yes - `db-guard`: "POSTGRES_PASSWORD changed: exits 1" |
+| F10 (M4 re-run) sha256 compared with itself | `scripts/env-push.sh:166` | yes - `corrupt`: "a truncated transfer exits 1" |
+| F11 (M18 re-run) compose runs without `--apply` | `scripts/env-push.sh:170` | yes - `send`: "without --apply, no docker compose" |
+
+That is more than the five-mutant cap. The brief asked for P1 to be re-injected, for the two
+fix surfaces (the silent branch and C35's proof) to be covered, and for a regression sample.
+The runbook and C34 mutants (R1-R9) are carried from 6b6bc9b, since the fix did not touch
+`docs/` or `.specs/STATE.md`.
+
+## Gate
+
+Verified at 8c4aaab:
+
+- `node scripts/env-push-smoke.mjs all`: 15 steps, 556 ok, 0 not ok, exit 0.
+- `node scripts/staging-smoke.mjs runbook`: 19 ok, 0 not ok, exit 0.
+- `docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:stable scripts/env-push.sh`: exit 0, no output.
+- C32 `test "$(wc -l < docs/runbooks/deploy.md)" -le 450`: exit 0 (380 lines).
+- C34 grep: exit 0 (`.specs/STATE.md:18`).
+
+**Ranked gaps:**
+
+1. Surviving mutants F1 and F8: removing `</dev/null` from the ssh calls at
+   `scripts/env-push.sh:147` or `:175` is not caught. With real ssh, that removal breaks AC 4 on
+   an existing file. The code is correct today, but the claim is unguarded. The cause is the
+   stub at `scripts/env-push-smoke.mjs:66-72`, which does not drain stdin the way `ssh` does.
+   Suggested proof: make the non-corrupt path of the stub forward all of its stdin to the remote
+   command, as real ssh does, for example `tmp=$(mktemp); cat >"$tmp"; … bash -c "$cmd" <"$tmp"`.
+   Then C35 kills F1, and running C35's `bash -c '…; cat'` once with `--apply` and a
+   `deploy.env` kills F8.
+2. Observation, not a check failure: echo-off for the secret prompts has no automated proof (F2).
+   It is correct at HEAD per the manual pty run. Either add a criterion, or leave it as the
+   Handoff describes.
+3. Precision (accepted, carried): 14 vs 15 keys, and the Swept `set -e` wording.
+
+---
+
+# Round 1 history (6b6bc9b, FAIL)
+
+The round-1 report is kept below as written. Its line numbers refer to 6b6bc9b.
+
+
+Round-1 verdict: FAIL
+Round-1 profile: standard
 **Diff range**: 9bff3ef..6b6bc9b (13a9a9a, 3605705, 6b6bc9b)
-**Round**: 1 - full
+Round-1 round: 1 - full
 **Verifier**: independent sub-agent (author != verifier)
 
 One surviving mutant: C4's proof passes when the script, with `.env.staging` already present,
@@ -12,14 +184,14 @@ stdin". C4 only asks that the junk not end up in the file, and a script that pro
 the answers meets that. Every other check is proven. 43 of the 44 non-equivalent mutants were
 killed.
 
-## Binding sources
+### Round 1 - Binding sources
 
 None. The plan marks no design or contract as binding. Its `Sources` are the user's request, the
 runbook analysis done in the session, and AD-011 (`.specs/STATE.md`). AD-012 at
 `.specs/STATE.md:18` complements AD-011 and does not contradict it: the GitHub still holds no
 application secret. The profile is not `ui`, so step 1 does not apply.
 
-## Checks
+### Round 1 - Checks
 
 All proofs ran at HEAD `6b6bc9b`. `node scripts/env-push-smoke.mjs all` exited 0 and printed each
 of the 15 steps (`# generate` … `# runbook`) with 550 `ok -` lines and no `not ok`. Every step
@@ -72,7 +244,7 @@ named below appears in that output individually. The smoke is new in this diff
 2. C4 narrows AC 4 ("SHALL read nothing from stdin") to "the junk was not read into it". Mutant P1
    survives in that gap. See "Faults injected".
 
-## Coverage
+### Round 1 - Coverage
 
 I recomputed each set from its authority: the example file for keys, `scripts/env-push.sh` for
 branches and options, the plan's AC 24-32 for runbook fixes, and the AD-012 row for door 3.
@@ -109,7 +281,7 @@ neither is an unproven member. I ran both ad hoc and both exit 1 as intended:
   `|| state=$?` at `:141` catches the failure and the `*)` branch at `:151` dies. `set -e` plays
   no part.
 
-## Test policy rows
+### Round 1 - Test policy rows
 
 | Row | Files it classifies | Required proof | Expectation met |
 | --- | --- | --- | --- |
@@ -117,7 +289,7 @@ neither is an unproven member. I ran both ad hoc and both exit 1 as intended:
 | real ssh transport | `scripts/env-push.sh:127-131` | argv asserted (C13); proven live on the first real push | yes, as the row allows. The argv assertion checks that each option is present, not where it sits. Moving the options after the target (P2) passes the smoke, and it is also harmless: OpenSSH 9.6 re-parses options after the host. `ssh -G deploy@203.0.113.10 -i <file> -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes` printed `identityfile <file>`, `identitiesonly yes`, `stricthostkeychecking true`. Still unproven until the first live push: host-key rejection, key auth, and stdin passing through a `restrict` key. |
 | runbook text | `docs/runbooks/deploy.md` | read as data | yes: one assertion per fix, and runbook mutants R1-R8 were each killed by their own assertion |
 
-## Faults injected
+### Round 1 - Faults injected
 
 Each mutant was applied to a detached worktree of HEAD in the scratchpad (`git worktree add`),
 never to the real tree. I ran the narrowest step for each, then discarded the worktree. The real
@@ -190,7 +362,7 @@ the Turnstile secret show on the operator's terminal as they are typed. No AC re
 C19 covers only the script's own output, so this is not a check failure. It is a mismatch between
 the plan's rationale and the code, for the user to decide on.
 
-## Gate
+### Round 1 - Gate
 
 - `node scripts/env-push-smoke.mjs all`: 15 steps, 550 ok, 0 not ok, exit 0.
 - `node scripts/staging-smoke.mjs runbook`: 19 ok, exit 0.
