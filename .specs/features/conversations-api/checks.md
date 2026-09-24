@@ -138,3 +138,7 @@ Test policy: the repo answers both questions (`CLAUDE.md` "Testes": endpoint -> 
 ## Handoff
 
 - S1 ~2k + S2 ~13k + S3 ~10k + S4 ~13k ≈ 38k tokens (≈ 100 KB read: `member.spec.ts` 34 KB as the route-test pattern, `openapi.json` 42 KB, `me.spec.ts` 11 KB, `app.ts`, `pagination`, `permissions`, `test/conversations.ts`; new `read.ts`, `conversation.schema.ts`, `conversation.routes.ts`, `read.spec.ts`; `apps/web/src/api` is generated, not read), under the 150k budget - one builder
+
+- **Boundary:** C1-C26 closed at `e299078`
+- **Settled mid-build:** C18 - `GET /api/v1/conversations/:id` declares an empty `.strict()` query, because Fastify ignores a query without a schema and AC 11 asks `400` on each route; `member.spec.ts` "lets an admin demote themself" fixed MANAGER's permission list literally and now lists `conversation:read` (the matrix change of Impact "domain", not a weakened assert)
+- **Abandoned:** none
