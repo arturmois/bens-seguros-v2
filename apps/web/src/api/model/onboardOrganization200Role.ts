@@ -9,5 +9,5 @@ export type OnboardOrganization200Role = typeof OnboardOrganization200Role[keyof
 
 
 export const OnboardOrganization200Role = {
-  OWNER: 'OWNER',
+  ADMIN: 'ADMIN',
 } as const;

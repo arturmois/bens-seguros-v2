@@ -108,7 +108,7 @@ async function activeOrganizationId(userId: string) {
 describe('POST /api/v1/invitations', () => {
   it('creates a pending invitation and queues the e-mail', async () => {
     const host = await brokerage()
-    const roles = ['ADMIN', 'MANAGER', 'COMMERCIAL', 'VIEWER'] as const
+    const roles = ['ADMIN', 'MANAGER', 'COMMERCIAL'] as const
     const before = Date.now()
 
     for (const role of roles) {
@@ -159,10 +159,10 @@ describe('POST /api/v1/invitations', () => {
 
     const rejected = [
       { email: uniqueEmail(), role: 'OWNER' },
-      { role: 'VIEWER' },
+      { role: 'COMMERCIAL' },
       { email: uniqueEmail() },
-      { email: uniqueEmail(), role: 'VIEWER', extra: true },
-      { email: 'nao-e-email', role: 'VIEWER' },
+      { email: uniqueEmail(), role: 'COMMERCIAL', extra: true },
+      { email: 'nao-e-email', role: 'COMMERCIAL' },
     ]
     for (const body of rejected) {
       const response = await host.client.post('/api/v1/invitations', body)
@@ -172,13 +172,28 @@ describe('POST /api/v1/invitations', () => {
     expect(await invitationsOf(host.organizationId)).toHaveLength(before.length)
   })
 
+  it('rejects OWNER and VIEWER as an invitation role', async () => {
+    const host = await brokerage()
+
+    for (const role of ['OWNER', 'VIEWER']) {
+      const response = await host.client.post('/api/v1/invitations', {
+        email: uniqueEmail(role.toLowerCase()),
+        role,
+      })
+      expect(response.statusCode, role).toBe(400)
+      expect(response.json().error.code).toBe('VALIDATION_ERROR')
+    }
+
+    expect(await invitationsOf(host.organizationId)).toEqual([])
+  })
+
   it('rejects an invitation from a role without invitation:create', async () => {
     const host = await brokerage()
-    for (const role of ['MANAGER', 'COMMERCIAL', 'VIEWER'] as const) {
+    for (const role of ['MANAGER', 'COMMERCIAL'] as const) {
       await setRole(host.organizationId, host.userId, role)
       const response = await host.client.post('/api/v1/invitations', {
         email: uniqueEmail(role.toLowerCase()),
-        role: 'VIEWER',
+        role: 'COMMERCIAL',
       })
       expect(response.statusCode, role).toBe(403)
       expect(response.json().error.code).toBe('FORBIDDEN')
@@ -193,7 +208,7 @@ describe('POST /api/v1/invitations', () => {
         method: 'POST',
         url: '/api/v1/invitations',
         headers: { origin },
-        payload: { email: uniqueEmail(), role: 'VIEWER' },
+        payload: { email: uniqueEmail(), role: 'COMMERCIAL' },
       }),
       app.inject({ method: 'GET', url: '/api/v1/invitations' }),
       app.inject({
@@ -223,7 +238,7 @@ describe('POST /api/v1/invitations', () => {
 
     const response = await client.post('/api/v1/invitations', {
       email: uniqueEmail(),
-      role: 'VIEWER',
+      role: 'COMMERCIAL',
     })
 
     expect(response.statusCode).toBe(403)
@@ -237,7 +252,7 @@ describe('POST /api/v1/invitations', () => {
       const person = new TestClient(app)
       const user = await signedInUser(person, deps)
       await deps.db.withTenant({ organizationId: host.organizationId }, (tx) =>
-        tx.member.create({ data: { userId: user.userId, role: 'VIEWER', active } }),
+        tx.member.create({ data: { userId: user.userId, role: 'COMMERCIAL', active } }),
       )
       const response = await host.client.post('/api/v1/invitations', {
         email: user.email,
@@ -258,7 +273,7 @@ describe('POST /api/v1/invitations', () => {
     const host = await brokerage()
     const email = uniqueEmail()
     expect(
-      (await host.client.post('/api/v1/invitations', { email, role: 'VIEWER' })).statusCode,
+      (await host.client.post('/api/v1/invitations', { email, role: 'COMMERCIAL' })).statusCode,
     ).toBe(200)
 
     const response = await host.client.post('/api/v1/invitations', { email, role: 'MANAGER' })
@@ -277,7 +292,7 @@ describe('POST /api/v1/invitations', () => {
     const host = await brokerage()
     const response = await host.client.post('/api/v1/invitations', {
       email: 'Artur@Exemplo.com',
-      role: 'VIEWER',
+      role: 'COMMERCIAL',
     })
 
     expect(response.statusCode).toBe(200)
@@ -286,7 +301,7 @@ describe('POST /api/v1/invitations', () => {
 
     const again = await host.client.post('/api/v1/invitations', {
       email: 'artur@exemplo.com',
-      role: 'VIEWER',
+      role: 'COMMERCIAL',
     })
     expect(again.statusCode).toBe(409)
     expect(again.json().error.code).toBe('INVITATION_PENDING')
@@ -297,7 +312,7 @@ describe('POST /api/v1/invitations', () => {
     for (let i = 0; i < 3; i++) await addMember(host.organizationId)
     expect(await memberCount(host.organizationId)).toBe(4)
     expect(
-      (await host.client.post('/api/v1/invitations', { email: uniqueEmail(), role: 'VIEWER' }))
+      (await host.client.post('/api/v1/invitations', { email: uniqueEmail(), role: 'COMMERCIAL' }))
         .statusCode,
     ).toBe(200)
 
@@ -344,7 +359,7 @@ describe('POST /api/v1/invitations', () => {
       await tx.invitation.create({
         data: {
           email,
-          role: 'VIEWER',
+          role: 'COMMERCIAL',
           tokenHash: sha256(randomUUID()),
           status: 'PENDING',
           expiresAt: new Date(Date.now() + WEEK),
@@ -369,7 +384,7 @@ describe('POST /api/v1/invitations', () => {
   it('does not record a rejected duplicate invitation', async () => {
     const host = await brokerage()
     const email = uniqueEmail()
-    const first = await host.client.post('/api/v1/invitations', { email, role: 'VIEWER' })
+    const first = await host.client.post('/api/v1/invitations', { email, role: 'COMMERCIAL' })
 
     const second = await host.client.post('/api/v1/invitations', { email, role: 'MANAGER' })
 
@@ -387,7 +402,7 @@ describe('POST /api/v1/invitations', () => {
     const original = deps.queue.enqueue
     deps.queue.enqueue = () => Promise.reject(new Error('enqueue failed'))
     try {
-      const response = await host.client.post('/api/v1/invitations', { email, role: 'VIEWER' })
+      const response = await host.client.post('/api/v1/invitations', { email, role: 'COMMERCIAL' })
       expect(response.statusCode).toBeGreaterThanOrEqual(400)
       expect(await invitationsOf(host.organizationId)).toEqual([])
       expect(await emailJobsTo(deps, email, 'invitation')).toEqual([])
@@ -404,7 +419,10 @@ describe('GET and DELETE /api/v1/invitations', () => {
 
     const older = uniqueEmail('older')
     const newer = uniqueEmail('newer')
-    const first = await host.client.post('/api/v1/invitations', { email: older, role: 'VIEWER' })
+    const first = await host.client.post('/api/v1/invitations', {
+      email: older,
+      role: 'COMMERCIAL',
+    })
     const second = await host.client.post('/api/v1/invitations', { email: newer, role: 'MANAGER' })
     await host.client.post('/api/v1/invitations', { email: uniqueEmail('revogado'), role: 'ADMIN' })
     const drop = (await invitationsOf(host.organizationId)).find((row) => row.role === 'ADMIN')
@@ -423,7 +441,7 @@ describe('GET and DELETE /api/v1/invitations', () => {
       {
         id: first.json().id,
         email: older,
-        role: 'VIEWER',
+        role: 'COMMERCIAL',
         expiresAt: first.json().expiresAt,
       },
     ])
@@ -437,11 +455,11 @@ describe('GET and DELETE /api/v1/invitations', () => {
   it('rejects listing and revoking without invitation:create', async () => {
     const host = await brokerage()
     const email = uniqueEmail()
-    const created = await host.client.post('/api/v1/invitations', { email, role: 'VIEWER' })
+    const created = await host.client.post('/api/v1/invitations', { email, role: 'COMMERCIAL' })
     expect(created.statusCode).toBe(200)
     const id = created.json().id as string
 
-    for (const role of ['MANAGER', 'COMMERCIAL', 'VIEWER'] as const) {
+    for (const role of ['MANAGER', 'COMMERCIAL'] as const) {
       await setRole(host.organizationId, host.userId, role)
       const listed = await host.client.get('/api/v1/invitations')
       const removed = await host.client.delete(`/api/v1/invitations/${id}`)
@@ -457,7 +475,7 @@ describe('GET and DELETE /api/v1/invitations', () => {
     const host = await brokerage()
     const open = await host.client.post('/api/v1/invitations', {
       email: uniqueEmail(),
-      role: 'VIEWER',
+      role: 'COMMERCIAL',
     })
     const stale = await host.client.post('/api/v1/invitations', {
       email: uniqueEmail(),
@@ -483,7 +501,7 @@ describe('GET and DELETE /api/v1/invitations', () => {
     const host = await brokerage()
     const created = await host.client.post('/api/v1/invitations', {
       email: uniqueEmail(),
-      role: 'VIEWER',
+      role: 'COMMERCIAL',
     })
     const id = created.json().id as string
 
@@ -504,7 +522,7 @@ describe('GET and DELETE /api/v1/invitations', () => {
     const other = await brokerage('Outra Casa')
     const created = await other.client.post('/api/v1/invitations', {
       email: uniqueEmail(),
-      role: 'VIEWER',
+      role: 'COMMERCIAL',
     })
     const foreignId = created.json().id as string
 
@@ -522,7 +540,7 @@ describe('GET and DELETE /api/v1/invitations', () => {
     const host = await brokerage()
     const accepted = await host.client.post('/api/v1/invitations', {
       email: uniqueEmail(),
-      role: 'VIEWER',
+      role: 'COMMERCIAL',
     })
     const revoked = await host.client.post('/api/v1/invitations', {
       email: uniqueEmail(),
@@ -558,7 +576,7 @@ describe('GET and DELETE /api/v1/invitations', () => {
     const other = await brokerage('Vizinha')
     const own = await host.client.post('/api/v1/invitations', {
       email: uniqueEmail(),
-      role: 'VIEWER',
+      role: 'COMMERCIAL',
     })
     const foreign = await other.client.post('/api/v1/invitations', {
       email: uniqueEmail(),
@@ -609,7 +627,7 @@ describe('invitation preview and accept', () => {
   it('previews an expired invitation as EXPIRED', async () => {
     const host = await brokerage()
     const email = uniqueEmail()
-    const created = await host.client.post('/api/v1/invitations', { email, role: 'VIEWER' })
+    const created = await host.client.post('/api/v1/invitations', { email, role: 'COMMERCIAL' })
     await deps.db.withTenant({ organizationId: host.organizationId }, (tx) =>
       tx.invitation.update({
         where: { id: created.json().id as string },
@@ -631,7 +649,7 @@ describe('invitation preview and accept', () => {
   it('previews a revoked invitation', async () => {
     const host = await brokerage()
     const email = uniqueEmail()
-    const created = await host.client.post('/api/v1/invitations', { email, role: 'VIEWER' })
+    const created = await host.client.post('/api/v1/invitations', { email, role: 'COMMERCIAL' })
     expect((await host.client.delete(`/api/v1/invitations/${created.json().id}`)).statusCode).toBe(
       200,
     )
@@ -719,7 +737,7 @@ describe('invitation preview and accept', () => {
     for (let i = 0; i < 4; i++) await addMember(host.organizationId)
     expect(await memberCount(host.organizationId)).toBe(5)
     const email = uniqueEmail()
-    await host.client.post('/api/v1/invitations', { email, role: 'VIEWER' })
+    await host.client.post('/api/v1/invitations', { email, role: 'COMMERCIAL' })
     const person = new TestClient(app)
     await signedInUser(person, deps, email)
 
@@ -735,7 +753,7 @@ describe('invitation preview and accept', () => {
   it('rejects an accept body that is not the token', async () => {
     const host = await brokerage()
     const email = uniqueEmail()
-    await host.client.post('/api/v1/invitations', { email, role: 'VIEWER' })
+    await host.client.post('/api/v1/invitations', { email, role: 'COMMERCIAL' })
     const person = new TestClient(app)
     const user = await signedInUser(person, deps, email)
     const token = await tokenFor(email)
@@ -754,7 +772,7 @@ describe('invitation preview and accept', () => {
   it('rejects an accept from a different email', async () => {
     const host = await brokerage()
     const email = uniqueEmail()
-    await host.client.post('/api/v1/invitations', { email, role: 'VIEWER' })
+    await host.client.post('/api/v1/invitations', { email, role: 'COMMERCIAL' })
     const other = new TestClient(app)
     const user = await signedInUser(other, deps)
 
@@ -775,7 +793,7 @@ describe('invitation preview and accept', () => {
   it('rejects an expired invitation', async () => {
     const host = await brokerage()
     const email = uniqueEmail()
-    const created = await host.client.post('/api/v1/invitations', { email, role: 'VIEWER' })
+    const created = await host.client.post('/api/v1/invitations', { email, role: 'COMMERCIAL' })
     await deps.db.withTenant({ organizationId: host.organizationId }, (tx) =>
       tx.invitation.update({
         where: { id: created.json().id as string },
@@ -802,7 +820,7 @@ describe('invitation preview and accept', () => {
     const acceptedEmail = uniqueEmail('aceito')
     const revoked = await host.client.post('/api/v1/invitations', {
       email: revokedEmail,
-      role: 'VIEWER',
+      role: 'COMMERCIAL',
     })
     const accepted = await host.client.post('/api/v1/invitations', {
       email: acceptedEmail,
@@ -841,7 +859,7 @@ describe('invitation preview and accept', () => {
     const blockedEmail = uniqueEmail('sem-vaga')
     const blocked = await full.client.post('/api/v1/invitations', {
       email: blockedEmail,
-      role: 'VIEWER',
+      role: 'COMMERCIAL',
     })
     const blockedUser = new TestClient(app)
     await signedInUser(blockedUser, deps, blockedEmail)
@@ -887,7 +905,7 @@ describe('invitation preview and accept', () => {
     const host = await brokerage()
     const created = await host.client.post('/api/v1/invitations', {
       email: user.email,
-      role: 'VIEWER',
+      role: 'COMMERCIAL',
     })
 
     const response = await person.post('/api/v1/invitations/accept', {
@@ -917,7 +935,7 @@ describe('invitation preview and accept', () => {
     const person = new TestClient(app)
     const user = await signedInUser(person, deps, email)
     await deps.db.withTenant({ organizationId: host.organizationId }, (tx) =>
-      tx.member.create({ data: { userId: user.userId, role: 'VIEWER', active: true } }),
+      tx.member.create({ data: { userId: user.userId, role: 'COMMERCIAL', active: true } }),
     )
 
     const response = await person.post('/api/v1/invitations/accept', {
@@ -935,7 +953,7 @@ describe('invitation preview and accept', () => {
     const emails = [uniqueEmail('corrida-a'), uniqueEmail('corrida-b')]
     for (const email of emails) {
       expect(
-        (await host.client.post('/api/v1/invitations', { email, role: 'VIEWER' })).statusCode,
+        (await host.client.post('/api/v1/invitations', { email, role: 'COMMERCIAL' })).statusCode,
       ).toBe(200)
     }
     const people = await Promise.all(
@@ -985,7 +1003,7 @@ describe('invitation preview and accept', () => {
   it('rolls back the accept when the subscription is missing', async () => {
     const host = await brokerage()
     const email = uniqueEmail()
-    await host.client.post('/api/v1/invitations', { email, role: 'VIEWER' })
+    await host.client.post('/api/v1/invitations', { email, role: 'COMMERCIAL' })
     const person = new TestClient(app)
     const user = await signedInUser(person, deps, email)
     await deps.db.withTenant({ organizationId: host.organizationId }, (tx) =>
@@ -1013,7 +1031,7 @@ describe('invitation preview and accept', () => {
     const host = await brokerage()
     const email = uniqueEmail()
     expect(
-      (await host.client.post('/api/v1/invitations', { email, role: 'VIEWER' })).statusCode,
+      (await host.client.post('/api/v1/invitations', { email, role: 'COMMERCIAL' })).statusCode,
     ).toBe(200)
     const [job] = await emailJobsTo(deps, email, 'invitation')
     const failing = await createTestDeps({ SMTP_URL: 'smtp://127.0.0.1:1' })

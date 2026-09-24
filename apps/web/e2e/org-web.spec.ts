@@ -411,11 +411,11 @@ test.describe('org web', () => {
     await expect(page.getByText('Nome atualizado.')).toHaveCount(0)
   })
 
-  test('shows the brokerage read-only to a viewer', async ({ page, api, baseURL }) => {
+  test('shows the brokerage read-only to a commercial', async ({ page, api, baseURL }) => {
     const owner = await verifiedUser(api)
     const created = await onboard(api, 'Leitura')
     const email = uniqueEmail('viewer')
-    await invite(api, email, 'VIEWER')
+    await invite(api, email, 'COMMERCIAL')
     const viewer = await acceptInvite(baseURL, email)
     const patches: string[] = []
     page.on('request', (request) => {
@@ -471,7 +471,7 @@ test.describe('org web', () => {
     await expect(page.getByRole('link', { name: 'Equipe' })).toBeVisible()
 
     const email = uniqueEmail('viewer')
-    await invite(api, email, 'VIEWER')
+    await invite(api, email, 'COMMERCIAL')
     const viewer = await acceptInvite(baseURL, email)
     await page.context().clearCookies()
     await signIn(page, viewer)
@@ -480,11 +480,11 @@ test.describe('org web', () => {
     await expect(page.getByRole('link', { name: 'Equipe' })).toHaveCount(0)
   })
 
-  test('hides team management from a viewer', async ({ page, api, baseURL }) => {
+  test('hides team management from a commercial', async ({ page, api, baseURL }) => {
     await verifiedUser(api)
     const created = await onboard(api, 'Oculta')
     const email = uniqueEmail('viewer')
-    await invite(api, email, 'VIEWER')
+    await invite(api, email, 'COMMERCIAL')
     const viewer = await acceptInvite(baseURL, email)
     const calls: string[] = []
     page.on('request', (request) => {
@@ -498,32 +498,50 @@ test.describe('org web', () => {
     expect(calls).toEqual([])
   })
 
-  test('shows the owner without role controls', async ({ page, api }) => {
-    const owner = await verifiedUser(api)
-    const created = await onboard(api, 'Dono')
-    await signIn(page, owner)
+  test('shows the last admin message', async ({ page, api }) => {
+    const admin = await verifiedUser(api)
+    const created = await onboard(api, 'Ultimo')
+    await signIn(page, admin)
     await enterApp(page, created.name)
     await page.goto('/settings/members')
-    const row = page.getByRole('listitem').filter({ hasText: owner.email })
-    await expect(page.getByRole('heading', { name: 'Equipe' })).toBeVisible()
-    await expect(row.getByText('Proprietário')).toBeVisible()
-    await expect(row.getByRole('button', { name: 'Desativar' })).toHaveCount(0)
-    await expect(row.getByLabel(`Papel de ${owner.email}`)).toHaveCount(0)
+    const row = page.getByRole('listitem').filter({ hasText: admin.email })
+    const roleText = row.locator('span').getByText('Administrador', { exact: true })
+    await expect(roleText).toBeVisible()
+
+    await row.getByLabel(`Papel de ${admin.email}`).selectOption({ label: 'Gerente' })
+
+    await expect(
+      page.getByText('A corretora precisa de pelo menos um administrador ativo.'),
+    ).toBeVisible()
+    await expect(roleText).toBeVisible()
+    await expect(row.getByLabel(`Papel de ${admin.email}`)).toHaveValue('ADMIN')
+  })
+
+  test('offers only admin, manager and commercial', async ({ page, api }) => {
+    const admin = await verifiedUser(api)
+    const created = await onboard(api, 'Opcoes')
+    await signIn(page, admin)
+    await enterApp(page, created.name)
+    await page.goto('/settings/members')
+    const expected = ['Administrador', 'Gerente', 'Comercial']
+
+    await expect(page.locator('#invite-role option')).toHaveText(expected)
+    await expect(page.getByLabel(`Papel de ${admin.email}`).locator('option')).toHaveText(expected)
   })
 
   test('labels every role', async ({ page, api, baseURL }) => {
-    const owner = await verifiedUser(api)
+    const admin = await verifiedUser(api)
     const created = await onboard(api, 'Rotulos')
-    for (const role of ['ADMIN', 'MANAGER', 'COMMERCIAL', 'VIEWER'] as const) {
+    for (const role of ['MANAGER', 'COMMERCIAL'] as const) {
       const email = uniqueEmail(role.toLowerCase())
       await invite(api, email, role)
       await acceptInvite(baseURL, email)
     }
-    await signIn(page, owner)
+    await signIn(page, admin)
     await enterApp(page, created.name)
     await page.goto('/settings/members')
     const members = page.getByRole('list').first()
-    for (const label of ['Proprietário', 'Administrador', 'Gerente', 'Comercial', 'Visualizador']) {
+    for (const label of ['Administrador', 'Gerente', 'Comercial']) {
       await expect(members.locator('span', { hasText: label })).toBeVisible()
     }
   })

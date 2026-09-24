@@ -9,9 +9,7 @@ export type AcceptInvitation200Role = typeof AcceptInvitation200Role[keyof typeo
 
 
 export const AcceptInvitation200Role = {
-  OWNER: 'OWNER',
   ADMIN: 'ADMIN',
   MANAGER: 'MANAGER',
   COMMERCIAL: 'COMMERCIAL',
-  VIEWER: 'VIEWER',
 } as const;

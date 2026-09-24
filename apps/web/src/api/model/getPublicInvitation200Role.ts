@@ -9,9 +9,7 @@ export type GetPublicInvitation200Role = typeof GetPublicInvitation200Role[keyof
 
 
 export const GetPublicInvitation200Role = {
-  OWNER: 'OWNER',
   ADMIN: 'ADMIN',
   MANAGER: 'MANAGER',
   COMMERCIAL: 'COMMERCIAL',
-  VIEWER: 'VIEWER',
 } as const;

@@ -9,9 +9,7 @@ export type ListInvitations200ItemsItemRole = typeof ListInvitations200ItemsItem
 
 
 export const ListInvitations200ItemsItemRole = {
-  OWNER: 'OWNER',
   ADMIN: 'ADMIN',
   MANAGER: 'MANAGER',
   COMMERCIAL: 'COMMERCIAL',
-  VIEWER: 'VIEWER',
 } as const;

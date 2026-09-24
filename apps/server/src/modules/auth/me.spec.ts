@@ -67,7 +67,7 @@ describe('GET /api/v1/me', () => {
     await acceptCurrentTerms(client)
     const created = await client.post('/api/v1/onboarding', { name: 'Meu Papel' })
     const organizationId = created.json().id as string
-    const roles: Role[] = ['OWNER', 'ADMIN', 'MANAGER', 'COMMERCIAL', 'VIEWER']
+    const roles: Role[] = ['ADMIN', 'MANAGER', 'COMMERCIAL']
 
     for (const role of roles) {
       await deps.db.withTenant({ organizationId }, (tx) =>
@@ -230,8 +230,8 @@ describe('GET /api/v1/me', () => {
     expect(alfa.statusCode).toBe(200)
     expect(beta.statusCode).toBe(200)
     expect((await named.get('/api/v1/me')).json().organizations).toEqual([
-      { id: alfa.json().id, name: 'Alfa', role: 'OWNER' },
-      { id: beta.json().id, name: 'Beta', role: 'OWNER' },
+      { id: alfa.json().id, name: 'Alfa', role: 'ADMIN' },
+      { id: beta.json().id, name: 'Beta', role: 'ADMIN' },
     ])
 
     const owner = new TestClient(app)
@@ -266,8 +266,8 @@ describe('GET /api/v1/me', () => {
     const ids = [first.json().id as string, second.json().id as string].toSorted()
 
     expect((await guest.get('/api/v1/me')).json().organizations).toEqual([
-      { id: ids[0], name: 'Igual', role: 'OWNER' },
-      { id: ids[1], name: 'Igual', role: 'OWNER' },
+      { id: ids[0], name: 'Igual', role: 'ADMIN' },
+      { id: ids[1], name: 'Igual', role: 'ADMIN' },
     ])
   })
 })

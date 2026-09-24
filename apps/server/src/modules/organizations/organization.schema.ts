@@ -10,7 +10,8 @@ export const onboardOutput = z
     id: z.uuid(),
     name: z.string(),
     slug: z.string(),
-    role: z.literal('OWNER'),
+    publicChatKey: z.string(),
+    role: z.literal('ADMIN'),
   })
   .strict()
 

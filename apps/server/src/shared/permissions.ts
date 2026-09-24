@@ -1,4 +1,5 @@
-export const ROLES = ['OWNER', 'ADMIN', 'MANAGER', 'COMMERCIAL', 'VIEWER'] as const
+// ADR-016: the MVP roles. The creator of an organization is an ADMIN, and at least one ADMIN stays active.
+export const ROLES = ['ADMIN', 'MANAGER', 'COMMERCIAL'] as const
 
 export type Role = (typeof ROLES)[number]
 
@@ -13,13 +14,6 @@ export const PERMISSIONS = [
 export type Permission = (typeof PERMISSIONS)[number]
 
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
-  OWNER: [
-    'organization:read',
-    'organization:update',
-    'invitation:create',
-    'member:update',
-    'portfolio:transfer',
-  ],
   ADMIN: [
     'organization:read',
     'organization:update',
@@ -29,7 +23,6 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   ],
   MANAGER: ['organization:read'],
   COMMERCIAL: ['organization:read'],
-  VIEWER: ['organization:read'],
 }
 
 export function permissionsFor(role: Role): readonly Permission[] {

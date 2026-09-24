@@ -9,9 +9,7 @@ export type SetActiveOrganization200Role = typeof SetActiveOrganization200Role[k
 
 
 export const SetActiveOrganization200Role = {
-  OWNER: 'OWNER',
   ADMIN: 'ADMIN',
   MANAGER: 'MANAGER',
   COMMERCIAL: 'COMMERCIAL',
-  VIEWER: 'VIEWER',
 } as const;

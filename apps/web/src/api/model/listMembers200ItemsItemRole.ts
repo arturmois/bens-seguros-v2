@@ -9,9 +9,7 @@ export type ListMembers200ItemsItemRole = typeof ListMembers200ItemsItemRole[key
 
 
 export const ListMembers200ItemsItemRole = {
-  OWNER: 'OWNER',
   ADMIN: 'ADMIN',
   MANAGER: 'MANAGER',
   COMMERCIAL: 'COMMERCIAL',
-  VIEWER: 'VIEWER',
 } as const;

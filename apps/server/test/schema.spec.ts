@@ -1,3 +1,4 @@
+import { randomBytes, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import type pg from 'pg'
 import { beforeAll, describe, expect, it } from 'vitest'
@@ -357,6 +358,75 @@ describe('Member', () => {
       ]),
     )
   })
+
+  // ADR-016: the MVP has three roles; OWNER and VIEWER left the enum.
+  it('Role holds only ADMIN, MANAGER and COMMERCIAL', async () => {
+    const { rows } = await withOwnerClient((client) =>
+      client.query<{ label: string }>(
+        `SELECT e.enumlabel AS label
+           FROM pg_enum e
+           JOIN pg_type t ON t.oid = e.enumtypid
+           JOIN pg_namespace n ON n.oid = t.typnamespace
+          WHERE n.nspname = $1 AND t.typname = 'Role'
+          ORDER BY e.enumsortorder`,
+        [workerSchema()],
+      ),
+    )
+
+    expect(rows.map((row) => row.label)).toEqual(['ADMIN', 'MANAGER', 'COMMERCIAL'])
+  })
+
+  // "At least one active ADMIN" is enforced by the use case; the single-OWNER index is gone.
+  it('has no Member_one_owner index', async () => {
+    const { rows } = await withOwnerClient((client) =>
+      client.query<{ name: string }>(
+        `SELECT indexname AS name FROM pg_indexes
+          WHERE schemaname = $1 AND tablename = 'Member'`,
+        [workerSchema()],
+      ),
+    )
+
+    expect(rows.map((row) => row.name)).not.toContain('Member_one_owner')
+    expect(rows.map((row) => row.name)).toContain('Member_organizationId_userId_key')
+  })
+})
+
+describe('Organization', () => {
+  // ADR-014: the public chat key resolves the tenant, so no two organizations share one.
+  it('publicChatKey is unique across organizations', async () => {
+    const schema = workerSchema()
+    const key = randomBytes(16).toString('hex')
+    const insert = (client: pg.Client) =>
+      client.query(
+        `INSERT INTO "${schema}"."Organization" ("id", "name", "slug", "publicChatKey", "updatedAt")
+         VALUES ($1, 'Chave', $2, $3, now())`,
+        [randomUUID(), `chave-${randomUUID()}`, key],
+      )
+
+    const error = await withOwnerClient(async (client) => {
+      await insert(client)
+      return insert(client).then(
+        () => undefined,
+        (reason: unknown) => reason,
+      )
+    })
+
+    expect(error).toMatchObject({ code: '23505', constraint: 'Organization_publicChatKey_key' })
+
+    const missing = await withOwnerClient((client) =>
+      client
+        .query(
+          `INSERT INTO "${schema}"."Organization" ("id", "name", "slug", "updatedAt")
+           VALUES ($1, 'Sem chave', $2, now())`,
+          [randomUUID(), `sem-chave-${randomUUID()}`],
+        )
+        .then(
+          () => undefined,
+          (reason: unknown) => reason,
+        ),
+    )
+    expect(missing).toMatchObject({ code: '23502', column: 'publicChatKey' })
+  })
 })
 
 describe('tenant-scoped relations', () => {
@@ -421,8 +491,9 @@ describe('identity tables', () => {
       const {
         rows: [organization],
       } = await client.query<{ id: string }>(
-        `INSERT INTO "${schema}"."Organization" (id, name, slug, "updatedAt")
-         VALUES (gen_random_uuid(), 'Apagada', gen_random_uuid()::text, now()) RETURNING id`,
+        `INSERT INTO "${schema}"."Organization" (id, name, slug, "publicChatKey", "updatedAt")
+         VALUES (gen_random_uuid(), 'Apagada', gen_random_uuid()::text,
+                 replace(gen_random_uuid()::text, '-', ''), now()) RETURNING id`,
       )
       const {
         rows: [user],

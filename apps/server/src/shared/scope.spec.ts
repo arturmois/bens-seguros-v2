@@ -10,7 +10,7 @@ function context(role: Role): Pick<RequestContext, 'role' | 'userId'> {
 describe('scopeFor', () => {
   it('scopes only the commercial role to their user', () => {
     expect(scopeFor(context('COMMERCIAL'))).toEqual({ salespersonId: 'user-1' })
-    for (const role of ['OWNER', 'ADMIN', 'MANAGER', 'VIEWER'] as const) {
+    for (const role of ['ADMIN', 'MANAGER'] as const) {
       expect(scopeFor(context(role)), role).toEqual({})
     }
   })

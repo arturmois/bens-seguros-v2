@@ -36,8 +36,8 @@ beforeAll(async () => {
       data: { name: 'Dup', email: `dup-${randomUUID()}@example.com` },
     })
     await db.withTenant(contextFor(organization.id), async (tx) => {
-      await tx.member.create({ data: { userId: user.id, role: 'VIEWER' } })
-      await tx.member.create({ data: { userId: user.id, role: 'VIEWER' } })
+      await tx.member.create({ data: { userId: user.id, role: 'COMMERCIAL' } })
+      await tx.member.create({ data: { userId: user.id, role: 'COMMERCIAL' } })
     })
   })
   app.post('/test/row-security', async () => {
@@ -46,7 +46,7 @@ beforeAll(async () => {
       data: { name: 'Intruso', email: `intruso-${randomUUID()}@example.com` },
     })
     await db.withTenant(contextFor(own.id), (tx) =>
-      tx.member.create({ data: { userId: user.id, organizationId: other.id, role: 'VIEWER' } }),
+      tx.member.create({ data: { userId: user.id, organizationId: other.id, role: 'COMMERCIAL' } }),
     )
   })
   app.get('/test/crash', async () => {

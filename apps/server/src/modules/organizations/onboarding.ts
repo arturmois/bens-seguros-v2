@@ -6,6 +6,7 @@ import { record } from '../audit/index.ts'
 import { assignActiveOrganization } from '../auth/index.ts'
 import { startTrial } from '../billing/index.ts'
 import { assertOrgLimit } from './membership.ts'
+import { newPublicChatKey } from './public-chat-key.ts'
 import { slugCandidate, slugFromName } from './slug.ts'
 
 const MAX_SLUG_ATTEMPTS = 20
@@ -26,21 +27,22 @@ export async function onboard(
   for (let attempt = 1; attempt <= MAX_SLUG_ATTEMPTS; attempt++) {
     const id = uuidv7()
     const slug = slugCandidate(base, attempt)
+    const publicChatKey = newPublicChatKey()
     try {
       await deps.db.withTenant({ organizationId: id }, async (tx) => {
-        await tx.organization.create({ data: { id, name: input.name, slug } })
+        await tx.organization.create({ data: { id, name: input.name, slug, publicChatKey } })
         await tx.member.create({
-          data: { userId: user.userId, role: 'OWNER', active: true },
+          data: { userId: user.userId, role: 'ADMIN', active: true },
         })
         await startTrial(tx, now)
         await assignActiveOrganization(tx, user.sessionId, id)
         await record(tx, user, {
           action: 'organization.create',
           entityId: id,
-          changes: { role: 'OWNER' },
+          changes: { role: 'ADMIN' },
         })
       })
-      return { id, name: input.name, slug, role: 'OWNER' as const }
+      return { id, name: input.name, slug, publicChatKey, role: 'ADMIN' as const }
     } catch (error) {
       if (isUniqueViolation(error) && attempt < MAX_SLUG_ATTEMPTS) continue
       throw error

@@ -40,7 +40,7 @@ describe('audit.record', () => {
           password: 'secret',
           ipAddress: '127.0.0.1',
           userAgent: 'test',
-          role: ['VIEWER', 'ADMIN'],
+          role: ['COMMERCIAL', 'ADMIN'],
           contact: { email: 'nested@x.com', name: 'N', role: 'ADMIN' },
         },
       }),
@@ -59,7 +59,7 @@ describe('audit.record', () => {
       password: '[alterado]',
       ipAddress: '[alterado]',
       userAgent: '[alterado]',
-      role: ['VIEWER', 'ADMIN'],
+      role: ['COMMERCIAL', 'ADMIN'],
       contact: { email: '[alterado]', name: '[alterado]', role: 'ADMIN' },
     })
   })
@@ -70,7 +70,7 @@ describe('audit.record', () => {
       record(tx, ctx, {
         action: 'member.update',
         entityId: ctx.userId,
-        changes: { role: ['VIEWER', 'ADMIN'] },
+        changes: { role: ['COMMERCIAL', 'ADMIN'] },
       }),
     )
 
@@ -89,7 +89,7 @@ describe('audit.record', () => {
         record(tx, ctx, {
           action: 'member.update',
           entityId: ctx.userId,
-          changes: { role: ['VIEWER', 'ADMIN'], nested: { value: null } },
+          changes: { role: ['COMMERCIAL', 'ADMIN'], nested: { value: null } },
         }),
       ),
     ).rejects.toThrow('changes.nested.value')
@@ -123,7 +123,7 @@ describe('audit.record', () => {
       record(tx, ctx, {
         action: 'member.update',
         entityId: ctx.userId,
-        changes: { role: ['VIEWER', 'ADMIN'] },
+        changes: { role: ['COMMERCIAL', 'ADMIN'] },
       }),
     )
 

@@ -5,7 +5,7 @@ Plan: `.specs/features/f1-identity/plan.md`
 
 Provas do server rodam em `apps/server` (`pnpm exec vitest run <arquivo> -t "<nome>"`); as do web, em `apps/web` (`pnpm exec playwright test <arquivo> -g "<nome>"`).
 
-47 checks in 4 slices · 5 one-way doors · 0 open
+46 checks in 4 slices · 5 one-way doors · 0 open
 
 ## Checks
 
@@ -23,9 +23,6 @@ Proof: `src/modules/organizations/member.spec.ts -t "rejects OWNER and VIEWER as
 
 **C4** - `POST /api/v1/invitations` com `role` `OWNER` e com `role` `VIEWER` responde `400` e não cria convite (AC 1)
 Proof: `src/modules/organizations/invitation.spec.ts -t "rejects OWNER and VIEWER as an invitation role"`
-
-**C5** - Com o banco migrado até a migration anterior e semeado com `Member` e `Invitation` em `OWNER`, `ADMIN`, `MANAGER`, `COMMERCIAL` e `VIEWER`, aplicar `mvp_roles` deixa `OWNER`→`ADMIN`, `VIEWER`→`COMMERCIAL` e os outros três como estavam, nas duas tabelas (door 1, AC 3)
-Proof: `test/migrations.spec.ts -t "mvp_roles turns OWNER into ADMIN and VIEWER into COMMERCIAL"`
 
 **C6** - Numa organização com um só ADMIN ativo, `PATCH` com `{ role: 'MANAGER' }` nele responde `422` `{ code: 'LAST_ADMIN', message: 'A corretora precisa de pelo menos um administrador ativo.' }`; o membro continua `ADMIN` ativo e nenhuma linha de `member.update` é gravada (door 5, AC 4)
 Proof: `src/modules/organizations/member.spec.ts -t "refuses to demote the last active admin"`
@@ -65,12 +62,9 @@ Proof: `src/modules/organizations/onboarding.spec.ts -t "makes the creator an ad
 **C16** - O onboarding registra `organization.create` com `changes` igual a `{ role: 'ADMIN' }` (AC 9)
 Proof: `src/modules/organizations/onboarding.spec.ts -t "records organization.create"`
 
-**C17** - Três onboardings seguidos produzem três `publicChatKey` distintos, e um `INSERT` direto de uma segunda `Organization` com o `publicChatKey` de outra falha por violação de unicidade (door 2, AC 10)
+**C17** - Três onboardings seguidos produzem três `publicChatKey` distintos, um `INSERT` direto de uma segunda `Organization` com o `publicChatKey` de outra falha por violação de unicidade, e um sem `publicChatKey` falha por `NOT NULL` (door 2, AC 10, AC 11)
 Proof: `src/modules/organizations/onboarding.spec.ts -t "gives each organization its own public chat key"`
 Proof: `test/schema.spec.ts -t "publicChatKey is unique across organizations"`
-
-**C18** - Com o banco migrado até a migration anterior e três organizações semeadas, aplicar a migration deixa cada uma com um `publicChatKey` de 32 caracteres hex minúsculos, os três distintos, e a coluna `NOT NULL` (door 2, AC 11)
-Proof: `test/migrations.spec.ts -t "gives every existing organization a distinct public chat key"`
 
 **C19** - `GET /api/v1/organization` devolve `publicChatKey`, `brandColor`, `greeting` e `logoUpdatedAt` da organização ativa para `ADMIN`, `MANAGER` e `COMMERCIAL`; para o tenant B, o corpo nunca traz o `publicChatKey` do tenant A (`withTwoTenants`) (AC 12)
 Proof: `src/modules/organizations/organization.spec.ts -t "returns the active organization for every role"`
@@ -156,8 +150,12 @@ Proof: `bash -c 'grep -qE "Member \[existe\] +role ADMIN \| MANAGER \| COMMERCIA
 **C44** - Na seção F2 de `docs/roadmap.md` aparece "canal Web Chat padrão", e na F1 não
 Proof: `bash -c 'awk "/^## F2 /,/^## Marco/" docs/roadmap.md | grep -q "canal Web Chat padrão" && ! awk "/^## F1 /,/^## S1 /" docs/roadmap.md | grep -q "canal Web Chat padrão"'`
 
-**C45** - Nenhum arquivo de código do server ou do web (fora do gerado) cita `OWNER`, `VIEWER`, `OWNER_IMMUTABLE` ou `Member_one_owner`, fora das migrations antigas e do teste da migration
-Proof: `bash -c '! grep -rnE "OWNER|VIEWER|Member_one_owner" apps/server/src apps/server/test apps/web/src apps/web/e2e --exclude-dir=generated --exclude-dir=api --exclude=migrations.spec.ts'`
+**C45** - Nenhum arquivo de código do server ou do web que não seja teste (fora do gerado) cita `OWNER`, `VIEWER`, `OWNER_IMMUTABLE` ou `Member_one_owner`; os testes só os citam como entrada recusada (C3, C4)
+Proof: `bash -c '! grep -rnE "OWNER|VIEWER|Member_one_owner" apps/server/src apps/web/src --exclude-dir=generated --exclude-dir=api --exclude="*.spec.ts" --exclude="*.spec.tsx"'`
+
+**C48** - `apps/server/prisma/migrations` tem exatamente uma migration, `20260924120000_init`, e ela contém `Invitation_pending_email`, o seed do plano `trial` e `ENABLE`/`FORCE ROW LEVEL SECURITY` para `Member`, `Organization`, `Subscription`, `Invitation` e `AuditLog` (door 1)
+Proof: `bash -c 'cd apps/server/prisma/migrations && test "$(ls -d */ | tr -d /)" = 20260924120000_init && f=20260924120000_init/migration.sql && grep -q "Invitation_pending_email" $f && grep -q "0000000000aa., .trial." $f && for t in Member Organization Subscription Invitation AuditLog; do grep -q "ALTER TABLE \"$t\" FORCE ROW LEVEL SECURITY" $f || exit 1; done'`
+Proof: `test/schema.spec.ts -t "every tenant table is protected by row security"`
 
 **C46** - Com o docker compose no ar, o gate do repositório passa depois do último commit, e o `pnpm api:generate` não deixa diff em `apps/web/src/api`
 Proof: `pnpm lint && pnpm typecheck && pnpm test && pnpm build`
@@ -179,7 +177,7 @@ Proof: `src/modules/organizations/invitation.spec.ts -t "rejects a second pendin
 | Set (size) | Member -> proof | Unproven |
 | --- | --- | --- |
 | papéis do MVP (3) | `ADMIN` C1, C2 · `MANAGER` C1, C2 · `COMMERCIAL` C1, C2 | - |
-| papéis que saem (2) | `OWNER` C2, C3, C4, C5, C45 · `VIEWER` C2, C3, C4, C5, C45 | - |
+| papéis que saem (2) | `OWNER` C2, C3, C4, C45 · `VIEWER` C2, C3, C4, C45 | - |
 | guarda do último ADMIN (5 linhas) | rebaixar o único ativo C6 · desativar o único ativo C7 · rebaixar com outro ativo C8 · alvo inativo ou não-ADMIN C9 · corrida C10 | - |
 | lugares de papel no web (2) | convite C13 · alteração de membro C13, C14 | - |
 | tipos de logo (8) | PNG C29, C30 · JPEG C29, C30 · WebP C29, C30 · SVG C29, C33 · GIF C29 · texto C29, C33 · RIFF sem WEBP C29 · vazio C29 | - |
@@ -196,12 +194,12 @@ Proof: `src/modules/organizations/invitation.spec.ts -t "rejects a second pendin
 | `GET /api/v1/organization/logo` statuses (5) | 200 C35 · 304 C35 · 401 C38 · 403 C38 · 404 C36 | - |
 | `PATCH /api/v1/members/:id` statuses (6) | 200 C8 · 400 C3 · 401 C12 · 403 C12 · 404 C12 · 422 C6, C7 | - |
 | `POST /api/v1/invitations` statuses (6) | 200 C47 · 400 C4 · 401 C47 · 403 C47 · 409 C47 · 422 C47 | - |
-| doors (5) | 1 C2, C5 · 2 C15, C17, C18 · 3 C19, C20 · 4 C29, C32, C33 · 5 C6, C7, C9, C10 | - |
+| doors (5) | 1 C2, C48 · 2 C15, C17 · 3 C19, C20 · 4 C29, C32, C33 · 5 C6, C7, C9, C10 | - |
 | testes do v2 substituídos (2) | "rejects a change to the owner" → C6, C7 · "keeps a single owner when two inserts race" → C10 (o índice que ele provava sai na door 1) | - |
 
 - Claims naming a status code, route or response shape: C3, C4, C6–C12, C15, C19, C20, C22–C28, C30–C38 - cada um tem prova que cruza a fronteira HTTP (`app.inject`)
 - Nenhum outro check afirma mais do que o caso que a própria prova exercita
-- C5 e C18 rodam a migration de verdade num schema próprio, semeado antes: um `UPDATE` ausente ou um backfill constante deixa linha em `OWNER` ou chave repetida
+- A conversão de dados das migrations não tem prova: sem produção nem staging publicado, o usuário dispensou o teste (2026-09-24)
 
 ## Test policy
 
@@ -217,10 +215,10 @@ Evidence:
 - detecção do tipo do logo: 3 assinaturas aceitas + recusa, 4 branch points -> decides, na própria camada C29 e na fronteira C30, C33
 - guarda do último ADMIN: alvo ADMIN ativo × mudança tira o papel ou a atividade × contagem, 3 branch points -> decides; o lock só existe na transação, então a prova é na fronteira, uma por linha (C6, C7, C8, C9, C10). Precedente: `member.spec.ts` "keeps a single reactivation when two race for the last seat"
 - validação de cor e saudação: Zod na borda -> entry point, provado por entrada aceita e cada recusa (C24–C27)
-- migration: SQL que decide por valor do enum -> decides, provada rodando sobre dados semeados (C5, C18); o repo não tinha teste de migration com dados, e o `test/migrations.spec.ts` é o primeiro, no padrão do `setup-db.ts` (schema próprio, owner aplica)
+- migration: o resultado no catálogo é provado (C2, C17); a conversão de dados locais não, por decisão do usuário
 - `GET /organization` com campos novos: select -> instrumentation, provada pelo consumidor (C19, C20)
 
-Cost: um arquivo de teste novo de migration e um unitário de magic bytes, além das provas na fronteira. Sem eles, o `UPDATE` da migration e a tabela de tipos só seriam provados por um caminho que não exercita cada linha.
+Cost: um unitário de magic bytes, além das provas na fronteira. Sem ele, a tabela de tipos só seria provada por um caminho que não exercita cada linha.
 
 ## Swept
 
@@ -229,7 +227,7 @@ Cost: um arquivo de teste novo de migration e um unitário de magic bytes, além
 - idempotency: C35 (ETag/304); o `PATCH` de branding é idempotente por natureza (C27)
 - authorization: C28, C38; `requirePermission` obrigatório já é provado pelo boot (`app.spec.ts` "fails startup when an api v1 route omits requirePermission")
 - concurrency: C10
-- data lifecycle: C5, C18 (dados existentes convertidos e preenchidos), C37 (remoção do logo)
+- data lifecycle: C37 (remoção do logo); conversão de dados existentes n/a - sem produção nem staging publicado (decisão do usuário)
 - dependency failure: n/a - nenhuma dependência externa nova; o logo mora no PostgreSQL
 - state transitions: C6, C7, C8, C9 (papel e atividade do membro sob a guarda)
 - observability: C23, C31 (auditoria sem PII e sem bytes); nenhum log novo
@@ -237,3 +235,6 @@ Cost: um arquivo de teste novo de migration e um unitário de magic bytes, além
 ## Handoff
 
 - S1 ≈ 14 arquivos (permissions + spec, member + schema + spec, invitation schema + spec, onboarding, schema.prisma, migration, schema.spec, factories, labels.ts, members.tsx, org-web e2e) ≈ 140 KB ≈ 35k; S2 entra em onboarding/organization + web settings a ≈ 55k; S3 em branding/logo + e2e a ≈ 73k; S4 docs a ≈ 88k, abaixo do budget de 150k - one builder
+- **Settled mid-build:** C45 restrito a código que não é teste - na forma original ele contradizia C3 e C4, que precisam enviar `OWNER` e `VIEWER` como entrada recusada
+- **Settled mid-build:** C5 e C18 (e `test/migrations.spec.ts`) removidos a pedido do usuário: sem produção, a conversão de dados da migration não precisa de teste. AC 3 e AC 11 passaram a descrever só o estado final do schema (C2, C17)
+- **Settled mid-build:** a pedido do usuário, todas as migrations viraram uma só (`20260924120000_init`), gerada do `schema.prisma` + SQL manual (RLS, políticas, índice parcial, seed). Catálogo comparado com a cadeia antiga + F1 via `pg_dump -s`: só muda a ordem de colunas. Novo C48

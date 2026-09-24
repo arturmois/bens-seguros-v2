@@ -1,15 +1,13 @@
 import { z } from 'zod'
 import { ROLES } from '../../shared/permissions.ts'
 
-export const INVITABLE_ROLES = ['ADMIN', 'MANAGER', 'COMMERCIAL', 'VIEWER'] as const
-
-const invitableRole = z.enum(INVITABLE_ROLES)
+const role = z.enum(ROLES)
 const invitationStatus = z.enum(['PENDING', 'ACCEPTED', 'REVOKED', 'EXPIRED'])
 
 export const createInvitationInput = z
   .object({
     email: z.email(),
-    role: invitableRole,
+    role,
   })
   .strict()
 
@@ -17,7 +15,7 @@ export const invitationOutput = z
   .object({
     id: z.uuid(),
     email: z.email(),
-    role: invitableRole,
+    role,
     expiresAt: z.iso.datetime(),
     status: z.literal('PENDING'),
   })
@@ -30,7 +28,7 @@ export const invitationListOutput = z
         .object({
           id: z.uuid(),
           email: z.email(),
-          role: z.enum(ROLES),
+          role,
           expiresAt: z.iso.datetime(),
         })
         .strict(),
@@ -53,7 +51,7 @@ export const invitationPreviewOutput = z
   .object({
     organizationName: z.string(),
     email: z.email(),
-    role: z.enum(ROLES),
+    role,
     status: invitationStatus,
     expiresAt: z.iso.datetime(),
   })
@@ -64,6 +62,6 @@ export const acceptInvitationInput = z.object({ token: z.string().min(1) }).stri
 export const acceptInvitationOutput = z
   .object({
     organizationId: z.uuid(),
-    role: z.enum(ROLES),
+    role,
   })
   .strict()

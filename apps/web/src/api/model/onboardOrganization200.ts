@@ -11,5 +11,6 @@ export type OnboardOrganization200 = {
   id: string;
   name: string;
   slug: string;
+  publicChatKey: string;
   role: OnboardOrganization200Role;
 };

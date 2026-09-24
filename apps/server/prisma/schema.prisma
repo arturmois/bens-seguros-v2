@@ -13,11 +13,19 @@ datasource db {
 // Tenant root. No `organizationId` of its own: visibility is the `tenant_isolation` policy in
 // AD-006 (the id matches the transaction tenant, or the caller has a Member row).
 model Organization {
-  id        String   @id @default(uuid(7)) @db.Uuid
-  name      String
-  slug      String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String    @id @default(uuid(7)) @db.Uuid
+  name          String
+  slug          String    @unique
+  // ADR-014: the capability in the public Web Chat link (`/c/<publicChatKey>`), 32 hex characters.
+  publicChatKey String    @unique
+  // Branding for the Web Chat. The logo is read only by `GET /api/v1/organization/logo`.
+  brandColor    String?
+  greeting      String?
+  logo          Bytes?
+  logoMimeType  String?
+  logoUpdatedAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   members      Member[]
   invitations  Invitation[]
@@ -28,15 +36,13 @@ model Organization {
 }
 
 enum Role {
-  OWNER
   ADMIN
   MANAGER
   COMMERCIAL
-  VIEWER
 }
 
 // Tenant-scoped (ADR-004, AD-006). `organizationId` defaults to the transaction tenant.
-// One OWNER per organization is a partial unique index in the migration (`Member_one_owner`).
+// At least one active ADMIN per organization is enforced by `updateMember` (ADR-016).
 model Member {
   id             String   @id @default(uuid(7)) @db.Uuid
   organizationId String   @default(dbgenerated("(current_setting('app.tenant_id'::text))::uuid")) @db.Uuid

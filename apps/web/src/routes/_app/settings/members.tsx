@@ -187,35 +187,30 @@ function MemberRow({
   onRole: (role: AssignableRole) => void
   onTransfer: () => void
 }) {
-  const isOwner = member.role === 'OWNER'
   return (
     <li className="flex flex-wrap items-center justify-between gap-3 border-b py-3">
       <span>{member.name}</span>
       <span>{member.email}</span>
       <span>{roleLabel(member.role)}</span>
       <span>{member.active ? 'Ativo' : 'Inativo'}</span>
-      {isOwner ? null : (
-        <select
-          aria-label={`Papel de ${member.email}`}
-          value={member.role}
-          onChange={(event) => {
-            const role = event.target.value
-            if (isAssignable(role)) onRole(role)
-          }}
-        >
-          {ASSIGNABLE_ROLES.map((role) => (
-            <option key={role} value={role}>
-              {roleLabel(role)}
-            </option>
-          ))}
-        </select>
-      )}
-      {isOwner ? null : (
-        <Button type="button" variant="outline" onClick={onDeactivate}>
-          Desativar
-        </Button>
-      )}
-      {isOwner || !member.active ? null : (
+      <select
+        aria-label={`Papel de ${member.email}`}
+        value={member.role}
+        onChange={(event) => {
+          const role = event.target.value
+          if (isAssignable(role)) onRole(role)
+        }}
+      >
+        {ASSIGNABLE_ROLES.map((role) => (
+          <option key={role} value={role}>
+            {roleLabel(role)}
+          </option>
+        ))}
+      </select>
+      <Button type="button" variant="outline" onClick={onDeactivate}>
+        Desativar
+      </Button>
+      {!member.active ? null : (
         <Button type="button" variant="outline" onClick={onTransfer}>
           Transferir carteira
         </Button>

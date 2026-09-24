@@ -86,9 +86,9 @@ describe('PATCH /api/v1/members/:id', () => {
   it('changes a member role and records the audit', async () => {
     const host = await brokerage()
     const admin = await colleague(host.organizationId, 'ADMIN')
-    const target = await addMember(host.organizationId, 'VIEWER')
-    const roles = ['ADMIN', 'MANAGER', 'COMMERCIAL', 'VIEWER'] as const
-    let previous: Role = 'VIEWER'
+    const target = await addMember(host.organizationId, 'COMMERCIAL')
+    const roles = ['ADMIN', 'MANAGER', 'COMMERCIAL'] as const
+    let previous: Role = 'COMMERCIAL'
 
     for (const caller of [host, admin]) {
       for (const role of roles) {
@@ -113,7 +113,7 @@ describe('PATCH /api/v1/members/:id', () => {
 
   it('deactivates a member', async () => {
     const host = await brokerage()
-    const target = await addMember(host.organizationId, 'VIEWER')
+    const target = await addMember(host.organizationId, 'COMMERCIAL')
 
     const response = await host.client.patch(`/api/v1/members/${target.member.id}`, {
       active: false,
@@ -128,7 +128,7 @@ describe('PATCH /api/v1/members/:id', () => {
 
   it('reactivates a member under the seat cap', async () => {
     const host = await brokerage()
-    const target = await addMember(host.organizationId, 'VIEWER', false)
+    const target = await addMember(host.organizationId, 'COMMERCIAL', false)
 
     const response = await host.client.patch(`/api/v1/members/${target.member.id}`, {
       active: true,
@@ -143,7 +143,7 @@ describe('PATCH /api/v1/members/:id', () => {
 
   it('cites the organization when the subscription is missing on reactivation', async () => {
     const host = await brokerage()
-    const target = await addMember(host.organizationId, 'VIEWER', false)
+    const target = await addMember(host.organizationId, 'COMMERCIAL', false)
     await deps.db.withTenant({ organizationId: host.organizationId }, (tx) =>
       tx.subscription.deleteMany(),
     )
@@ -153,8 +153,8 @@ describe('PATCH /api/v1/members/:id', () => {
       sessionId: randomUUID(),
       isSuperAdmin: false,
       organizationId: host.organizationId,
-      role: 'OWNER' as const,
-      permissions: permissionsFor('OWNER'),
+      role: 'ADMIN' as const,
+      permissions: permissionsFor('ADMIN'),
     }
 
     await expect(
@@ -169,7 +169,7 @@ describe('PATCH /api/v1/members/:id', () => {
   it('rejects a reactivation past the seat cap', async () => {
     const host = await brokerage()
     for (let i = 0; i < 4; i++) await addMember(host.organizationId)
-    const target = await addMember(host.organizationId, 'VIEWER', false)
+    const target = await addMember(host.organizationId, 'COMMERCIAL', false)
     const before = await auditsOf(host.organizationId, target.member.id)
 
     const response = await host.client.patch(`/api/v1/members/${target.member.id}`, {
@@ -186,15 +186,15 @@ describe('PATCH /api/v1/members/:id', () => {
     })
     const member = await memberOf(host.organizationId, target.member.id)
     expect(member.active).toBe(false)
-    expect(member.role).toBe('VIEWER')
+    expect(member.role).toBe('COMMERCIAL')
     expect(await auditsOf(host.organizationId, target.member.id)).toEqual(before)
   })
 
   it('keeps a single reactivation when two race for the last seat', async () => {
     const host = await brokerage()
     for (let i = 0; i < 3; i++) await addMember(host.organizationId)
-    const first = await addMember(host.organizationId, 'VIEWER', false)
-    const second = await addMember(host.organizationId, 'VIEWER', false)
+    const first = await addMember(host.organizationId, 'COMMERCIAL', false)
+    const second = await addMember(host.organizationId, 'COMMERCIAL', false)
 
     const results = await Promise.all(
       [first, second].map((target) =>
@@ -213,31 +213,134 @@ describe('PATCH /api/v1/members/:id', () => {
     expect(active).toBe(5)
   })
 
-  it('rejects a change to the owner', async () => {
+  it('rejects OWNER and VIEWER as a member role', async () => {
+    const host = await brokerage()
+    const target = await addMember(host.organizationId, 'COMMERCIAL')
+
+    for (const role of ['OWNER', 'VIEWER']) {
+      const response = await host.client.patch(`/api/v1/members/${target.member.id}`, { role })
+      expect(response.statusCode, role).toBe(400)
+    }
+
+    expect((await memberOf(host.organizationId, target.member.id)).role).toBe('COMMERCIAL')
+  })
+
+  it('refuses to demote the last active admin', async () => {
+    const host = await brokerage()
+    await addMember(host.organizationId, 'MANAGER')
+    const before = await auditsOf(host.organizationId, host.memberId)
+
+    const response = await host.client.patch(`/api/v1/members/${host.memberId}`, {
+      role: 'MANAGER',
+    })
+
+    expect(response.statusCode).toBe(422)
+    expect(response.json()).toEqual({
+      error: {
+        code: 'LAST_ADMIN',
+        message: 'A corretora precisa de pelo menos um administrador ativo.',
+      },
+    })
+    expect(await memberOf(host.organizationId, host.memberId)).toMatchObject({
+      role: 'ADMIN',
+      active: true,
+    })
+    expect(await auditsOf(host.organizationId, host.memberId)).toEqual(before)
+  })
+
+  it('refuses to deactivate the last active admin', async () => {
     const host = await brokerage()
     const before = await auditsOf(host.organizationId, host.memberId)
 
-    for (const body of [{ role: 'ADMIN' }, { active: false }]) {
-      const response = await host.client.patch(`/api/v1/members/${host.memberId}`, body)
-      expect(response.statusCode).toBe(422)
-      expect(response.json()).toEqual({
-        error: {
-          code: 'OWNER_IMMUTABLE',
-          message: 'O proprietário não pode ser alterado nem desativado.',
-        },
-      })
-    }
+    const response = await host.client.patch(`/api/v1/members/${host.memberId}`, {
+      active: false,
+    })
 
-    const owner = await memberOf(host.organizationId, host.memberId)
-    expect(owner.role).toBe('OWNER')
-    expect(owner.active).toBe(true)
+    expect(response.statusCode).toBe(422)
+    expect(response.json().error.code).toBe('LAST_ADMIN')
+    expect(await memberOf(host.organizationId, host.memberId)).toMatchObject({
+      role: 'ADMIN',
+      active: true,
+    })
     expect(await auditsOf(host.organizationId, host.memberId)).toEqual(before)
+  })
+
+  it('demotes an admin while another admin is active', async () => {
+    const host = await brokerage()
+    const admin = await colleague(host.organizationId, 'ADMIN')
+
+    const response = await host.client.patch(`/api/v1/members/${admin.memberId}`, {
+      role: 'COMMERCIAL',
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json().role).toBe('COMMERCIAL')
+    expect((await memberOf(host.organizationId, admin.memberId)).role).toBe('COMMERCIAL')
+    const trail = await auditsOf(host.organizationId, admin.memberId)
+    expect(trail.at(-1)?.action).toBe('member.update')
+    expect(trail.at(-1)?.changes).toEqual({ role: ['ADMIN', 'COMMERCIAL'] })
+  })
+
+  it('only guards changes that remove the last active admin', async () => {
+    const host = await brokerage()
+    const inactiveAdmin = await addMember(host.organizationId, 'ADMIN', false)
+    const manager = await addMember(host.organizationId, 'MANAGER')
+
+    const demoted = await host.client.patch(`/api/v1/members/${inactiveAdmin.member.id}`, {
+      role: 'COMMERCIAL',
+    })
+    const deactivated = await host.client.patch(`/api/v1/members/${manager.member.id}`, {
+      active: false,
+    })
+
+    expect(demoted.statusCode).toBe(200)
+    expect((await memberOf(host.organizationId, inactiveAdmin.member.id)).role).toBe('COMMERCIAL')
+    expect(deactivated.statusCode).toBe(200)
+    expect((await memberOf(host.organizationId, manager.member.id)).active).toBe(false)
+  })
+
+  it('keeps one admin when two demotions race', async () => {
+    for (let round = 0; round < 5; round++) {
+      const host = await brokerage()
+      const admin = await colleague(host.organizationId, 'ADMIN')
+
+      const results = await Promise.all(
+        [host.memberId, admin.memberId].map((id) =>
+          host.client.patch(`/api/v1/members/${id}`, { role: 'COMMERCIAL' }),
+        ),
+      )
+
+      expect(results.map((result) => result.statusCode).sort(), `round ${round}`).toEqual([
+        200, 422,
+      ])
+      expect(results.find((result) => result.statusCode === 422)?.json().error.code).toBe(
+        'LAST_ADMIN',
+      )
+      const admins = await deps.db.withTenant({ organizationId: host.organizationId }, (tx) =>
+        tx.member.count({ where: { role: 'ADMIN', active: true } }),
+      )
+      expect(admins, `round ${round}`).toBe(1)
+    }
+  })
+
+  it('lets an admin demote themself while another admin is active', async () => {
+    const host = await brokerage()
+    await colleague(host.organizationId, 'ADMIN')
+
+    const response = await host.client.patch(`/api/v1/members/${host.memberId}`, {
+      role: 'MANAGER',
+    })
+    const me = await host.client.get('/api/v1/me')
+
+    expect(response.statusCode).toBe(200)
+    expect(me.statusCode).toBe(200)
+    expect(me.json()).toMatchObject({ role: 'MANAGER', permissions: ['organization:read'] })
   })
 
   it('rejects a member body that is not a role or an active flag', async () => {
     const host = await brokerage()
-    const target = await addMember(host.organizationId, 'VIEWER')
-    const bodies = [{ role: 'OWNER' }, {}, { role: 'VIEWER', extra: true }]
+    const target = await addMember(host.organizationId, 'COMMERCIAL')
+    const bodies = [{ role: 'OWNER' }, {}, { role: 'COMMERCIAL', extra: true }]
 
     for (const body of bodies) {
       const response = await host.client.patch(`/api/v1/members/${target.member.id}`, body)
@@ -245,14 +348,14 @@ describe('PATCH /api/v1/members/:id', () => {
       expect(response.json().error.code).toBe('VALIDATION_ERROR')
     }
 
-    expect((await memberOf(host.organizationId, target.member.id)).role).toBe('VIEWER')
+    expect((await memberOf(host.organizationId, target.member.id)).role).toBe('COMMERCIAL')
   })
 
   it('rejects a member change from a role without member:update', async () => {
     const host = await brokerage()
-    const target = await addMember(host.organizationId, 'VIEWER')
+    const target = await addMember(host.organizationId, 'COMMERCIAL')
 
-    for (const role of ['MANAGER', 'COMMERCIAL', 'VIEWER'] as const) {
+    for (const role of ['MANAGER', 'COMMERCIAL'] as const) {
       const caller = await colleague(host.organizationId, role)
       const response = await caller.client.patch(`/api/v1/members/${target.member.id}`, {
         role: 'ADMIN',
@@ -261,14 +364,14 @@ describe('PATCH /api/v1/members/:id', () => {
       expect(response.json().error.code).toBe('FORBIDDEN')
     }
 
-    expect((await memberOf(host.organizationId, target.member.id)).role).toBe('VIEWER')
+    expect((await memberOf(host.organizationId, target.member.id)).role).toBe('COMMERCIAL')
   })
 
   it('requires a session', async () => {
     const client = new TestClient(app)
     const id = randomUUID()
     const requests = [
-      client.patch(`/api/v1/members/${id}`, { role: 'VIEWER' }),
+      client.patch(`/api/v1/members/${id}`, { role: 'COMMERCIAL' }),
       client.get('/api/v1/members'),
       client.post(`/api/v1/members/${id}/transfer-portfolio`, { toMemberId: randomUUID() }),
     ]
@@ -285,13 +388,13 @@ describe('PATCH /api/v1/members/:id', () => {
     const onboarded = await client.post('/api/v1/onboarding', { name: 'Sem Termos' })
     expect(onboarded.statusCode).toBe(200)
     const organizationId = onboarded.json().id as string
-    const target = await addMember(organizationId, 'VIEWER')
+    const target = await addMember(organizationId, 'COMMERCIAL')
 
     const response = await client.patch(`/api/v1/members/${target.member.id}`, { role: 'ADMIN' })
 
     expect(response.statusCode).toBe(403)
     expect(response.json().error.code).toBe('TERMS_NOT_ACCEPTED')
-    expect((await memberOf(organizationId, target.member.id)).role).toBe('VIEWER')
+    expect((await memberOf(organizationId, target.member.id)).role).toBe('COMMERCIAL')
   })
 
   it('returns not found for an unknown member', async () => {
@@ -307,11 +410,11 @@ describe('PATCH /api/v1/members/:id', () => {
 
   it('does not record an audit when the member is unchanged', async () => {
     const host = await brokerage()
-    const target = await addMember(host.organizationId, 'VIEWER')
+    const target = await addMember(host.organizationId, 'COMMERCIAL')
     const before = await auditsOf(host.organizationId, target.member.id)
 
     const response = await host.client.patch(`/api/v1/members/${target.member.id}`, {
-      role: 'VIEWER',
+      role: 'COMMERCIAL',
       active: true,
     })
 
@@ -336,21 +439,21 @@ describe('PATCH /api/v1/members/:id', () => {
   it('does not change the other tenant member', async () => {
     const host = await brokerage()
     const { tenantB } = await withTwoTenants(deps.db)
-    const foreign = await addMember(tenantB.organizationId, 'VIEWER')
+    const foreign = await addMember(tenantB.organizationId, 'COMMERCIAL')
 
     const response = await host.client.patch(`/api/v1/members/${foreign.member.id}`, {
       role: 'ADMIN',
     })
 
     expect(response.statusCode).toBe(404)
-    expect((await memberOf(tenantB.organizationId, foreign.member.id)).role).toBe('VIEWER')
+    expect((await memberOf(tenantB.organizationId, foreign.member.id)).role).toBe('COMMERCIAL')
   })
 })
 
 describe('GET /api/v1/members', () => {
   it('lists members newest first including inactive', async () => {
     const host = await brokerage()
-    const older = await addMember(host.organizationId, 'VIEWER')
+    const older = await addMember(host.organizationId, 'COMMERCIAL')
     const newer = await addMember(host.organizationId, 'MANAGER')
     const deactivated = await host.client.patch(`/api/v1/members/${newer.member.id}`, {
       active: false,
@@ -394,7 +497,7 @@ describe('GET /api/v1/members', () => {
 
   it('rejects listing members without member:update', async () => {
     const host = await brokerage()
-    for (const role of ['MANAGER', 'COMMERCIAL', 'VIEWER'] as const) {
+    for (const role of ['MANAGER', 'COMMERCIAL'] as const) {
       const caller = await colleague(host.organizationId, role)
       const response = await caller.client.get('/api/v1/members')
       expect(response.statusCode, role).toBe(403)
@@ -417,7 +520,7 @@ describe('GET /api/v1/members', () => {
   it('hides the other tenant from the member list', async () => {
     const host = await brokerage()
     const { tenantB } = await withTwoTenants(deps.db)
-    const foreign = await addMember(tenantB.organizationId, 'VIEWER')
+    const foreign = await addMember(tenantB.organizationId, 'COMMERCIAL')
 
     const listed = await host.client.get('/api/v1/members')
 
@@ -563,7 +666,7 @@ describe('POST /api/v1/members/:id/transfer-portfolio', () => {
     const host = await brokerage()
     const target = await addMember(host.organizationId, 'COMMERCIAL')
 
-    for (const role of ['MANAGER', 'COMMERCIAL', 'VIEWER'] as const) {
+    for (const role of ['MANAGER', 'COMMERCIAL'] as const) {
       const caller = await colleague(host.organizationId, role)
       const response = await caller.client.post(
         `/api/v1/members/${host.memberId}/transfer-portfolio`,

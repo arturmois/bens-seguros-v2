@@ -9,9 +9,7 @@ export type GetMe200OrganizationsItemRole = typeof GetMe200OrganizationsItemRole
 
 
 export const GetMe200OrganizationsItemRole = {
-  OWNER: 'OWNER',
   ADMIN: 'ADMIN',
   MANAGER: 'MANAGER',
   COMMERCIAL: 'COMMERCIAL',
-  VIEWER: 'VIEWER',
 } as const;

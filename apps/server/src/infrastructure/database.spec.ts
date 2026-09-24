@@ -27,7 +27,7 @@ function createUser() {
 }
 
 function createMember(ctx: RequestContext, userId: string) {
-  return deps.db.withTenant(ctx, (tx) => tx.member.create({ data: { userId, role: 'VIEWER' } }))
+  return deps.db.withTenant(ctx, (tx) => tx.member.create({ data: { userId, role: 'COMMERCIAL' } }))
 }
 
 async function snapshot(ctx: RequestContext) {
@@ -98,12 +98,22 @@ describe('row level security', () => {
     const expiresAt = new Date(Date.now() + 86_400_000)
     const rowA = await deps.db.withTenant(tenantA, (tx) =>
       tx.invitation.create({
-        data: { email: `${randomUUID()}@example.com`, role: 'VIEWER', tokenHash: hashA, expiresAt },
+        data: {
+          email: `${randomUUID()}@example.com`,
+          role: 'COMMERCIAL',
+          tokenHash: hashA,
+          expiresAt,
+        },
       }),
     )
     await deps.db.withTenant(tenantB, (tx) =>
       tx.invitation.create({
-        data: { email: `${randomUUID()}@example.com`, role: 'VIEWER', tokenHash: hashB, expiresAt },
+        data: {
+          email: `${randomUUID()}@example.com`,
+          role: 'COMMERCIAL',
+          tokenHash: hashB,
+          expiresAt,
+        },
       }),
     )
 
@@ -126,7 +136,7 @@ describe('row level security', () => {
         tx.invitation.create({
           data: {
             email: `${randomUUID()}@example.com`,
-            role: 'VIEWER',
+            role: 'COMMERCIAL',
             tokenHash: `${randomUUID()}${randomUUID()}`.replaceAll('-', ''),
             expiresAt,
           },
@@ -157,7 +167,7 @@ describe('row level security', () => {
     const writes: Record<string, () => Promise<unknown>> = {
       create: () =>
         deps.db.withTenant(tenantA, (tx) =>
-          tx.member.create({ data: { organizationId: B, userId: user.id, role: 'VIEWER' } }),
+          tx.member.create({ data: { organizationId: B, userId: user.id, role: 'COMMERCIAL' } }),
         ),
       'update scalar': () =>
         deps.db.withTenant(tenantA, (tx) =>
@@ -178,7 +188,7 @@ describe('row level security', () => {
         deps.db.withTenant(tenantA, (tx) =>
           tx.member.upsert({
             where: { id: '01a0c4ee-0000-7000-8000-00000000abcd' },
-            create: { organizationId: B, userId: user.id, role: 'VIEWER' },
+            create: { organizationId: B, userId: user.id, role: 'COMMERCIAL' },
             update: {},
           }),
         ),
@@ -325,7 +335,7 @@ describe('withoutTenant', () => {
           data: {
             organizationId: tenantA.organizationId,
             userId: '01a0c4ee-0000-7000-8000-00000000abcd',
-            role: 'VIEWER',
+            role: 'COMMERCIAL',
           },
         }),
       ),

@@ -9,9 +9,7 @@ export type UpdateMember200Role = typeof UpdateMember200Role[keyof typeof Update
 
 
 export const UpdateMember200Role = {
-  OWNER: 'OWNER',
   ADMIN: 'ADMIN',
   MANAGER: 'MANAGER',
   COMMERCIAL: 'COMMERCIAL',
-  VIEWER: 'VIEWER',
 } as const;

@@ -1,11 +1,9 @@
 import { z } from 'zod'
 import { ROLES } from '../../shared/permissions.ts'
 
-const assignableRole = z.enum(['ADMIN', 'MANAGER', 'COMMERCIAL', 'VIEWER'])
-
 export const updateMemberInput = z
   .object({
-    role: assignableRole.optional(),
+    role: z.enum(ROLES).optional(),
     active: z.boolean().optional(),
   })
   .strict()

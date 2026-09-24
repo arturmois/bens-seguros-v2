@@ -4,10 +4,10 @@ import type { InvitationStatus } from '../../generated/prisma/client.ts'
 import type { Database } from '../../infrastructure/database.ts'
 import type { Queue } from '../../infrastructure/queue.ts'
 import { AppError, isUniqueViolation } from '../../shared/errors.ts'
+import type { Role } from '../../shared/permissions.ts'
 import type { RequestContext, UserContext } from '../../shared/request-context.ts'
 import { record } from '../audit/index.ts'
 import { assignActiveOrganization } from '../auth/index.ts'
-import type { INVITABLE_ROLES } from './invitation.schema.ts'
 import { assertOrgLimit } from './membership.ts'
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000
@@ -33,13 +33,11 @@ const quotaReached = new AppError(
   'O plano não tem vagas para outro usuário.',
 )
 
-type InvitableRole = (typeof INVITABLE_ROLES)[number]
-
 type CreateDeps = { db: Database; queue: Queue; appUrl: string }
 
 type AcceptDeps = { db: Database; maxOrgsPerUser: number }
 
-export type CreateInvitationInput = { email: string; role: InvitableRole }
+export type CreateInvitationInput = { email: string; role: Role }
 
 function tokenHash(token: string) {
   return createHash('sha256').update(token).digest('hex')

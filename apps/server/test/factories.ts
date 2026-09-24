@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Database } from '../src/infrastructure/database.ts'
+import { newPublicChatKey } from '../src/modules/organizations/public-chat-key.ts'
 import { uuidv7 } from '../src/shared/id.ts'
 import { permissionsFor } from '../src/shared/permissions.ts'
 import type { RequestContext } from '../src/shared/request-context.ts'
@@ -8,7 +9,7 @@ import { uniqueEmail } from './auth.ts'
 export async function createOrganization(db: Database, name = `Corretora ${randomUUID()}`) {
   const id = uuidv7()
   return db.withTenant({ organizationId: id }, (tx) =>
-    tx.organization.create({ data: { id, name, slug: id } }),
+    tx.organization.create({ data: { id, name, slug: id, publicChatKey: newPublicChatKey() } }),
   )
 }
 
@@ -19,8 +20,8 @@ export function contextFor(organizationId: string): RequestContext {
     sessionId: randomUUID(),
     isSuperAdmin: false,
     organizationId,
-    role: 'OWNER',
-    permissions: permissionsFor('OWNER'),
+    role: 'ADMIN',
+    permissions: permissionsFor('ADMIN'),
   }
 }
 

@@ -133,11 +133,9 @@
                         {
                           "type": "string",
                           "enum": [
-                            "OWNER",
                             "ADMIN",
                             "MANAGER",
-                            "COMMERCIAL",
-                            "VIEWER"
+                            "COMMERCIAL"
                           ]
                         },
                         {
@@ -174,11 +172,9 @@
                           "role": {
                             "type": "string",
                             "enum": [
-                              "OWNER",
                               "ADMIN",
                               "MANAGER",
-                              "COMMERCIAL",
-                              "VIEWER"
+                              "COMMERCIAL"
                             ]
                           }
                         },
@@ -340,10 +336,13 @@
                     "slug": {
                       "type": "string"
                     },
+                    "publicChatKey": {
+                      "type": "string"
+                    },
                     "role": {
                       "type": "string",
                       "enum": [
-                        "OWNER"
+                        "ADMIN"
                       ]
                     }
                   },
@@ -351,6 +350,7 @@
                     "id",
                     "name",
                     "slug",
+                    "publicChatKey",
                     "role"
                   ],
                   "additionalProperties": false
@@ -404,11 +404,9 @@
                     "role": {
                       "type": "string",
                       "enum": [
-                        "OWNER",
                         "ADMIN",
                         "MANAGER",
-                        "COMMERCIAL",
-                        "VIEWER"
+                        "COMMERCIAL"
                       ]
                     }
                   },
@@ -452,11 +450,9 @@
                     "role": {
                       "type": "string",
                       "enum": [
-                        "OWNER",
                         "ADMIN",
                         "MANAGER",
-                        "COMMERCIAL",
-                        "VIEWER"
+                        "COMMERCIAL"
                       ]
                     }
                   },
@@ -555,8 +551,7 @@
                     "enum": [
                       "ADMIN",
                       "MANAGER",
-                      "COMMERCIAL",
-                      "VIEWER"
+                      "COMMERCIAL"
                     ]
                   }
                 },
@@ -592,8 +587,7 @@
                       "enum": [
                         "ADMIN",
                         "MANAGER",
-                        "COMMERCIAL",
-                        "VIEWER"
+                        "COMMERCIAL"
                       ]
                     },
                     "expiresAt": {
@@ -653,11 +647,9 @@
                           "role": {
                             "type": "string",
                             "enum": [
-                              "OWNER",
                               "ADMIN",
                               "MANAGER",
-                              "COMMERCIAL",
-                              "VIEWER"
+                              "COMMERCIAL"
                             ]
                           },
                           "expiresAt": {
@@ -773,11 +765,9 @@
                     "role": {
                       "type": "string",
                       "enum": [
-                        "OWNER",
                         "ADMIN",
                         "MANAGER",
-                        "COMMERCIAL",
-                        "VIEWER"
+                        "COMMERCIAL"
                       ]
                     },
                     "status": {
@@ -852,11 +842,9 @@
                     "role": {
                       "type": "string",
                       "enum": [
-                        "OWNER",
                         "ADMIN",
                         "MANAGER",
-                        "COMMERCIAL",
-                        "VIEWER"
+                        "COMMERCIAL"
                       ]
                     }
                   },
@@ -904,11 +892,9 @@
                           "role": {
                             "type": "string",
                             "enum": [
-                              "OWNER",
                               "ADMIN",
                               "MANAGER",
-                              "COMMERCIAL",
-                              "VIEWER"
+                              "COMMERCIAL"
                             ]
                           },
                           "active": {
@@ -964,8 +950,7 @@
                     "enum": [
                       "ADMIN",
                       "MANAGER",
-                      "COMMERCIAL",
-                      "VIEWER"
+                      "COMMERCIAL"
                     ]
                   },
                   "active": {
@@ -1010,11 +995,9 @@
                     "role": {
                       "type": "string",
                       "enum": [
-                        "OWNER",
                         "ADMIN",
                         "MANAGER",
-                        "COMMERCIAL",
-                        "VIEWER"
+                        "COMMERCIAL"
                       ]
                     },
                     "active": {

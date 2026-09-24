@@ -83,7 +83,7 @@ describe('GET and PATCH /api/v1/organization', () => {
     await acceptCurrentTerms(client)
     const created = await client.post('/api/v1/onboarding', { name: 'Papéis' })
     const organizationId = created.json().id as string
-    const roles: Role[] = ['OWNER', 'ADMIN', 'MANAGER', 'COMMERCIAL', 'VIEWER']
+    const roles: Role[] = ['ADMIN', 'MANAGER', 'COMMERCIAL']
 
     for (const role of roles) {
       await setRole(organizationId, userId, role)
@@ -121,7 +121,7 @@ describe('GET and PATCH /api/v1/organization', () => {
     const organizationId = created.json().id as string
     const slug = created.json().slug as string
 
-    for (const role of ['OWNER', 'ADMIN'] as const) {
+    for (const role of ['ADMIN'] as const) {
       await setRole(organizationId, userId, role)
       const response = await client.patch('/api/v1/organization', { name: 'Outro Nome' })
       expect(response.statusCode, role).toBe(200)
@@ -158,7 +158,7 @@ describe('GET and PATCH /api/v1/organization', () => {
     const created = await client.post('/api/v1/onboarding', { name: 'Travada' })
     const organizationId = created.json().id as string
 
-    for (const role of ['MANAGER', 'COMMERCIAL', 'VIEWER'] as const) {
+    for (const role of ['MANAGER', 'COMMERCIAL'] as const) {
       await setRole(organizationId, userId, role)
       const response = await client.patch('/api/v1/organization', { name: 'Outro Nome' })
       expect(response.statusCode, role).toBe(403)
@@ -194,7 +194,7 @@ describe('GET and PATCH /api/v1/organization', () => {
     const { userId } = await signedInUser(client, deps)
     await acceptCurrentTerms(client)
     const { tenantA, tenantB } = await withTwoTenants(deps.db)
-    await deps.db.withTenant(tenantA, (tx) => tx.member.create({ data: { userId, role: 'OWNER' } }))
+    await deps.db.withTenant(tenantA, (tx) => tx.member.create({ data: { userId, role: 'ADMIN' } }))
     await deps.db.session.updateMany({
       where: { userId },
       data: { activeOrganizationId: tenantA.organizationId },

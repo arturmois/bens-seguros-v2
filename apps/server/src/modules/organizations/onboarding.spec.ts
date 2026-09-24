@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { buildTestApp } from '../../../test/app.ts'
 import { signedInUser, TestClient } from '../../../test/auth.ts'
@@ -29,7 +28,7 @@ async function activeOrganizationId(userId: string) {
 }
 
 describe('POST /api/v1/onboarding', () => {
-  it('creates the organization, the owner and the trial', async () => {
+  it('creates the organization, the admin and the trial', async () => {
     const client = new TestClient(app)
     const { userId } = await signedInUser(client, deps)
     const before = Date.now()
@@ -39,7 +38,7 @@ describe('POST /api/v1/onboarding', () => {
 
     expect(response.statusCode).toBe(200)
     const body = response.json()
-    expect(body.role).toBe('OWNER')
+    expect(body.role).toBe('ADMIN')
     const organizationId = body.id as string
     const stored = await deps.db.withTenant({ organizationId }, async (tx) => ({
       member: await tx.member.findFirstOrThrow({ where: { userId } }),
@@ -48,12 +47,48 @@ describe('POST /api/v1/onboarding', () => {
         include: { plan: true },
       }),
     }))
-    expect(stored.member).toMatchObject({ role: 'OWNER', active: true })
+    expect(stored.member).toMatchObject({ role: 'ADMIN', active: true })
     expect(stored.subscription.status).toBe('TRIALING')
     expect(stored.subscription.plan).toMatchObject({ code: 'trial', maxUsers: 5 })
     expect(stored.subscription.trialEndsAt.getTime()).toBeGreaterThanOrEqual(before + 14 * DAY)
     expect(stored.subscription.trialEndsAt.getTime()).toBeLessThanOrEqual(after + 14 * DAY + 1000)
     expect(await activeOrganizationId(userId)).toBe(organizationId)
+  })
+
+  it('makes the creator an admin with a public chat key', async () => {
+    const client = new TestClient(app)
+    const { userId } = await signedInUser(client, deps)
+
+    const response = await client.post('/api/v1/onboarding', { name: 'Corretora Chave' })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json()
+    expect(body.role).toBe('ADMIN')
+    expect(body.publicChatKey).toMatch(/^[0-9a-f]{32}$/)
+    const organizationId = body.id as string
+    const stored = await deps.db.withTenant({ organizationId }, async (tx) => ({
+      member: await tx.member.findFirstOrThrow({ where: { userId } }),
+      organization: await tx.organization.findUniqueOrThrow({
+        where: { id: organizationId },
+        select: { publicChatKey: true },
+      }),
+    }))
+    expect(stored.member).toMatchObject({ role: 'ADMIN', active: true })
+    expect(stored.organization.publicChatKey).toBe(body.publicChatKey)
+  })
+
+  it('gives each organization its own public chat key', async () => {
+    const client = new TestClient(app)
+    await signedInUser(client, deps)
+    const keys: string[] = []
+
+    for (const name of ['Chave Um', 'Chave Dois', 'Chave Três']) {
+      const response = await client.post('/api/v1/onboarding', { name })
+      expect(response.statusCode, name).toBe(200)
+      keys.push(response.json().publicChatKey as string)
+    }
+
+    expect(new Set(keys).size).toBe(3)
   })
 
   it('records organization.create', async () => {
@@ -71,7 +106,7 @@ describe('POST /api/v1/onboarding', () => {
       actorUserId: userId,
       entityId: organizationId,
     })
-    expect(rows[0]?.changes).toEqual({ role: 'OWNER' })
+    expect(rows[0]?.changes).toEqual({ role: 'ADMIN' })
   })
 
   it('suffixes a slug that is taken', async () => {
@@ -226,37 +261,5 @@ describe('POST /api/v1/onboarding', () => {
     } finally {
       await limited.close()
     }
-  })
-
-  it('keeps a single owner when two inserts race', async () => {
-    const organization = await deps.db.withTenant(
-      { organizationId: '018f0000-0000-7000-8000-00000000b001' },
-      (tx) =>
-        tx.organization.create({
-          data: {
-            id: '018f0000-0000-7000-8000-00000000b001',
-            name: 'Corrida',
-            slug: `corrida-${randomUUID()}`,
-          },
-        }),
-    )
-    const [first, second] = await Promise.all([
-      deps.db.user.create({ data: { name: 'Um', email: `${randomUUID()}@example.com` } }),
-      deps.db.user.create({ data: { name: 'Dois', email: `${randomUUID()}@example.com` } }),
-    ])
-    const results = await Promise.allSettled([
-      deps.db.withTenant({ organizationId: organization.id }, (tx) =>
-        tx.member.create({ data: { userId: first.id, role: 'OWNER' } }),
-      ),
-      deps.db.withTenant({ organizationId: organization.id }, (tx) =>
-        tx.member.create({ data: { userId: second.id, role: 'OWNER' } }),
-      ),
-    ])
-
-    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
-    const owners = await deps.db.withTenant({ organizationId: organization.id }, (tx) =>
-      tx.member.count({ where: { role: 'OWNER' } }),
-    )
-    expect(owners).toBe(1)
   })
 })

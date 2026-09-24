@@ -33,7 +33,7 @@ describe('POST /api/v1/me/active-organization', () => {
     })
 
     expect(response.statusCode).toBe(200)
-    expect(response.json()).toEqual({ organizationId: first.json().id, role: 'OWNER' })
+    expect(response.json()).toEqual({ organizationId: first.json().id, role: 'ADMIN' })
     expect(await activeOrganizationId(userId)).toBe(first.json().id)
   })
 

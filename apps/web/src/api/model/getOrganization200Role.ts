@@ -9,9 +9,7 @@ export type GetOrganization200Role = typeof GetOrganization200Role[keyof typeof 
 
 
 export const GetOrganization200Role = {
-  OWNER: 'OWNER',
   ADMIN: 'ADMIN',
   MANAGER: 'MANAGER',
   COMMERCIAL: 'COMMERCIAL',
-  VIEWER: 'VIEWER',
 } as const;

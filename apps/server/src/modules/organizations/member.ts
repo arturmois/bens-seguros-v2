@@ -6,10 +6,10 @@ import { record } from '../audit/index.ts'
 import { portfolioMoves } from './portfolio.ts'
 
 const hidden = new AppError(404, 'NOT_FOUND', 'Membro não encontrado.')
-const ownerImmutable = new AppError(
+const lastAdmin = new AppError(
   422,
-  'OWNER_IMMUTABLE',
-  'O proprietário não pode ser alterado nem desativado.',
+  'LAST_ADMIN',
+  'A corretora precisa de pelo menos um administrador ativo.',
 )
 const quotaReached = new AppError(
   422,
@@ -61,13 +61,22 @@ export async function updateMember(
   return deps.db.withTenant(ctx, async (tx) => {
     const member = await tx.member.findFirst({ where: { id }, select: memberSelect })
     if (!member) throw hidden
-    if (member.role === 'OWNER') throw ownerImmutable
 
     const nextRole = input.role ?? member.role
     const nextActive = input.active ?? member.active
     const roleChanged = nextRole !== member.role
     const activeChanged = nextActive !== member.active
     if (!roleChanged && !activeChanged) return present(member)
+
+    // ADR-016: at least one active ADMIN. Locking every active ADMIN row (in id order) serializes two
+    // demotions that race; the second one re-reads the rows after the first commits and sees one.
+    const removesAdmin =
+      member.role === 'ADMIN' && member.active && (nextRole !== 'ADMIN' || !nextActive)
+    if (removesAdmin) {
+      const admins = await tx.$queryRaw<{ id: string }[]>`
+        SELECT id FROM "Member" WHERE role = 'ADMIN' AND active ORDER BY id FOR UPDATE`
+      if (admins.length <= 1) throw lastAdmin
+    }
 
     if (activeChanged && nextActive) {
       await tx.$queryRaw`SELECT id FROM "Subscription" FOR UPDATE`
