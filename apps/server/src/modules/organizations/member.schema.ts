@@ -21,7 +21,6 @@ export const memberOutput = z
     active: z.boolean(),
     email: z.email(),
     name: z.string(),
-    commissionSplitBp: z.int(),
   })
   .strict()
 

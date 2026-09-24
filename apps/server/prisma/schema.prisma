@@ -38,14 +38,13 @@ enum Role {
 // Tenant-scoped (ADR-004, AD-006). `organizationId` defaults to the transaction tenant.
 // One OWNER per organization is a partial unique index in the migration (`Member_one_owner`).
 model Member {
-  id                String   @id @default(uuid(7)) @db.Uuid
-  organizationId    String   @default(dbgenerated("(current_setting('app.tenant_id'::text))::uuid")) @db.Uuid
-  userId            String   @db.Uuid
-  role              Role
-  active            Boolean  @default(true)
-  commissionSplitBp Int      @default(0)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @default(dbgenerated("(current_setting('app.tenant_id'::text))::uuid")) @db.Uuid
+  userId         String   @db.Uuid
+  role           Role
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   user         User         @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)

@@ -48,7 +48,7 @@ describe('POST /api/v1/onboarding', () => {
         include: { plan: true },
       }),
     }))
-    expect(stored.member).toMatchObject({ role: 'OWNER', active: true, commissionSplitBp: 0 })
+    expect(stored.member).toMatchObject({ role: 'OWNER', active: true })
     expect(stored.subscription.status).toBe('TRIALING')
     expect(stored.subscription.plan).toMatchObject({ code: 'trial', maxUsers: 5 })
     expect(stored.subscription.trialEndsAt.getTime()).toBeGreaterThanOrEqual(before + 14 * DAY)

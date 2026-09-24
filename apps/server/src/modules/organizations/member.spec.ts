@@ -95,6 +95,14 @@ describe('PATCH /api/v1/members/:id', () => {
         const response = await caller.client.patch(`/api/v1/members/${target.member.id}`, { role })
         expect(response.statusCode, role).toBe(200)
         expect(response.json().role).toBe(role)
+        expect(Object.keys(response.json()).sort()).toEqual([
+          'active',
+          'email',
+          'id',
+          'name',
+          'role',
+          'userId',
+        ])
         const trail = await auditsOf(host.organizationId, target.member.id)
         expect(trail.at(-1)?.action).toBe('member.update')
         expect(trail.at(-1)?.changes).toMatchObject({ role: [previous, role] })
@@ -356,20 +364,29 @@ describe('GET /api/v1/members', () => {
       older.member.id,
       host.memberId,
     ])
-    expect(listed.json().items[0]).toMatchObject({
+    expect(listed.json().items[0]).toEqual({
       id: newer.member.id,
       userId: newer.user.id,
       role: 'MANAGER',
       active: false,
       email: newer.user.email,
       name: 'Membro',
-      commissionSplitBp: 0,
     })
 
     await setRole(host.organizationId, host.userId, 'ADMIN')
     const asAdmin = await host.client.get('/api/v1/members')
     expect(asAdmin.statusCode).toBe(200)
     expect(asAdmin.json().items).toHaveLength(3)
+    for (const item of asAdmin.json().items) {
+      expect(Object.keys(item).sort()).toEqual(['active', 'email', 'id', 'name', 'role', 'userId'])
+    }
+  })
+
+  it('requires a session to list members', async () => {
+    const response = await new TestClient(app).get('/api/v1/members')
+
+    expect(response.statusCode).toBe(401)
+    expect(response.json().error.code).toBe('UNAUTHENTICATED')
   })
 
   it('rejects listing members without member:update', async () => {
@@ -437,7 +454,7 @@ describe('POST /api/v1/members/:id/transfer-portfolio', () => {
     const target = await addMember(host.organizationId, 'COMMERCIAL')
     portfolioMoves.length = 0
     portfolioMoves.push(async (tx, fromUserId) => {
-      await tx.member.updateMany({ where: { userId: fromUserId }, data: { commissionSplitBp: 2 } })
+      await tx.member.updateMany({ where: { userId: fromUserId }, data: { active: false } })
       return 2
     })
 
@@ -448,7 +465,7 @@ describe('POST /api/v1/members/:id/transfer-portfolio', () => {
       )
       expect(response.statusCode).toBe(200)
       expect(response.json()).toEqual({ transferred: 2 })
-      expect((await memberOf(host.organizationId, host.memberId)).commissionSplitBp).toBe(2)
+      expect((await memberOf(host.organizationId, host.memberId)).active).toBe(false)
       expect((await auditsOf(host.organizationId, host.memberId)).at(-1)?.changes).toMatchObject({
         transferred: 2,
       })
@@ -463,7 +480,7 @@ describe('POST /api/v1/members/:id/transfer-portfolio', () => {
     const before = await auditsOf(host.organizationId, host.memberId)
     portfolioMoves.length = 0
     portfolioMoves.push(async (tx, fromUserId) => {
-      await tx.member.updateMany({ where: { userId: fromUserId }, data: { commissionSplitBp: 9 } })
+      await tx.member.updateMany({ where: { userId: fromUserId }, data: { active: false } })
       return 1
     })
     portfolioMoves.push(() => Promise.reject(new Error('move failed')))
@@ -474,7 +491,7 @@ describe('POST /api/v1/members/:id/transfer-portfolio', () => {
         { toMemberId: target.member.id },
       )
       expect(response.statusCode).toBe(500)
-      expect((await memberOf(host.organizationId, host.memberId)).commissionSplitBp).toBe(0)
+      expect((await memberOf(host.organizationId, host.memberId)).active).toBe(true)
       expect(await auditsOf(host.organizationId, host.memberId)).toEqual(before)
     } finally {
       portfolioMoves.length = 0

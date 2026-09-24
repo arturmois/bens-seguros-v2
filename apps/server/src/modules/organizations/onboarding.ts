@@ -30,7 +30,7 @@ export async function onboard(
       await deps.db.withTenant({ organizationId: id }, async (tx) => {
         await tx.organization.create({ data: { id, name: input.name, slug } })
         await tx.member.create({
-          data: { userId: user.userId, role: 'OWNER', active: true, commissionSplitBp: 0 },
+          data: { userId: user.userId, role: 'OWNER', active: true },
         })
         await startTrial(tx, now)
         await assignActiveOrganization(tx, user.sessionId, id)

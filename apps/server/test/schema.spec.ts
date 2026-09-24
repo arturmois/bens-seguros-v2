@@ -332,6 +332,33 @@ function findSimpleTenantRelations(schema: string): string[] {
   return violations
 }
 
+describe('Member', () => {
+  // ADR-011: commission is out of the MVP, so the column is dropped by a migration.
+  it('Member carries no commission column', async () => {
+    const columns = await withOwnerClient(async (client) => {
+      const { rows } = await client.query<{ column: string }>(
+        `SELECT column_name AS column FROM information_schema.columns
+          WHERE table_schema = $1 AND table_name = 'Member'`,
+        [workerSchema()],
+      )
+      return rows.map((row) => row.column)
+    })
+
+    expect(columns).not.toContain('commissionSplitBp')
+    expect(columns).toEqual(
+      expect.arrayContaining([
+        'id',
+        'organizationId',
+        'userId',
+        'role',
+        'active',
+        'createdAt',
+        'updatedAt',
+      ]),
+    )
+  })
+})
+
 describe('tenant-scoped relations', () => {
   it('every relation between tenant-scoped models uses a composite foreign key', () => {
     const schema = readFileSync(new URL('../prisma/schema.prisma', import.meta.url), 'utf8')

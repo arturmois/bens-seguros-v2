@@ -232,7 +232,7 @@ export async function acceptInvitation(
     const active = await tx.member.count({ where: { active: true } })
     if (active >= subscription.plan.maxUsers) throw quotaReached
     const joined = await tx.member.create({
-      data: { userId: user.userId, role: current.role, active: true, commissionSplitBp: 0 },
+      data: { userId: user.userId, role: current.role, active: true },
       select: { id: true },
     })
     await tx.invitation.update({ where: { id: current.id }, data: { status: 'ACCEPTED' } })

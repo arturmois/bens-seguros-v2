@@ -32,7 +32,6 @@ const memberSelect = {
   userId: true,
   role: true,
   active: true,
-  commissionSplitBp: true,
   user: { select: { email: true, name: true } },
 } as const
 
@@ -41,7 +40,6 @@ function present(member: {
   userId: string
   role: Role
   active: boolean
-  commissionSplitBp: number
   user: { email: string; name: string }
 }) {
   return {
@@ -51,7 +49,6 @@ function present(member: {
     active: member.active,
     email: member.user.email,
     name: member.user.name,
-    commissionSplitBp: member.commissionSplitBp,
   }
 }
 

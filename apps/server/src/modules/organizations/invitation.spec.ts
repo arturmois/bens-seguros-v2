@@ -684,7 +684,7 @@ describe('invitation preview and accept', () => {
     const member = await deps.db.withTenant({ organizationId: host.organizationId }, (tx) =>
       tx.member.findFirstOrThrow({ where: { userId: user.userId } }),
     )
-    expect(member).toMatchObject({ role: 'COMMERCIAL', active: true, commissionSplitBp: 0 })
+    expect(member).toMatchObject({ role: 'COMMERCIAL', active: true })
     expect((await invitationsOf(host.organizationId))[0]?.status).toBe('ACCEPTED')
     expect(await activeOrganizationId(user.userId)).toBe(host.organizationId)
     expect(created.statusCode).toBe(200)

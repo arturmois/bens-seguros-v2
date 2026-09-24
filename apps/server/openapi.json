@@ -921,11 +921,6 @@
                           },
                           "name": {
                             "type": "string"
-                          },
-                          "commissionSplitBp": {
-                            "type": "integer",
-                            "minimum": -9007199254740991,
-                            "maximum": 9007199254740991
                           }
                         },
                         "required": [
@@ -934,8 +929,7 @@
                           "role",
                           "active",
                           "email",
-                          "name",
-                          "commissionSplitBp"
+                          "name"
                         ],
                         "additionalProperties": false
                       }
@@ -1033,11 +1027,6 @@
                     },
                     "name": {
                       "type": "string"
-                    },
-                    "commissionSplitBp": {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991
                     }
                   },
                   "required": [
@@ -1046,8 +1035,7 @@
                     "role",
                     "active",
                     "email",
-                    "name",
-                    "commissionSplitBp"
+                    "name"
                   ],
                   "additionalProperties": false
                 }
