@@ -185,3 +185,5 @@ to existing tests. Nothing else may change.
 - **Progress:** S2 (C10-C24) green
 - **Settled mid-build:** in this shell `rg` is a function over Claude Code's bundled ripgrep, and the `rtk` hook rewrites it into a missing binary, so every `rg` proof "exits 1" even on a match. The `rg` proofs run as `ARGV0=rg ~/.local/bin/claude <same args>` (a known match exits 0 there, a miss exits 1). Same arguments, same claim.
 - **Progress:** S3 (C25-C27) green
+- **Progress:** S4 C28-C30 green (29 files, 272 tests; only the 2 listed tests left, 2 new ones entered)
+- **Blocked:** C9 red - the `server` container exits with `TURNSTILE_SECRET_KEY`/`TURNSTILE_SITE_KEY: Required when NODE_ENV is production and SIGNUP_MODE is self_serve`. Pre-existing since `152bf11` (signup-gates): `docker-compose.prod.yml` never passed `SIGNUP_MODE`/`TURNSTILE_*` to the server, at `<base>` included. Not caused by this feature; awaiting the user's call.
