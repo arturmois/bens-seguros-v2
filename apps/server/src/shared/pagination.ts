@@ -15,11 +15,15 @@ export function pageOutput<T extends z.ZodType>(item: T) {
   return z.object({ items: z.array(item), nextCursor: z.uuid().nullable() })
 }
 
-// Prisma arguments for a page ordered by id, newest first. Merge `where` with the tenant filter.
-export function pageArgs(query: PageQuery) {
+// Prisma arguments for a page ordered by id, newest first, unless another unique order is given
+// (messages go by seq). The cursor is always the id. Merge `where` with the tenant filter.
+export function pageArgs<O extends Record<string, 'asc' | 'desc'> = { id: 'desc' }>(
+  query: PageQuery,
+  orderBy?: O,
+) {
   return {
     take: query.limit + 1,
-    orderBy: { id: 'desc' as const },
+    orderBy: orderBy ?? { id: 'desc' as const },
     ...(query.cursor !== undefined && { cursor: { id: query.cursor }, skip: 1 }),
   }
 }

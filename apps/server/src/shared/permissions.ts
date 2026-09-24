@@ -9,6 +9,7 @@ export const PERMISSIONS = [
   'invitation:create',
   'member:update',
   'portfolio:transfer',
+  'conversation:read',
 ] as const
 
 export type Permission = (typeof PERMISSIONS)[number]
@@ -20,9 +21,10 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'invitation:create',
     'member:update',
     'portfolio:transfer',
+    'conversation:read',
   ],
-  MANAGER: ['organization:read'],
-  COMMERCIAL: ['organization:read'],
+  MANAGER: ['organization:read', 'conversation:read'],
+  COMMERCIAL: ['organization:read', 'conversation:read'],
 }
 
 export function permissionsFor(role: Role): readonly Permission[] {

@@ -21,6 +21,16 @@ describe('pagination', () => {
     })
   })
 
+  it('orders by the given field and keeps id as the cursor', () => {
+    expect(pageArgs({ limit: 2 }, { seq: 'desc' })).toEqual({ take: 3, orderBy: { seq: 'desc' } })
+    expect(pageArgs({ limit: 2, cursor: ids[0] }, { seq: 'desc' })).toEqual({
+      take: 3,
+      orderBy: { seq: 'desc' },
+      cursor: { id: ids[0] },
+      skip: 1,
+    })
+  })
+
   it('returns the last id as the next cursor only when there are more rows', () => {
     const rows = [{ id: 'a' }, { id: 'b' }, { id: 'c' }]
 

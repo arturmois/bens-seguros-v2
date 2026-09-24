@@ -429,7 +429,10 @@ describe('PATCH /api/v1/members/:id', () => {
 
     expect(response.statusCode).toBe(200)
     expect(me.statusCode).toBe(200)
-    expect(me.json()).toMatchObject({ role: 'MANAGER', permissions: ['organization:read'] })
+    expect(me.json()).toMatchObject({
+      role: 'MANAGER',
+      permissions: ['organization:read', 'conversation:read'],
+    })
   })
 
   it('rejects a member body that is not a role or an active flag', async () => {

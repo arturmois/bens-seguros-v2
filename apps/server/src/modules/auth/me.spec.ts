@@ -83,6 +83,7 @@ describe('GET /api/v1/me', () => {
         permissions: [...permissionsFor(role)],
         activeOrganizationId: organizationId,
       })
+      expect(response.json().permissions, role).toContain('conversation:read')
     }
 
     await deps.db.session.updateMany({ where: { userId }, data: { activeOrganizationId: null } })

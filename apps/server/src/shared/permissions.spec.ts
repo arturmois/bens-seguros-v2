@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ROLE_PERMISSIONS } from './permissions.ts'
+import { PERMISSIONS, ROLE_PERMISSIONS } from './permissions.ts'
 
 describe('role permissions', () => {
   it('matches the role permission snapshot', () => {
@@ -10,9 +10,11 @@ describe('role permissions', () => {
         'invitation:create',
         'member:update',
         'portfolio:transfer',
+        'conversation:read',
       ],
-      MANAGER: ['organization:read'],
-      COMMERCIAL: ['organization:read'],
+      MANAGER: ['organization:read', 'conversation:read'],
+      COMMERCIAL: ['organization:read', 'conversation:read'],
     })
+    expect(PERMISSIONS).toContain('conversation:read')
   })
 })
