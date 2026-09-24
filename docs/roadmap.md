@@ -1,31 +1,160 @@
-# Roadmap de implementação (Fase 5)
+# Roadmap do MVP
 
-> Base: [`architecture.md`](./architecture.md), ADRs 001–010 e a checklist de [`migration.md`](./migration.md).
-> Cada fase termina com o CI verde (`lint`, `typecheck`, `test`, `build`) e com a pergunta: **"Existe alguma abstração que podemos remover?"**
-> Staging na VPS a partir da Fase 3, para cada fase ser validada num ambiente real, e não só no final.
-> **Processo:** no início de cada fase ou feature, o agente escolhe e declara o nível de spec (`tlc-spec-lean` ou `tlc-spec-driven`; toda implementação usa um dos dois), seguindo os critérios do `CLAUDE.md`. Expectativa: lean em todas as fases; driven só se a fase se mostrar grande e incerta (candidatas: 5 e 11). As Fases 1–2 foram feitas antes desta regra; o isolamento de tenant da Fase 2 foi refeito com lean (`.specs/features/tenant-rls`).
+> Base: [`handoff.md`](./handoff.md) (requisitos), [`architecture.md`](./architecture.md), ADRs 001–017 (as do MVP são 011–017) e a análise em [`architecture-analysis.md`](./architecture-analysis.md) §12, com as decisões de 2026-09-23.
+> Cada fase termina com o CI verde (`pnpm lint && pnpm typecheck && pnpm test && pnpm build`) e com a pergunta: **"Qual requisito justifica essa complexidade?"**
+> **Processo:** no início de cada fase ou feature, o agente declara o nível de spec (`tlc-spec-lean` ou `tlc-spec-driven`) segundo o `CLAUDE.md`. Expectativa: lean em todas; driven só se a fase se mostrar grande e incerta (candidatas: F4 e F9).
+> O v2 (Fases 1–4 do roadmap anterior) está concluído e é a fundação: ver o *Apêndice — Histórico v2*.
 
 ```text
-1 Foundation ─▶ 2 Infrastructure ─▶ [H1] ─▶ 3 Auth ─▶ 4 Tenancy & Orgs ─▶ [H2] ─▶ 5 Billing
-                                                     │
-                                                     ▼
-                     6 Cadastros (insurers, contacts, clients, documents)
-                                                     │
-                                                     ▼
-                     7 Proposals ─▶ 8 Policies & Commissions ─▶ 9 Claims & Assistances
-                                                     │
-                                                     ▼
-                     10 Notifications, Dashboard, Search, Audit
-                                                     │
-                                                     ▼
-                     11 Chat ─▶ 12 Admin & Observability ─▶ [H3] ─▶ 13 Production
+F0 Poda ─▶ [H3] ─▶ F1 Identity/Tenant ─▶ F2 Conversation core ─┬─▶ [Staging] ─▶ F3 Web Chat + Inbox ─▶ F4 IA ─▶ F5 Handoff + fila
+                                                               └─▶ S1 Spike WhatsApp (paralelo, descartável)
+F5 ─▶ F6 Leads/Comercial ─▶ F7 Kanban ─▶ F8 Follow-up ─▶ F9 WhatsApp ─▶ F10 SaaS/Trial ─▶ F11 Métricas + Produção
 
-[Hn] = checkpoint de avaliação do harness de agentes (skill `harness-eval`)
+[H3] = checkpoint do harness de agentes (skill `harness-eval`) · [Staging] = marco de infraestrutura
 ```
 
-As fases 5 e 6 podem correr em paralelo depois da 4. A fase 11 depende da 6 (contatos) e da 7 (a tool `captureLead` cria proposta).
+**Ordem, e por quê:**
+- **Inbox humano (F3) antes da IA (F4):** a indisponibilidade da IA cai na fila humana (handoff §25); sem fila e inbox, a IA não tem caminho de falha seguro.
+- **Spike S1 cedo:** o runtime WhatsApp é o maior risco técnico; validar a fronteira PG (fila + `NOTIFY`) entre processos evita descobrir um problema de arquitetura na F9.
+- **Staging publicado antes da F3:** é quando o primeiro critério "e2e no staging" aparece; fora da F0 para a poda não depender de VPS e DNS (ADR-011).
+- **F10 depende só da F1** e pode ser antecipada se o go-live comercial pedir.
 
 ---
+
+## F0 — Poda do ERP
+
+- **Objetivo:** o repositório sem código, dependências e docs de ERP.
+- **Requisitos:** N12 (custo, menos serviços); pré-condição de todas as fases.
+- **Dependências:** este roadmap e os ADRs 011–017 aprovados.
+- **Mudanças:** remover `infrastructure/storage.ts` e `pdf.ts` (+ specs), `@aws-sdk/*`, `@react-pdf/renderer`, `S3_*` do config, `ensureBucket` do boot, MinIO do compose de dev, do CI e dos `.env*`; `Member.commissionSplitBp` (schema, saída da API, web e testes); aposentar `prompts/prompt-0*.md`, `docs/legacy-analysis.md`, `docs/original-brief.md`; `S3_*` do runbook de staging. Plano: `.specs/features/erp-prune/`.
+- **Testes:** suíte herdada verde (schema de RLS, `withTwoTenants`, arquitetura); `staging-smoke.mjs` local.
+- **Critério:** CI verde; nenhum código, config ou doc vivo referencia storage, PDF, MinIO, comissão ou módulos do ERP.
+
+## Checkpoint H3 — Harness depois da poda
+
+- **Objetivo:** confirmar que `CLAUDE.md`, `architecture.md` e `roadmap.md` reescritos não citam caminhos inexistentes antes das fases de domínio.
+- **Como:** `harness-eval` numa sessão nova, Q2 = `A only`.
+- **Critério:** Track A sem BROKEN.
+
+## F1 — Identity / Tenant / RBAC
+
+- **Objetivo:** papéis e onboarding do MVP.
+- **Requisitos:** F1, F2, N1 (análise §3); handoff §7, §36–37.
+- **Dependências:** F0.
+- **Mudanças:** papéis `ADMIN | MANAGER | COMMERCIAL` (recria o enum; sai `Member_one_owner`); invariante "≥ 1 ADMIN ativo" (ADR-016); onboarding cria org + ADMIN + trial + canal Web Chat padrão + `publicChatKey`; branding (nome, logo `bytea`, cor, saudação).
+- **Testes:** snapshot da matriz; toda rota com permissão; último ADMIN não pode ser rebaixado, desativado ou removido; onboarding cria o canal; `withTwoTenants` nas rotas novas.
+- **Critério:** cadastro → org → ADMIN → link do Web Chat visível em settings (ainda sem chat).
+
+## S1 — Spike: runtime WhatsApp (paralelo a F2/F3, descartável)
+
+- **Objetivo:** validar com um número de teste o que a F9 e o ADR-012 assumem.
+- **Validar:** segundo entrypoint da mesma imagem; auth state cifrado no PG sobrevive a restart; `enqueue` na API → worker no runtime; `NOTIFY` do runtime → socket da API em < 2 s; advisory lock impede duas instâncias; `loggedOut`; `messageId` próprio no envio.
+- **Entregável:** relatório curto + ADR-012 confirmado ou revisado. O código não entra em `main`.
+
+## F2 — Conversation core
+
+- **Objetivo:** contato, conversa e mensagem, independentes de canal.
+- **Requisitos:** F3, F6, N2, N3, N4.
+- **Dependências:** F1.
+- **Mudanças:** módulos `contacts`, `conversations`, `channels`; E.164; `receiveInbound`/`sendMessage`; `seq`; dedupe por `externalId`; `conversation-state.ts` (ADR-013, `WAITING` = aguardando o cliente); `infrastructure/events.ts` (`notify(tx)` + `LISTEN` → rooms `org:`, `user:`, `conversation:`); ator não-usuário na auditoria (revisão da AD-008); `scopeFor` por `ownerId` + fila (revisão da AD-009).
+- **Entregáveis:** use cases + API do painel para listar e ler conversas (testes injetam mensagens).
+- **Testes:** todas as transições (unitário); inbound duplicado não duplica; 50 inbounds concorrentes → `seq` contíguo; conversas diferentes em paralelo; conversa fechada reabre e preserva o histórico; evento só após commit (rollback → nenhum evento); `withTwoTenants`, `withTwoSalespeople`.
+- **Critério:** mensagem injetada aparece no socket do painel em < 2 s em teste de integração.
+
+## Marco — Staging publicado (antes da F3)
+
+- **Objetivo:** a pilha do `docker-compose.prod.yml` numa VPS, pelo `docs/runbooks/staging.md`.
+- **Dependências:** F0; VPS e DNS (ação do responsável pelo projeto).
+- **Critério:** `https://staging.<domínio>` responde; `/api/health` ok; login e onboarding funcionam.
+
+## F3 — Web Chat + Inbox humano
+
+- **Objetivo:** primeiro fluxo real: o cliente fala pelo link, um humano responde.
+- **Requisitos:** F4 (Web Chat), F5, F13, N4, N9; parte de F7 (assumir, responder, encerrar).
+- **Dependências:** F2, marco de staging.
+- **Mudanças:** `/c/:slug` (SPA) + HTML Open Graph servido pela API; `/api/public/chat/*`; resolução do tenant por `publicChatKey` (AD nova); token de visitante; namespace de visitante no Socket.IO; telefone + aceite (`ConsentRecord`) + Turnstile; rate limit; inbox (fila, minhas conversas, responder, assumir, encerrar); sem IA → conversas nascem em `QUEUE` (ADR-014).
+- **Testes:** link da org A nunca cria dado na org B; visitante não lê conversa anterior do mesmo telefone; sem aceite → 4xx; rate limit dispara; COMMERCIAL só encerra as próprias; MANAGER encerra qualquer; e2e: cliente envia → comercial vê → responde → cliente vê.
+- **Critério:** fluxo e2e verde no staging.
+
+## F4 — IA
+
+- **Objetivo:** a IA atende primeiro, com tools e falha segura.
+- **Requisitos:** F9, N5, N6, N13; handoff automático de F7.
+- **Dependências:** F3.
+- **Mudanças:** módulo `ai` (ADR-015): `provider.ts` (modelo Claude escolhido na spec), `ai.reply`, contexto em janela, tools `get_lead`/`update_lead_information`/`request_human`, `AiRun`, limite mensal por org e de respostas por conversa, `aiEnabled` por org e canal; conversas nascem em `AI` quando habilitado; reabertura para `AI`/`QUEUE` (P1).
+- **Testes (`FakeAiModel`):** resposta persistida e entregue; `request_human` → `QUEUE`; provider falha em todas as tentativas → `QUEUE` + mensagem ao cliente; limite excedido → `QUEUE`; humano assume durante a geração → resposta descartada; mensagem nova durante a geração → reprocessa; tool não aceita IDs; campo fora da allowlist rejeitado; `AiRun` em todos os desfechos; `ai` não importa escrita de `sales` (arquitetura).
+- **Critério:** conversa completa no staging com a IA coletando nome e interesse e transferindo quando pedido.
+
+## F5 — Handoff completo + fila de leads
+
+- **Objetivo:** controle humano explícito e distribuição consistente.
+- **Requisitos:** F7, F8, N8, F12 (parte).
+- **Dependências:** F4.
+- **Mudanças:** assumir conversa de `AI` a qualquer momento; devolver à IA (ação explícita, permissão própria); devolver à fila; fila de leads (contatos sem dono); ADMIN/MANAGER atribuem; COMMERCIAL assume; quem assume conversa de contato sem dono vira o dono; auditoria de atribuição, handoff, entrada e saída de humano (ADR-016).
+- **Testes:** N comerciais assumem o mesmo lead/conversa em paralelo → exatamente 1 sucesso, demais 409; nenhuma transição automática para `AI`; auditoria em cada ação.
+- **Critério:** testes de concorrência verdes contra PG real; trilha de auditoria visível.
+
+## F6 — Leads / Comercial
+
+- **Objetivo:** lead qualificado vira oportunidade.
+- **Requisitos:** F10 (parte), F2 (carteira), F12; handoff §34.
+- **Dependências:** F5.
+- **Mudanças:** tela de contatos/leads (filtros por status, dono, fila); `leadStatus`; criar oportunidade a partir do contato ou da conversa; módulo `sales` com `Opportunity` (= proposta, ADR-011); contexto para outro corretor continuar (dados estruturados + histórico; resumo por IA só como botão).
+- **Testes:** carteira (`withTwoSalespeople`, incluindo "sem dono"); COMMERCIAL só cria oportunidade no próprio contato; auditoria.
+- **Critério:** do chat ao lead e à oportunidade sem sair do painel.
+
+## F7 — Kanban
+
+- **Objetivo:** acompanhamento visual.
+- **Requisitos:** F10, F12.
+- **Dependências:** F6.
+- **Mudanças:** etapas do v1 (`CAPTURE → QUOTE → PROTOCOL → INSPECTION → PAYMENT → POLICY_ISSUED | LOST`), movimento livre, `POLICY_ISSUED` = ganha, `LOST` com motivo, reabrir (ADR-011); rótulos de UI em pt-BR; `opportunity-stages.ts` puro; `dnd-kit`; tempo real.
+- **Testes:** todas as transições; `LOST` sem motivo → 422; COMMERCIAL não move oportunidade alheia; auditoria de etapa.
+- **Critério:** arrastar o card persiste, audita e reflete em outra aba em < 2 s.
+
+## F8 — Follow-up
+
+- **Objetivo:** não perder acompanhamento.
+- **Requisitos:** F11, F12.
+- **Dependências:** F6 (F7 recomendado).
+- **Mudanças:** `FollowUp` (criar, concluir, reagendar); pendência por consulta, **sem cron**; contador no menu, lista "Hoje/Atrasados", badge no card.
+- **Testes:** carteira; pendência aparece e desaparece corretamente (datas semeadas que uma constante não satisfaz); auditoria.
+- **Critério:** o comercial vê o que tem pendente ao abrir o painel.
+
+## F9 — WhatsApp
+
+- **Objetivo:** segundo canal real.
+- **Requisitos:** F4 (WhatsApp), F16, N7, N2.
+- **Dependências:** F2, S1; F4/F5 para IA e handoff iguais ao Web Chat.
+- **Mudanças:** entrypoint `whatsapp` (ADR-012); `WhatsAppAuthState` cifrado; advisory lock; função `SECURITY DEFINER` de boot (AD nova); pareamento por QR e código; status + alerta; reconexão com backoff; `whatsapp.send`/`whatsapp.control`; mídia → orientação; heartbeat; opt-in LGPD "SIM" (ADR-014; validação jurídica antes do go-live).
+- **Testes:** socket Baileys falso: entrada idempotente, ordem, `UNSUPPORTED` responde orientação, `loggedOut` → `NEEDS_PAIRING` sem retry, erro transitório → backoff; `PENDING → SENT/FAILED`; runtime fora → envios ficam `PENDING` e saem na volta; API reiniciada → sessões seguem; sem "SIM" a IA não processa. Teste manual com número real.
+- **Critério:** número de teste conectado no staging por 7 dias, reconexões registradas, zero mensagem perdida.
+
+## F10 — SaaS / Trial / Suspensão
+
+- **Objetivo:** ciclo comercial sem cobrança automatizada.
+- **Requisitos:** F14; handoff §38–40.
+- **Dependências:** F1.
+- **Mudanças:** `Organization.status`, `trialEndsAt`, `maxUsers` (padrão 10) no lugar de `Plan`/`Subscription` e do módulo `billing`; trial expirado calculado na leitura; painel só leitura (402); IA desligada; Web Chat "indisponível" para conversas novas; mensagens sempre persistidas; ativação e suspensão pelo super-admin (ADR-017).
+- **Testes:** trial expirado bloqueia escrita e preserva dados; reativação restaura o acesso; mensagem recebida com a org suspensa é persistida; quota de usuários lida da organização.
+- **Critério:** suspender e reativar uma org no staging sem perda.
+
+## F11 — Métricas + Produção
+
+- **Objetivo:** operar e medir.
+- **Requisitos:** F15, N10, N11.
+- **Dependências:** todas.
+- **Mudanças:** dashboard por consultas SQL (leads recebidos/atendidos, oportunidades, ganhos/perdas, tempo até o primeiro atendimento humano, conversão por etapa); Sentry sem PII; logs com `organizationId`/`conversationId`/`channelId`; `/api/ready`; monitor externo; alertas (job esgotado, canal fora > 30 min, runtime sem heartbeat); backup diário + restore testado; runbooks (deploy, rollback, restore, re-pareamento); deploy por tag.
+- **Testes:** `/ready` 503 com o PG fora; métricas com dados que não passam por constante ou ordem; restore num ambiente limpo.
+- **Critério:** restore executado; alerta de canal fora chega; go-live (com o parecer jurídico do opt-in do WhatsApp).
+
+> **Observabilidade não é só a F11:** `requestId`/`organizationId`/`conversationId` no log e `/api/health` valem desde já; a F11 fecha alertas, Sentry e dashboards.
+
+---
+
+# Apêndice — Histórico v2 (concluído)
+
+As seções abaixo são o roadmap anterior (ERP), mantidas **sem alteração** porque os `plan.md` e `verification.md` das Fases 1–4 as citam. Fases 1–4 e os checkpoints H1/H2 estão concluídos. As Fases 5–13 do ERP foram canceladas pelo pivot (ADR-011); o texto delas está no git (`git show d817950:docs/roadmap.md`).
 
 ## Fase 1 — Foundation
 
@@ -170,217 +299,3 @@ As fases 5 e 6 podem correr em paralelo depois da 4. A fase 11 depende da 6 (con
   - Track C (os dois juízes em `claude-opus-5-5`; trap PASS com 1 erro, fan-in PASS): 10 Keep-core (`CLAUDE.md` entre eles), 6 Slim, 7 Mixed, 15 Hold.
   - **Aplicado:** o exemplo de use case do `architecture.md` usava `deps.db.$transaction` (falha sob RLS) e passou a usar `withTenant`; o `CLAUDE.md` diz quando valem `withUser`/`withInvitation`/`withoutTenant`, a organização ativa (AD-010) e a `SESSION_ONLY`, e ganhou a regra de teste que discrimina (lições L-031–L-033, que se repetiram em três features com ids diferentes e por isso nunca seriam promovidas); `vercel-react-best-practices` removida (quase só Next/RSC, e o conselho de SWR conflita com Orval + TanStack Query); caminhos da Fase 4 corrigidos.
   - **Mantido:** as skills vendoradas marcadas Slim/Mixed (`GLOSSARY`, `code-analysis`, `context-limits`, `domain-modeling`, `tlc-discover`, `ADR-FORMAT`, `coding-principles`, `tasks.md`), porque o dono é o upstream (`skills-lock.json`) e só custam contexto quando carregadas; `grill-me` (tem `disable-model-invocation`) e `agent-browser` (útil para testar a UI); `tlc-spec-driven` (o `CLAUDE.md` a nomeia; os juízes divergiram); o histórico das Fases 1–4 deste roadmap (Mixed pedia corte, mas os `plan.md` citam essas seções); as regras do `CLAUDE.md` que o `architecture.spec`, o `schema.spec`, o boot e o biome já garantem (os juízes marcaram Keep-core; tirá-las economiza ~60 tokens e custa uma rodada vermelha por agente); a sobreposição com o superpowers (plugin global, fora do repo; o `CLAUDE.md` prevalece).
-
-## Fase 5 — Billing
-
-- **Objetivo:** cobrança funcionando antes do lançamento.
-- **Arquivos principais:**
-  - `modules/billing/{asaas.ts, plans, subscription, invoices, webhook.routes.ts, entitlements.ts, billing.jobs.ts, ai-usage.ts}`;
-  - web `routes/(onboarding)/select-plan`, `settings/billing`, `billing.expired`, `(public)/pricing`.
-- **Dependências:** Fase 4.
-- **Implementação:**
-  - planos (seed) com quotas de usuários e números de WhatsApp;
-  - trial;
-  - assinatura mensal no Asaas (cartão, boleto, PIX);
-  - faturas;
-  - webhook com token e rotação, dedup em `WebhookEvent`;
-  - crons (trial, expiração, dunning, reconciliação);
-  - bloqueio 402;
-  - `billingManagedExternally`;
-  - `requireFeature` e `assertQuota` (usuários, já aplicado aos convites);
-  - tabela `AiUsageRecord` (preenchida na Fase 11).
-- **Testes:**
-  - webhook duplicado é ignorado;
-  - assinatura com assinatura digital inválida → 401;
-  - transições de status da assinatura;
-  - 402 ao expirar;
-  - quota de usuários;
-  - sandbox do Asaas num e2e manual documentado.
-- **Critérios de aceite:** no staging, uma org sai do trial, paga via sandbox do Asaas e é bloqueada ao ficar inadimplente.
-- **Riscos:** webhooks fora de ordem no Asaas (mitigado pela reconciliação horária); diferenças entre o sandbox e produção.
-
-## Fase 6 — Cadastros: insurers, contacts, clients, documents
-
-- **Objetivo:** as entidades de base do CRM.
-- **Arquivos principais:** `modules/{insurers,contacts,clients,documents}/*` + as features correspondentes no web.
-- **Dependências:** Fase 4.
-- **Implementação:**
-  - seguradoras;
-  - contatos (`CHAT_ONLY`/`QUALIFIED`, atribuição de vendedor, identidades de canal);
-  - clientes (documento cifrado + HMAC, presenter por role, soft delete, LGPD, import CSV via job, export em streaming);
-  - promoção de contato a cliente;
-  - documentos (magic bytes, presigned URL, delete no storage);
-  - lookup de CEP;
-  - estender a transferência de carteira para contatos.
-- **Testes:**
-  - unicidade do documento;
-  - mascaramento por role;
-  - regras de promoção (documento igual e divergente);
-  - LGPD;
-  - import com linhas inválidas;
-  - upload com MIME forjado → 400;
-  - `withTwoTenants` + `withTwoSalespeople`.
-- **Critérios de aceite:** checklist "Contacts / Clients" da `migration.md` completa.
-- **Riscos:** busca por nome de cliente com o documento cifrado. A busca continua por nome (texto) e por documento (HMAC exato).
-
-## Fase 7 — Commercial flow: proposals
-
-- **Objetivo:** o funil completo até `POLICY_ISSUED`.
-- **Arquivos principais:**
-  - `modules/proposals/{proposal.schema, proposal-stages, checklist, insured-object, create/advance/lose/reopen/update-proposal, send-quote, proposal-quote.pdf.tsx, vehicle-lookup, proposal.routes, proposal.jobs}.ts`;
-  - web `features/proposals` (Kanban + tabela).
-- **Dependências:** Fase 6.
-- **Implementação:**
-  - máquina de etapas pura;
-  - checklist por etapa + ramo com auto-complete por documento (hook em `documents`);
-  - detalhes do bem por ramo;
-  - cotação por e-mail com PDF (job);
-  - lookup de placa com cache em tabela e rate limit;
-  - Kanban com `dnd-kit`.
-- **Testes:**
-  - todas as transições e bloqueios (detalhes, checklist, promoção);
-  - checklist gerado para cada combinação etapa × ramo;
-  - auto-complete ao anexar documento;
-  - e-mail enfileirado só no commit;
-  - carteira;
-  - e2e criar → avançar até `POLICY_ISSUED`.
-- **Critérios de aceite:** checklist "Proposals" (exceto renovação automática, que vai na Fase 8).
-- **Riscos:** o volume de regras do checklist. Portar o `checklist-config.ts` literalmente e cobri-lo com testes de tabela.
-
-## Fase 8 — Policies & Commissions
-
-- **Objetivo:** emissão, carteira de apólices, comissões e renovação automática.
-- **Arquivos principais:**
-  - `modules/policies/{issue-policy, import-policies, cancel-policy, endorsements, policy-summary.pdf.tsx, policy.jobs}.ts`;
-  - `modules/commissions/{commission-status, calculate-commission, approve/reject/pay/reverse, export}.ts`;
-  - `modules/proposals/create-renewals.ts`.
-- **Dependências:** Fase 7.
-- **Implementação:**
-  - emissão transacional (apólice + comissão + auditoria);
-  - importação `origin: IMPORTED` (cria/casa cliente e seguradora; sem comissão);
-  - cancelamento;
-  - cron de expiração;
-  - endossos;
-  - comissão com os dois valores congelados e split do membro;
-  - workflow de repasse e estorno atômico;
-  - renovação automática (`renewalLeadDays`, idempotente).
-- **Testes:**
-  - emissão falha no meio → nada persiste;
-  - comissão idempotente (índice);
-  - tabela de casos de cálculo (arredondamento);
-  - todas as transições da comissão;
-  - estorno;
-  - importação não gera comissão;
-  - renovação criada uma vez só e nunca para apólice cancelada;
-  - e2e proposta → apólice → comissão paga.
-- **Critérios de aceite:** checklists "Policies" e "Commissions" + item de renovação.
-- **Riscos:** a regra de split com arredondamento, que precisa ser validada com um caso real de corretora antes de fechar a fase.
-
-## Fase 9 — Claims & Assistances
-
-- **Objetivo:** pós-venda.
-- **Arquivos principais:** `modules/{claims,assistances}/*`, `OrganizationCounter`, features no web.
-- **Dependências:** Fase 8.
-- **Implementação:** sinistros (número sequencial, workflow, prioridade, responsável, ocorrências automáticas), assistências, vínculo com documentos.
-- **Testes:**
-  - número sequencial sob concorrência (N inserts paralelos, sem colisão);
-  - transições;
-  - carteira;
-  - e2e de abertura de sinistro.
-- **Critérios de aceite:** checklist "Claims / Assistances".
-- **Riscos:** baixo.
-
-## Fase 10 — Notifications, Dashboard, Search, Audit UI
-
-- **Objetivo:** fechar o ERP operacional.
-- **Arquivos principais:** `modules/{notifications,dashboard,search}/*`, `modules/audit/list-audit.ts`, templates de e-mail dos alertas, features no web.
-- **Dependências:** Fases 8 e 9.
-- **Implementação:**
-  - notificações in-app com push por socket;
-  - e-mails críticos;
-  - cron dos 4 alertas diários (idempotentes);
-  - dashboard (agregações + PDF);
-  - busca global respeitando a carteira;
-  - tela de auditoria.
-- **Testes:**
-  - alerta não duplica no mesmo dia;
-  - agregações contra fixtures conhecidas (conversão sem apólices importadas);
-  - busca não vaza fora da carteira nem do tenant.
-- **Critérios de aceite:** checklist "Notifications / Dashboard / Search / Audit".
-- **Riscos:** performance das agregações do dashboard. Medir com dados sintéticos de uma corretora grande; se preciso, adicionar índices ou uma materialized view (e só isso).
-
-## Fase 11 — Chat
-
-- **Objetivo:** atendimento via WhatsApp e widget, com bot.
-- **Arquivos principais:**
-  - `modules/chat/{channels, conversations, messages, queue-routing, bot/{agent, tools/*, pii-redaction}, whatsapp/{provider, meta-cloud, baileys, session-manager}, widget/*, chat.routes, chat.jobs}.ts`;
-  - web `features/chat`, `settings/{channels,ai-agents}`, `routes/embed.chat.$channelId.tsx`, `public/widget.js`.
-- **Dependências:** Fases 6 e 7 (e 5, para as quotas de números e o registro de uso de IA).
-- **Implementação, em fatias:**
-  1. Conversas e mensagens com o widget: namespace `/widget`, token de visitante, máquina de estados, fila compartilhada e roteamento por carteira, não-lidas.
-  2. Meta Cloud API: webhook assinado, envio, mídia no storage, refresh de token.
-  3. Baileys: pareamento por QR/código, `WhatsAppSessionManager`, estado cifrado no PG, alerta de desconexão.
-  4. Bot: AI SDK com Anthropic/OpenAI por agente, tools como chamadas diretas, redação de PII, limite de respostas, `escalateToHuman`, registro de uso de IA.
-  5. Contato `CHAT_ONLY` → `QUALIFIED`; auto-close; expurgo após 730 dias; estender a transferência de carteira para conversas.
-- **Testes:**
-  - todas as transições da conversa;
-  - roteamento da fila (contato com e sem vendedor);
-  - webhook Meta com assinatura inválida → 401;
-  - redação de PII (o provider é fake e o teste checa o payload enviado);
-  - tools do bot contra um DB real;
-  - quota de números;
-  - e2e com o widget.
-- **Critérios de aceite:** checklist "Chat". Um número Baileys real conectado no staging.
-- **Riscos:**
-  - **Baileys:** instabilidade da lib, banimento de número e mudanças do protocolo do WhatsApp. Usar números de teste no staging e fixar a versão da lib.
-  - **Meta:** aprovação do app e dos templates. Iniciar o processo de verificação da Meta **na Fase 5**, porque é demorado.
-  - Qualidade do bot: prompts e tools precisam de iteração com conversas reais.
-
-## Fase 12 — Admin & Observability
-
-- **Objetivo:** operar o sistema sem abrir o banco.
-- **Arquivos principais:** `modules/admin/*`, integração do Sentry (server e web), `GET /api/ready`, alertas operacionais.
-- **Dependências:** Fases 5 e 11.
-- **Implementação:**
-  - super-admin com tenants, uso de IA, jobs com falha (re-executar) e canais desconectados;
-  - Sentry com `beforeSend` sem PII e alertas;
-  - `/api/ready` checando o PG e os workers do pg-boss;
-  - alertas operacionais (job esgotado, canal com mais de 30 min fora, webhook com falha);
-  - monitor externo de uptime.
-- **Testes:**
-  - rotas de admin exigem super-admin + 2FA;
-  - o `beforeSend` remove PII;
-  - `/ready` retorna 503 com o PG fora.
-- **Critérios de aceite:** um erro forçado no staging chega ao Sentry com alerta; derrubar o PG dispara o monitor.
-- **Riscos:** baixo.
-
-## Checkpoint H3 — Avaliação do harness antes da produção (após a Fase 12)
-
-- **Objetivo:** limpar o harness acumulado ao longo de 12 fases antes do lançamento, que é quando o projeto passa a ser mantido (e não construído) por agentes.
-- **Como:** `harness-eval` numa sessão nova, com Q2 = **`B`**. O foco é redundância: regras que viraram óbvias pelo código existente e instruções de fases já concluídas.
-- **Critério de aceite:** Track A sem BROKEN; o `CLAUDE.md` descreve o sistema pronto, sem instruções de construção.
-
-## Fase 13 — Production deployment
-
-- **Objetivo:** lançar.
-- **Arquivos principais:** `.github/workflows/deploy.yml`, `docker-compose.prod.yml`, `Caddyfile` (CSP final), `docs/runbooks/{deploy,rollback,restore}.md`.
-- **Dependências:** todas as anteriores.
-- **Implementação:**
-  - deploy por tag (GHCR → SSH → migrate → up → health check);
-  - backup diário para o R2 + **teste de restore**;
-  - CSP final e headers;
-  - chaves de produção (sessão, PII, HMAC, canais);
-  - Asaas e Meta em produção;
-  - DNS e TLS;
-  - suíte Playwright completa (6 fluxos) contra o staging;
-  - revisão de segurança (`/security-review`);
-  - **bloqueio de go-live:** preencher os placeholders `[INSERIR …]` (razão social, CNPJ, endereço, e-mail de contato, DPO, foro) em `apps/web/src/features/legal/documents.ts` e subir `TERMS_VERSION` e `PRIVACY_VERSION`, para que todo usuário aceite o texto completo. Adiado em `.specs/features/terms/plan.md`; registrado em `health-fixes`.
-- **Testes:** restore de backup num ambiente limpo; rollback de uma tag; e2e completo.
-- **Critérios de aceite:**
-  - a checklist inteira da `migration.md` está marcada;
-  - o restore foi testado;
-  - os Termos e a Política publicados não têm nenhum `[INSERIR`;
-  - a primeira corretora foi criada em produção.
-- **Riscos:**
-  - chaves de cifra perdidas = dados ilegíveis. Guardá-las em cofre, com backup separado e documentado no runbook;
-  - aprovação da Meta pendente (ver Fase 11).

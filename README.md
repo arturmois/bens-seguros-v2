@@ -1,8 +1,8 @@
 # Bens Seguros v2
 
-ERP SaaS multi-tenant para corretoras de seguros. Monólito modular: `apps/server` (Fastify) + `apps/web` (Vite + React + TanStack Router).
+MVP SaaS multi-tenant para corretoras de seguros: captura de leads + atendimento com IA + handoff humano + acompanhamento comercial de propostas. Monólito modular: `apps/server` (Fastify) + `apps/web` (Vite + React + TanStack Router).
 
-**Fase atual:** 4 (auth + organizações) fechada; próxima é billing — ver [`docs/roadmap.md`](docs/roadmap.md).
+**Fase atual:** pivot de ERP para o MVP documentado (ADR-011 a ADR-017); próxima é a F0 (poda do ERP) — ver [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Docs para agentes e humanos
 
@@ -11,7 +11,7 @@ ERP SaaS multi-tenant para corretoras de seguros. Monólito modular: `apps/serve
 | [`CLAUDE.md`](CLAUDE.md) | Regras do repo (tenant, módulos, testes, processo) |
 | [`docs/architecture.md`](docs/architecture.md) | Arquitetura aprovada (o que existe vs planejado) |
 | [`docs/decisions/`](docs/decisions/) | ADRs |
-| [`docs/migration.md`](docs/migration.md) | Paridade com o legado |
+| [`docs/handoff.md`](docs/handoff.md) | Requisitos do MVP |
 | [`docs/roadmap.md`](docs/roadmap.md) | Fases |
 | [`.specs/`](.specs/) | Plans, checks, lessons, estado |
 

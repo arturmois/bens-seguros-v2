@@ -1,123 +1,108 @@
-# Bens Seguros v2 — Arquitetura
+# Bens Seguros — Arquitetura do MVP
 
-> Status: **aprovada** (Fase 4, revisada após a sessão de decisões de 2026-09-21).
-> Contexto: [`legacy-analysis.md`](./legacy-analysis.md). Decisões: [`decisions/`](./decisions/). Paridade: [`migration.md`](./migration.md).
+> Status: **aprovada** (pivot para o MVP, 2026-09-23).
+> Requisitos: [`handoff.md`](./handoff.md). Análise e alternativas: [`architecture-analysis.md`](./architecture-analysis.md).
+> Decisões: [`decisions/`](./decisions/) (ADR-011 a ADR-017 são as do MVP; onde um ADR e este doc divergirem, vale o ADR). Fases: [`roadmap.md`](./roadmap.md).
 
-Princípio: **Complexity must be earned.** Cada camada, pacote, serviço ou abstração abaixo resolve um problema concreto de hoje.
+Princípio: **Complexity must be earned.** Cada processo, módulo, tabela ou abstração abaixo responde a
+um requisito do handoff. Se não houver requisito, não entra.
+
+**Como ler:** tudo marcado **[existe]** está no código hoje; **[Fx]** é alvo e nasce na fase `x` do
+roadmap. Não crie pasta, tabela ou rota marcada [Fx] antes da fase.
 
 ---
 
 ## 0. Premissas de produto
 
-- **Escala:** dezenas de corretoras, cada uma com poucos usuários e 1 a 3 números de WhatsApp.
-- **Equipe:** 1 desenvolvedor + agentes (Claude Code).
-- **Banco:** começa vazio. Não há migração de dados do legado.
-- **Escopo do 1º release:** paridade funcional com o legado, **exceto metas**.
-- **Chat:** WhatsApp (Meta Cloud API **ou** Baileys, um tipo por canal) + widget web. Messenger, Instagram e Embedded Signup da Meta ficam adiados.
-- **Billing no dia 1** (escopo núcleo, ver §5).
-
----
+- **Produto:** captura de leads + atendimento com IA + handoff humano + acompanhamento comercial de
+  propostas, para corretoras de seguros (ADR-011). Não é um ERP: sem apólice, cotação, seguradoras,
+  comissão, sinistro, documentos ou billing automatizado.
+- **Escala:** 10–50 corretoras, até ~10 usuários cada, dezenas de conversas simultâneas.
+- **Canais:** Web Chat (um link público por corretora) e WhatsApp via Baileys (N números por
+  corretora).
+- **Equipe:** 1 desenvolvedor + agentes. **Banco:** começa vazio, sem migração do legado.
+- **Operação:** sem SLA; perda de dados e de mensagens não é aceitável.
 
 ## 1. Visão geral
 
 ```text
-                     ┌───────────────── VPS (Docker Compose) ─────────────────┐
- Browser ──HTTPS──▶ Caddy                                                      │
- (painel SPA,        :443   /api/*, /socket.io/*  ──▶ server (Fastify, :3001)  │
-  widget, landing)          /*                    ──▶ arquivos estáticos do web │
-                            │                          (build Vite, no Caddy)   │
-                            │                                                   │
-                            │   server ── Prisma ──▶ PostgreSQL                 │
-                            │     ├── HTTP API (REST + OpenAPI)                 │
-                            │     ├── Socket.IO (chat, notificações, widget)    │
-                            │     ├── pg-boss (jobs + crons, no próprio PG)     │
-                            │     ├── WhatsApp (sessões Baileys + Meta Cloud)   │
-                            │     └── modules/* (regras de negócio)             │
-                            └───────────────────────────────────────────────────┘
-                                         │
-   R2 (S3) · Resend · Anthropic · OpenAI · Meta Cloud API · WhatsApp Web (Baileys) · Asaas · ViaCEP · Consultar Placa · Sentry
+                   ┌──────────────────────── VPS (Docker Compose) ────────────────────────┐
+ Painel (SPA) ─┐   │                                                                       │
+ Web Chat     ─┼─▶ Caddy ── /api, /socket.io ──▶ api  (Fastify)                 [existe]  │
+ (link público)│   │   └── /* ── SPA estática        ├── HTTP (REST + OpenAPI)             │
+               │   │                                 ├── Socket.IO (painel [existe], visitantes [F3])
+               │   │                                 ├── LISTEN app_events → socket  [F2]  │
+               │   │                                 ├── pg-boss workers (e-mail [existe], IA [F4])
+               │   │                                 └── modules/*                         │
+ WhatsApp ◀────┼───┼──── whatsapp (mesma imagem, outro entrypoint)               [F9]      │
+               │   │        ├── sessões Baileys (1 por canal), lock de dono único          │
+               │   │        ├── recebe → persiste Message (+ NOTIFY) → enqueue            │
+               │   │        └── workers `whatsapp.send` / `whatsapp.control`               │
+               │   │                          PostgreSQL (RLS, pg-boss, eventos)  [existe] │
+               │   └───────────────────────────────────────────────────────────────────────┘
+               └── Provider de IA (1, atrás de adapter) [F4] · SMTP [existe] · Sentry [F11] · backup off-site [F11]
 ```
 
-- **2 apps:** `apps/server` (toda a lógica) e `apps/web` (SPA estática: Vite + React + TanStack Router).
-- **1 banco:** PostgreSQL. **Sem Redis:** filas no pg-boss, rate limit em memória e no banco, cache de placa em tabela.
-- **1 processo de runtime:** o `server`. O web não tem processo; é servido como arquivos estáticos pelo Caddy.
-- **Mesma origem:** sem CORS em produção e com cookie de sessão host-only.
+- **2 apps:** `apps/server` (toda a lógica) e `apps/web` (SPA estática, Vite + React + TanStack
+  Router, ADR-009).
+- **2 runtimes do mesmo código:** `api` [existe] e `whatsapp` [F9] (ADR-012). Não são serviços
+  separados: mesma imagem, outro entrypoint.
+- **1 banco:** PostgreSQL, também para filas (pg-boss) e eventos (`NOTIFY`). **Sem Redis.**
+- **Mesma origem:** sem CORS em produção, cookie de sessão host-only.
+- **Comunicação entre runtimes só pelo banco:** comandos por pg-boss, eventos por `NOTIFY`
+  transacional (ADR-012). Nenhuma API HTTP interna.
 
 ---
 
 ## 2. Estrutura do repositório
 
-**Status no disco (2026-09-23):** só existem pastas sob `modules/` para o que já foi implementado. A árvore abaixo mistura o presente e o alvo; cada linha de módulo diz se está **no disco** ou só no **roadmap**. Não crie a pasta “planejado” antes da fase correspondente.
-
 ```text
 bens-seguros-v2/
 ├── apps/
 │   ├── server/
-│   │   ├── prisma/{schema.prisma, migrations/, seed.ts}
+│   │   ├── prisma/{schema.prisma, migrations/}
 │   │   ├── src/
 │   │   │   ├── modules/
-│   │   │   │   ├── auth/            # [no disco / implementado] Better Auth, /me, org ativa, termos, gates
-│   │   │   │   ├── organizations/   # [no disco / implementado] org, membros, convites, carteira, onboarding
-│   │   │   │   ├── audit/           # [no disco / implementado] trilha sem PII (+ API de listagem)
-│   │   │   │   ├── billing/         # [no disco / parcial] só trial no onboarding; Asaas/planos = Fase 5 (roadmap)
-│   │   │   │   ├── contacts/        # [planejado / não no disco] leads, canal → cliente
-│   │   │   │   ├── clients/         # [planejado / não no disco] PF/PJ, CPF/CNPJ cifrado, LGPD
-│   │   │   │   ├── insurers/        # [planejado / não no disco]
-│   │   │   │   ├── proposals/       # [planejado / não no disco] funil, cotação, renovação
-│   │   │   │   ├── policies/        # [planejado / não no disco] emissão, endossos, PDF
-│   │   │   │   ├── commissions/     # [planejado / não no disco] repasse, estorno
-│   │   │   │   ├── claims/          # [planejado / não no disco] sinistros + ocorrências
-│   │   │   │   ├── assistances/     # [planejado / não no disco]
-│   │   │   │   ├── documents/       # [planejado / não no disco] upload / download pré-assinado
-│   │   │   │   ├── notifications/   # [planejado / não no disco] in-app + e-mail + socket
-│   │   │   │   ├── dashboard/       # [planejado / não no disco]
-│   │   │   │   ├── search/          # [planejado / não no disco]
-│   │   │   │   ├── chat/            # [planejado / não no disco] WhatsApp, widget, bot IA
-│   │   │   │   └── admin/           # [planejado / não no disco] super-admin
+│   │   │   │   ├── auth/            # [existe] Better Auth, /me, org ativa, termos, gates de cadastro
+│   │   │   │   ├── organizations/   # [existe] org, membros, convites, carteira, onboarding; branding/status [F1, F10]
+│   │   │   │   ├── audit/           # [existe] trilha sem PII
+│   │   │   │   ├── billing/         # [existe, sai na F10] só o trial do onboarding (Plan/Subscription)
+│   │   │   │   ├── contacts/        # [F2] contato por telefone, lead, dono, fila de leads, consentimento
+│   │   │   │   ├── conversations/   # [F2] conversa, mensagem, estado × responsável, handoff
+│   │   │   │   ├── channels/        # [F2] canais, status de conexão, adapters Web Chat [F3] e WhatsApp [F9]
+│   │   │   │   ├── ai/              # [F4] provider, job ai.reply, tools, AiRun, limites
+│   │   │   │   ├── sales/           # [F6] oportunidade, etapas do Kanban [F7]
+│   │   │   │   ├── followups/       # [F8] próximo contato, pendências
+│   │   │   │   └── metrics/         # [F11] consultas agregadas (sem tabela)
 │   │   │   ├── infrastructure/
-│   │   │   │   ├── database.ts      # PrismaClient (role da aplicação) + withTenant (RLS)
-│   │   │   │   ├── queue.ts         # interface mínima sobre o pg-boss (enqueue/registerWorker/schedule)
-│   │   │   │   ├── realtime.ts      # Socket.IO (auth por cookie, rooms)
-│   │   │   │   ├── storage.ts       # S3/R2
-│   │   │   │   ├── email.ts         # SMTP (Mailpit no dev, Resend em produção) + render de React Email
-│   │   │   │   └── pdf.ts           # @react-pdf/renderer → Buffer
-│   │   │   ├── emails/              # templates React Email (preview: pnpm email:dev)
-│   │   │   ├── shared/
-│   │   │   │   ├── config.ts  errors.ts  logger.ts  request-context.ts
-│   │   │   │   ├── permissions.ts  crypto.ts  money.ts  pagination.ts
-│   │   │   ├── app.ts               # buildApp(deps)
-│   │   │   ├── dependencies.ts      # composição explícita
-│   │   │   └── server.ts            # boot: config → deps → app → listen → workers
-│   │   ├── test/                    # helpers: app de teste, factories, withTwoTenants, schema por worker
-│   │   ├── scripts/export-openapi.ts
-│   │   ├── Dockerfile
-│   │   └── package.json
+│   │   │   │   ├── database.ts      # [existe] PrismaClient (role da aplicação) + withTenant/withUser/withInvitation/withoutTenant
+│   │   │   │   ├── queue.ts         # [existe] interface mínima sobre o pg-boss
+│   │   │   │   ├── realtime.ts      # [existe] Socket.IO (auth por cookie, rooms)
+│   │   │   │   ├── email.ts         # [existe] SMTP + render de React Email
+│   │   │   │   ├── events.ts        # [F2] notify(tx, …) + LISTEN app_events
+│   │   │   │   ├── storage.ts       # [existe, sai na F0] (ADR-011)
+│   │   │   │   └── pdf.ts           # [existe, sai na F0] (ADR-011)
+│   │   │   ├── emails/              # [existe] templates React Email
+│   │   │   ├── shared/              # [existe] config, errors, logger, request-context, permissions, scope, crypto, money, pagination, id
+│   │   │   ├── app.ts               # [existe] buildApp(deps)
+│   │   │   ├── dependencies.ts      # [existe] composição explícita
+│   │   │   ├── workers.ts           # [existe] registro de workers e crons
+│   │   │   ├── server.ts            # [existe] entrypoint `api`
+│   │   │   └── whatsapp.ts          # [F9] entrypoint `whatsapp` (ADR-012)
+│   │   ├── test/                    # [existe] app de teste, factories, withTwoTenants, schema e arquitetura
+│   │   └── scripts/export-openapi.ts
 │   └── web/
-│       ├── src/
-│       │   ├── routes/              # TanStack Router (file-based), ver §9
-│       │   ├── features/<feature>/  # components/, hooks/ (wrappers de mutation), constants.ts, schemas.ts
-│       │   ├── components/          # ui/ (shadcn), layout/, data-table/, form/, states/
-│       │   ├── api/                 # GERADO pelo Orval (hooks + tipos), não editar
-│       │   ├── lib/                 # http.ts (mutator do Orval), auth-client.ts, socket.ts, format.ts, zod-pt-br.ts
-│       │   ├── hooks/               # use-me.ts, use-permission.ts
-│       │   └── main.tsx
-│       ├── public/widget.js         # loader do widget (injeta iframe)
-│       ├── e2e/                     # Playwright
-│       ├── orval.config.ts
-│       ├── vite.config.ts
-│       └── package.json
+│       ├── src/{routes, features, components, api (Orval, gerado), lib, hooks}
+│       └── e2e/                     # [existe] Playwright
 ├── docs/
-├── docker-compose.yml               # dev: postgres, minio, mailpit
-├── docker-compose.prod.yml          # caddy (+ web estático), server, postgres, migrate
-├── Caddyfile
-├── .github/workflows/{ci,deploy}.yml
-├── CLAUDE.md
-├── biome.json  tsconfig.base.json  pnpm-workspace.yaml  package.json  .env.example
+├── docker-compose.yml               # dev: postgres, mailpit (+ minio até a F0)
+├── docker-compose.prod.yml          # caddy, server, postgres, migrate (+ whatsapp [F9])
+├── Caddyfile  .github/workflows/ci.yml  CLAUDE.md
 ```
 
 ### Anatomia de um módulo
 
-O molde é o que `modules/organizations/` já faz (health-fixes, door 2):
+O molde é o que `modules/organizations/` já faz:
 
 ```text
 modules/organizations/
@@ -125,42 +110,42 @@ modules/organizations/
 ├── invitation.ts           # os use cases da entidade (1 use case = 1 função), Prisma inline no withTenant
 ├── invitation.routes.ts    # rotas Fastify: schema + permissão + chamada do use case
 ├── invitation.spec.ts      # integração com PostgreSQL real (app.inject)
-├── membership.ts           # regra usada por mais de um arquivo do módulo (assertOrgLimit)
+├── membership.ts           # regra usada por mais de um arquivo do módulo
 └── index.ts                # API pública para outros módulos
 ```
 
 Arquivos que só aparecem quando o problema existe:
 
-- `<entidade>.repository.ts`: quando a mesma query serve dois ou mais arquivos de use case. Recebe o `tx` de `db.withTenant` e aplica `scopeFor(ctx)` quando há carteira.
-- `<entidade>.presenter.ts`: só onde há PII mascarada por papel (ex.: `clients`).
+- `<entidade>.repository.ts`: quando a mesma query serve dois ou mais arquivos de use case. Recebe o
+  `tx` de `db.withTenant` e aplica `scopeFor(ctx)` quando há carteira.
 - `<entidade>.jobs.ts`: workers e crons do módulo.
-- Um arquivo por use case (`create-client.ts`…): só quando `<entidade>.ts` passar de ~300 linhas.
-
-- Regra rica ganha **somente** o arquivo que ela pede, como `proposals/proposal-stages.ts` e `commissions/commission-status.ts` (funções puras).
-- O `chat/` tem subpastas (`channels/`, `conversations/`, `bot/`, `whatsapp/`, `widget/`) porque é o módulo mais complexo; a complexidade fica localizada ali.
-- **Uma integração usada por um só módulo mora no módulo** (`billing/asaas.ts`, `chat/whatsapp/baileys.ts`, `proposals/vehicle-lookup.ts`).
+- Regra rica ganha **só** o arquivo que pede, como função pura: `conversations/conversation-state.ts`
+  [F2], `sales/opportunity-stages.ts` [F7].
+- Uma integração usada por um só módulo mora no módulo: `ai/provider.ts` [F4] (único arquivo que
+  importa o SDK do provider), `channels/whatsapp/baileys.ts` [F9].
+- Um arquivo por use case só quando `<entidade>.ts` passar de ~300 linhas.
 
 ### Estilo de código do use case
 
 ```ts
-// modules/commissions/commission.ts
-export async function approveCommission(deps: Deps, ctx: RequestContext, id: string) {
-  return deps.db.withTenant(ctx, async (tx) => {                              // RLS: fora do withTenant a tabela falha
-    const commission = await tx.commission.findFirst({ where: { id, ...scopeFor(ctx) } })
-    if (!commission) throw notFound                                           // 404 fora do tenant/escopo
-    const next = nextApprovalStatus(commission.status, ctx.permissions)       // puro; lança AppError
-    const updated = await tx.commission.update({ where: { id }, data: { status: next, approvedBy: ctx.userId } })
-    await audit.record(tx, ctx, { action: 'commission.approve', entityId: id, changes: { status: [commission.status, next] } })
-    if (next === 'APPROVED') await queue.enqueue(tx, 'notifications.commission-approved', { commissionId: id, organizationId: ctx.organizationId })
-    return updated                                                            // o job só existe se o commit acontecer
-  })
+// modules/contacts/contact.ts [F5]
+export async function claimLead(deps: Deps, ctx: RequestContext, id: string) {
+  return deps.db.withTenant(ctx, async (tx) => {                             // RLS: fora do withTenant a tabela falha
+    const { count } = await tx.contact.updateMany({
+      where: { id, ownerId: null },                                          // claim atômico (ADR-016)
+      data: { ownerId: ctx.userId },
+    })
+    if (count === 0) throw await claimConflict(tx, id)                       // 409 se já tem dono; 404 se não existe no tenant
+    await audit.record(tx, ctx, { action: 'lead.claim', entityId: id, changes: { ownerId: [null, ctx.userId] } })
+    await events.notify(tx, { organizationId: ctx.organizationId, type: 'contact.updated', id })
+  })                                                                         // o evento só sai se o commit acontecer
 }
 ```
 
-- Funções, não classes. `Deps` é um objeto simples montado em `dependencies.ts`. Não há container de DI nem decorators.
-- As regras que importam são **funções puras** testadas sem banco.
-- O tipo de persistência é o tipo do Prisma. Não há mapper.
-- **Enfileiramento transacional:** `queue.enqueue(tx, …)` grava o job na mesma transação.
+- Funções, não classes. `Deps` é um objeto simples montado em `dependencies.ts`. Sem container de DI.
+- Regras que importam são **funções puras** testadas sem banco.
+- O tipo de persistência é o tipo do Prisma. Sem mapper.
+- Efeitos colaterais (job, evento) gravados **na mesma transação** (`enqueue(tx)`, `notify(tx)`).
 
 ---
 
@@ -168,24 +153,17 @@ export async function approveCommission(deps: Deps, ctx: RequestContext, id: str
 
 | Módulo | Responsabilidade | Tabelas |
 | --- | --- | --- |
-| `auth` | Better Auth em `/api/auth/*` (e-mail/senha, verificação, reset, 2FA, rate limit persistido); sessão → `RequestContext`; `GET /me`; organização inicial da sessão (AD-010); aceite de termos versionado; Turnstile, bloqueio de e-mail temporário, `SIGNUP_MODE` | User, Session (+`activeOrganizationId`), Account, Verification, TwoFactor, TermsAcceptance, RateLimit |
-| `organizations` | Org (nome, slug, logo), membros (role, ativo, `commissionSplitBp`), convites, OWNER único, limite de usuários do plano, **transferência de carteira**, onboarding (org + OWNER + trial), troca da organização ativa | Organization, Member, Invitation |
-| `contacts` | Leads com `status: CHAT_ONLY \| QUALIFIED`; identidades de canal; atribuição de vendedor; promoção a cliente | Contact |
-| `clients` | PF/PJ; `documentEncrypted` + `documentHash` (HMAC); endereço; soft delete; exclusão LGPD; import/export | Client |
-| `insurers` | Seguradoras por org | Insurer |
-| `proposals` | Funil (NEW_INSURANCE, RENEWAL, ENDORSEMENT); etapas; checklist por etapa+ramo com auto-complete por documento; detalhes do bem por ramo; cotação por e-mail com PDF; CEP; placa (cache em tabela); **renovação automática** | Proposal, ProposalChecklistItem, VehicleLookupCache |
-| `policies` | Emissão transacional (apólice + comissão + proposta), **importação** (`origin: IMPORTED`, sem proposta), cancelamento, expiração, endossos, PDF, export | Policy, Endorsement |
-| `commissions` | Valores da corretora e do vendedor congelados na emissão; workflow de repasse; estorno; export | Commission |
-| `claims` | Sinistros (número sequencial por org), ocorrências | Claim, Occurrence, OrganizationCounter |
-| `assistances` | Assistências | Assistance |
-| `documents` | Upload (magic bytes), download pré-assinado, vínculo polimórfico, gatilho de auto-complete do checklist | Document |
-| `notifications` | Criação, leitura, e-mail, push por socket, alertas diários | Notification |
-| `dashboard` | Agregações e relatório PDF | — |
-| `search` | Busca global | — |
-| `audit` | `record()` sem PII; listagem | AuditLog |
-| `billing` | Planos, assinatura, trial, faturas, métodos de pagamento, webhook/dunning Asaas, entitlements, quotas (usuários, números de WhatsApp), registro de uso de IA (sem cobrança) | Plan, Subscription, Invoice, PaymentMethod, WebhookEvent, AiUsageRecord |
-| `chat` | Canais (Meta Cloud **ou** Baileys; widget), conversas, fila, mensagens, leituras, agentes de IA (Anthropic/OpenAI), tools do bot, webhooks da Meta | Channel, Conversation, Message, ConversationRead, AiAgent, WhatsAppAuthState |
-| `admin` | Endpoints de super-admin (2FA obrigatório) | — |
+| `auth` [existe] | Better Auth em `/api/auth/*` (e-mail/senha, verificação, reset, 2FA, rate limit persistido); sessão → contexto; `GET /me`; organização inicial da sessão (AD-010); termos do usuário do painel; Turnstile, e-mail temporário, `SIGNUP_MODE` | User, Session, Account, Verification, TwoFactor, TermsAcceptance, RateLimit |
+| `organizations` [existe] | Org, membros, convites, quota de usuários, carteira, onboarding, troca da org ativa. [F1] papéis do MVP, canal Web Chat no onboarding, branding (nome, logo, cor, saudação). [F10] `status`, `trialEndsAt`, `maxUsers` | Organization, Member, Invitation |
+| `audit` [existe] | `record()` sem PII; ator não-usuário (`AI`/`SYSTEM`) [F2] | AuditLog |
+| `billing` [existe, sai na F10] | Só `startTrial` do onboarding | Plan, Subscription |
+| `contacts` [F2] | Contato por telefone E.164 (único por org), dados do lead, `leadStatus`, dono (`ownerId`), fila de leads, atribuição, consentimento | Contact, ConsentRecord |
+| `conversations` [F2] | Conversa, mensagens, `status` × `handler`, `seq`, handoff, encerrar/reabrir, `receiveInbound`/`sendMessage` | Conversation, Message |
+| `channels` [F2] | Cadastro de canais (`WEB_CHAT`, `WHATSAPP`), status de conexão, adapters de entrada/entrega | Channel, WhatsAppAuthState [F9] |
+| `ai` [F4] | Orquestração (`ai.reply`), contexto, tools, adapter do provider, limites | AiRun |
+| `sales` [F6] | Oportunidade (= proposta), etapas do Kanban [F7], ganho/perda | Opportunity |
+| `followups` [F8] | Próximo contato, pendências por consulta | FollowUp |
+| `metrics` [F11] | Consultas agregadas | — |
 
 ## 4. Regras de dependência
 
@@ -197,151 +175,182 @@ routes ──▶ use cases ──▶ Prisma (tabelas do próprio módulo, inline
 shared/          não importa modules/ nem infrastructure/
 infrastructure/  não importa modules/
 modules/X        importa modules/Y apenas via modules/Y/index.ts
+
+channels (adapters) ──▶ conversations ──▶ contacts
+ai ──▶ conversations, contacts, sales (leitura)       sales ──▶ contacts
+followups ──▶ contacts, sales                          todos ──▶ audit, organizations (leitura)
+conversations NÃO importa ai (dispara o job `ai.reply`) nem o Baileys (o adapter chama conversations)
+ai NÃO importa use cases de escrita de sales (ADR-015)
 ```
 
-- **Um módulo só escreve nas próprias tabelas.** Leituras cruzadas simples (um `include` para exibição) são permitidas na query.
-- **Sem ciclos.** Um fluxo que envolve vários módulos é orquestrado por quem o inicia. Exemplo: `policies.issuePolicy` chama `proposals.assertIssuable` e `commissions.createForPolicy`.
-- **Efeitos colaterais:**
-  - quando precisam da mesma transação: chamada direta;
-  - quando podem ser repetidos: job via `queue.enqueue(tx, …)`, que também é transacional.
-  - Não há event bus.
-- **Enforcement:** `test/architecture.spec.ts` falha em import profundo entre módulos e em import direto de `pg-boss` fora de `infrastructure/queue.ts`.
+- **Um módulo só escreve nas próprias tabelas.** Leituras cruzadas simples (um `include` para
+  exibição) são permitidas.
+- **Sem ciclos.** Quem inicia um fluxo o orquestra.
+- **Efeitos colaterais:** na mesma transação → chamada direta; repetíveis → job via
+  `queue.enqueue(tx, …)`; aviso de realtime → `events.notify(tx, …)` [F2]. Não há event bus.
+- **Enforcement:** `test/architecture.spec.ts` falha em import profundo entre módulos, em import de
+  `pg-boss` fora do `queue.ts`, em `app.tenant_id` fora do `database.ts` e em `id` num schema de
+  entrada.
 
-## 5. Arquitetura de dados
+---
 
-### PostgreSQL (único serviço de dados)
+## 5. Dados
 
-O schema Prisma é derivado do legado, com estas decisões:
+### Modelo
 
-- **Chat no PG:** `Channel` (`provider: META_CLOUD | BAILEYS | WEB_WIDGET`), `Conversation`, `Message` (índice `(conversationId, createdAt DESC)`), `ConversationRead`, `AiAgent` (`provider: ANTHROPIC | OPENAI`, `model`), `WhatsAppAuthState` (jsonb cifrado).
-- **Contato único:**
-  - identidades `whatsappPhone` (E.164), `metaPsid`, `instagramId`, com índices únicos parciais por org;
-  - `status: CHAT_ONLY | QUALIFIED`;
-  - `salespersonId` opcional.
-  - Um contato `CHAT_ONLY` não aparece no CRM. A qualificação acontece de 3 formas: tool `captureLead` do bot, ação do atendente, ou criação de proposta.
-- **Client:** sem a coluna de documento em texto puro. `@@unique([organizationId, documentHash])`.
-- **Policy:**
-  - `proposalId` opcional + `origin: ISSUED | IMPORTED`;
-  - `@@unique([organizationId, policyNumber])`;
-  - `@@unique(proposalId)` quando não nulo.
-- **Commission:**
-  - `brokerageAmountCents`, `salespersonAmountCents`, `premiumCents`, `rateBp`, `splitBp`, todos congelados na criação;
-  - índice único parcial `(policyId) WHERE isReversal = false`.
-- **Proposal:** `renewalOfPolicyId` com índice único parcial (uma renovação ativa por apólice).
-- **Organization:**
-  - `renewalLeadDays` (padrão 45);
-  - `billingManagedExternally`.
-- **Claim:** número sequencial via `OrganizationCounter(organizationId, key, value)` com `UPDATE … RETURNING` na transação.
-- **AuditLog:** `changes` jsonb **sem PII**. Campos de PII são registrados como `"[alterado]"`.
-- **FKs compostas com `organizationId`** em toda relação entre models tenant-scoped (teste de schema, ADR-004).
-- **RLS forçado** em toda tabela com `organizationId`, com a política `tenant_isolation` na migration da tabela (ADR-004).
-- **IDs:** UUID v7 (ordenáveis, bons para cursor).
-- **Removidos:** `Goal`, `AuditLogArchive`, contato duplicado.
-- **Migrations:** `prisma migrate`. Em produção, o serviço one-shot `migrate` roda `migrate deploy` antes do server.
-- **Retenção:** job semanal apaga `Message` com mais de 730 dias, `AuditLog` com mais de 5 anos e `VehicleLookupCache` expirado.
-
-### Jobs e crons (pg-boss, no processo do server)
-
-Todos os módulos usam **somente** `infrastructure/queue.ts`:
-
-```ts
-enqueue(tx, name, payload, { singletonKey?, delaySeconds? })
-registerWorker(name, handler, { concurrency, retries, backoff, dedupe })
-schedule(name, cron, { tz: 'America/Sao_Paulo' })
+```text
+Organization [existe]  name, slug · [F1] publicChatKey, branding(logo bytea, cor, saudação), aiEnabled
+                       [F4] aiMonthlyTokenLimit · [F10] status, trialEndsAt, maxUsers
+├─ Member [existe]      role · [F1] ADMIN | MANAGER | COMMERCIAL
+├─ Invitation, AuditLog [existe]
+├─ Channel [F2]         kind: WEB_CHAT | WHATSAPP, name, phoneE164?, connectionStatus, aiEnabled
+│    └─ WhatsAppAuthState [F9]  key, valueEncrypted
+├─ Contact [F2]         phoneE164, name?, email?, leadStatus, ownerId?, interest?, notes?   @@unique(org, phoneE164)
+│    ├─ ConsentRecord [F3]  conversationId, channelId, noticeVersion, acceptedAt
+│    ├─ Conversation [F2]   channelId, status, handler, assigneeId?, lastSeq, lastMessageAt, closedAt?
+│    │    └─ Message [F2]   seq, direction, author: CONTACT|AI|HUMAN|SYSTEM, authorUserId?, kind, text?,
+│    │                      deliveryStatus: PENDING|SENT|FAILED, externalId?, failureReason?
+│    ├─ Opportunity [F6]    stage, title, estimatedValueCents?, ownerId, lostReason?, wonAt?, lostAt?
+│    └─ FollowUp [F8]       opportunityId?, dueAt, note, assigneeId, doneAt?
+└─ AiRun [F4]           conversationId, model, tokens, latencyMs, toolsCalled, outcome, errorCode
 ```
 
-A interface expõe apenas o que o BullMQ também consegue fazer, então uma troca futura fica restrita a esse arquivo (ADR-006). Os handlers são **idempotentes**.
+Toda tabela com `organizationId` segue o ADR-004: RLS `ENABLE` + `FORCE` e política
+`tenant_isolation` na própria migration, FKs compostas `(id, organizationId)`, únicos incluindo
+`organizationId`, FK para `Organization` `RESTRICT`, IDs UUID v7 gerados no server. O teste de schema
+falha sem isso.
 
-- A fila precisa ter worker registrado antes do `enqueue`/`schedule` (o `queue.ts` recusa fila desconhecida).
-- `dedupe: true` declara a fila com a política `short` do pg-boss. Nela, o `singletonKey` é **obrigatório**: sem chave, a fila guardaria um único job e descartaria os outros em silêncio. Numa fila sem `dedupe`, passar `singletonKey` também é erro (não deduplicaria).
+### Invariantes e mecanismos
 
-| Job | Tipo |
+| Invariante | Mecanismo |
 | --- | --- |
-| `email.send` | on-demand, retry |
-| `notifications.daily-alerts` | cron 08:00 |
-| `policies.expire` | cron 02:00 |
-| `proposals.create-renewals` | cron 06:00 (idempotente por apólice) |
-| `clients.import`, `policies.import` | on-demand |
-| `billing.trial-expiry`, `billing.subscriptions-expiry`, `billing.dunning`, `billing.webhook-reconcile` | cron horário |
-| `chat.process-incoming`, `chat.send`, `chat.bot-reply` | on-demand |
-| `chat.auto-close` | cron horário |
-| `chat.meta-token-refresh` | cron diário |
-| `retention.purge` | cron semanal |
+| Telefone único por org | `@@unique([organizationId, phoneE164])`; normalização E.164 na borda (BR padrão) |
+| Mensagem não duplica | único parcial `(org, channelId, externalId)` + `ON CONFLICT DO NOTHING` (ADR-013) |
+| Ordem por conversa | `seq` via `UPDATE conversation SET lastSeq = lastSeq + 1 … RETURNING` |
+| Uma conversa aberta por contato + canal | único parcial `(org, contactId, channelId) WHERE status <> 'CLOSED'` |
+| Dois comerciais não assumem o mesmo lead/conversa | update condicional; 0 linhas → 409 (ADR-016) |
+| Job/evento só existe se o dado existir | `enqueue(tx)` e `notify(tx)` na transação |
+| Sempre ≥ 1 ADMIN ativo | checagem no use case com lock das linhas de `Member` (ADR-016) |
+| Dinheiro | inteiros em centavos (`shared/money.ts`) |
 
-Os jobs recebem `organizationId` no payload e rodam com um `RequestContext` de sistema dentro de `db.withTenant`, pelo mesmo caminho das queries dos use cases (sem bypass). Crons que varrem todas as orgs listam as organizações e abrem `withTenant` por org.
+### Máquina de estados da conversa (ADR-013)
+
+```text
+status:   OPEN ⇄ WAITING (WAITING = aguardando o cliente; automático)
+          qualquer → CLOSED (ação humana)     CLOSED --mensagem do cliente--> OPEN (mesma conversa)
+handler:  AI → QUEUE (request_human | falha | limite)      AI → HUMAN, QUEUE → HUMAN (assumir/atribuir)
+          HUMAN → QUEUE (devolver à fila)                  HUMAN → AI (só ação explícita do humano)
+          proibido: qualquer transição automática para AI a partir de QUEUE ou HUMAN
+reabertura: AI se a IA estiver habilitada e no limite; senão QUEUE; nunca direto para o humano anterior
+```
+
+### Etapas da oportunidade (ADR-011) [F7]
+
+`CAPTURE → QUOTE → PROTOCOL → INSPECTION → PAYMENT → POLICY_ISSUED | LOST`. Movimento livre;
+`POLICY_ISSUED` = ganha; `LOST` exige motivo; reabrir permitido. Sem checklist, dados do bem ou cliente.
+
+### Jobs e crons (pg-boss)
+
+Todos os módulos usam **somente** `infrastructure/queue.ts`: `enqueue(tx, name, payload, { singletonKey?,
+delaySeconds? })`, `registerWorker(name, handler, { concurrency, retries, backoff, dedupe })`,
+`schedule(name, cron, { tz })`. A fila precisa de worker registrado antes do `enqueue`; `dedupe: true`
+exige `singletonKey`. Handlers idempotentes (checam o estado antes de agir).
+
+| Job | Runtime | Fase |
+| --- | --- | --- |
+| `email.send` | api | [existe] |
+| `ai.reply` (dedupe por conversa) | api | [F4] |
+| `whatsapp.send`, `whatsapp.control` | whatsapp | [F9] |
+
+Jobs recebem `organizationId` no payload e abrem `withTenant` com ele. Follow-up não tem cron: a
+pendência é uma consulta (`dueAt <= now AND doneAt IS NULL`).
 
 ### Rate limit (sem Redis)
 
-- `/api/auth/*`: rate limit do Better Auth com `storage: "database"`. É persistido, então sobrevive a restart.
-- Resto da API, widget e lookup de placa: `@fastify/rate-limit` em memória (uma instância).
-- Com mais de 1 instância: store do `@fastify/rate-limit` no PG (ver ADR-006).
+- `/api/auth/*`: Better Auth com `storage: "database"` [existe].
+- `/api/public/chat/*`: `@fastify/rate-limit` em memória por IP, por `publicChatKey` e por token de
+  visitante; tamanho máximo de mensagem; Turnstile no início [F3] (ADR-014).
 
-### Storage
+### Outros
 
-- API S3: R2 em produção, **MinIO** no dev.
-- Chaves `org/{organizationId}/{entity}/{id}/{uuid}-{filename}`.
-- Download via URL pré-assinada de 5 min, depois de checar a permissão.
-- A mídia do chat vai direto para o storage.
+- **Logo:** `bytea` ≤ 200 KB, tipo confirmado por magic bytes, servido com cache [F1]. Sem storage de
+  objetos no MVP (ADR-011).
+- **Encerramento de org:** `CLOSED` bloqueia sem apagar linhas (ADR-017). Anonimização LGPD depois.
+- **Exportação futura:** o modelo relacional por tenant já permite; nada a construir agora.
+- **Backup:** `pg_dump` diário cifrado off-site, 30 dias, restore testado [F11].
 
-## 6. Autenticação
+---
 
-**Better Auth** cuida apenas de identidade, sessão e 2FA (ADR-003). Organizações, membros e convites são código próprio.
+## 6. Runtimes
+
+| Processo | Responsabilidade | Réplicas | Se cair |
+| --- | --- | --- | --- |
+| `caddy` [existe] | TLS, SPA, proxy `/api` e `/socket.io`, CSP | 1 | restart automático |
+| `api` (`server.ts`) [existe] | HTTP, Socket.IO, `LISTEN` [F2], workers pg-boss (e-mail, IA) | 1 (stateless) | sessões WhatsApp seguem; mensagens seguem persistidas pelo runtime WhatsApp |
+| `whatsapp` (`whatsapp.ts`) [F9] | Sessões Baileys, entrada, workers `whatsapp.*`, heartbeat | **exatamente 1** (advisory lock) | envios ficam `PENDING` e saem na volta |
+| `migrate` [existe] | `prisma migrate deploy` one-shot | — | bloqueia o boot |
+| `postgres` [existe] | dados, RLS, fila, eventos | 1 | backup + restore testado |
+
+**Entrada (WhatsApp):** `messages.upsert` → `withTenant(org do canal)`: insere a mensagem
+(idempotente), acha/reabre/cria a conversa, atribui `seq`; se `UNSUPPORTED`, grava a orientação e
+enfileira o envio; se `handler = AI` (e consentimento dado), enfileira `ai.reply`; `notify` → COMMIT →
+a API empurra pelo socket (≤ 2 s).
+
+**Saída (humano ou IA):** `Message(PENDING)` + `enqueue(whatsapp.send)` + `notify` na mesma transação
+→ o runtime envia → `SENT` ou `FAILED`. No Web Chat a mensagem vira `SENT` na própria transação.
+
+Detalhes do runtime WhatsApp (lock, auth state, reconexão, QR, heartbeat, spike S1): ADR-012.
+
+## 7. IA [F4]
+
+Resumo do ADR-015: `ai/provider.ts` é o único arquivo com o SDK; job `ai.reply` fora da requisição;
+contexto = instruções da org + campos do lead + últimas N mensagens (sem telefone); tools `get_lead`,
+`update_lead_information` (allowlist, auditada com ator `AI`) e `request_human`, com
+`ToolContext = { organizationId, conversationId, contactId }` fixado pelo sistema; nenhuma escrita em
+`sales`; revalida `handler = AI` e mensagens novas antes de gravar; qualquer falha → `QUEUE`; `AiRun`
+em todo desfecho; limite mensal por org.
+
+---
+
+## 8. Autenticação e autorização
+
+### Autenticação (ADR-003) [existe]
 
 ```text
-1. Cadastro   POST /api/auth/sign-up/email  (preHandler: Turnstile + e-mail temporário + SIGNUP_MODE)
-              → e-mail de verificação (React Email/Resend) → auto sign-in
-2. Onboarding POST /api/v1/onboarding → Organization + Member(OWNER) + Subscription(TRIALING)
-              → Session.activeOrganizationId = org → aceite de termos
-3. Login      POST /api/auth/sign-in/email → cookie httpOnly, Secure, SameSite=Lax, host-only
-4. Request    cookie → getSession() → Member ativo em session.activeOrganizationId → RequestContext
-                 { userId, organizationId, role, permissions, entitlements, isSuperAdmin, requestId }
-5. Troca org  POST /api/v1/me/active-organization { organizationId } → valida Member → atualiza a sessão
-6. Socket     o handshake envia o mesmo cookie → a mesma resolução do passo 4
-7. Convite    POST /api/v1/invitations → e-mail → /accept-invitation?token → cria Member (checa a quota de usuários)
+1. Cadastro   POST /api/auth/sign-up/email (Turnstile + e-mail temporário + SIGNUP_MODE) → verificação → sign-in
+2. Onboarding POST /api/v1/onboarding → Organization + Member + trial → Session.activeOrganizationId → termos
+              [F1] Member ADMIN + canal Web Chat + publicChatKey
+3. Login      cookie httpOnly, Secure, SameSite=Lax, host-only; sessão em banco (3 dias, rotação 12 h)
+4. Request    cookie → sessão → Member ativo em activeOrganizationId (requireTenant) → RequestContext
+5. Troca org  POST /api/v1/me/active-organization → valida Member → atualiza a sessão (AD-010)
+6. Socket     o handshake usa o mesmo cookie
+7. Convite    e-mail → aceite pelo token (withInvitation, AD-007) → Member (checa a quota de usuários)
 ```
 
-- A sessão expira em 3 dias e rotaciona a cada 12h. `cookieCache` desligado, para revogação imediata.
-- Um usuário pode pertencer a várias organizações (`MAX_ORGS_PER_USER`, padrão 3).
-- Super-admin: `isSuperAdmin` + 2FA verificado.
-- No web: `better-auth/react` só nas telas de login e cadastro. O resto vem de `GET /me`. O guard das rotas é `beforeLoad` do TanStack Router (§9). **Quem autoriza é sempre o server.**
+No web, `better-auth/react` só nas telas de auth; o resto vem de `GET /me`. **Quem autoriza é sempre o
+server.**
 
-## 7. Autorização
+### Isolamento de tenant (ADR-004) [existe]
 
-### RBAC
+1. O tenant vem só da sessão validada contra `Member`, nunca do request.
+2. RLS forçado em toda tabela com `organizationId`; todo acesso passa por `db.withTenant(ctx, tx => …)`;
+   as queries não filtram nem gravam `organizationId`. Registro de outro tenant → 404.
+3. Runtime, testes e pg-boss conectam como `bens_app` (sem bypass); o boot recusa outro role.
+4. Caminhos fora do tenant, cada um com AD: `withUser` (AD-006), `withInvitation` (AD-007),
+   `withoutTenant` (identidade e fila). Novos no MVP: link público por `publicChatKey` [F3, ADR-014] e
+   boot do runtime WhatsApp por função `SECURITY DEFINER` [F9, ADR-012].
+5. `withTwoTenants()` obrigatório por endpoint; teste de schema.
 
-`shared/permissions.ts` define `ROLE_PERMISSIONS: Record<Role, readonly Permission[]>`, com permissões nomeadas por ação de negócio (ADR-005). Na rota: `preHandler: [requirePermission('proposal:write')]`. Um teste garante que toda rota declara permissão e que a matriz role × permissão bate com o snapshot.
+### RBAC e carteira (ADR-005, ADR-016)
 
-### Carteira do vendedor (ADR-010)
-
-- **COMMERCIAL** vê e edita **apenas a própria carteira**:
-  - contatos e propostas com `salespersonId = ctx.userId`;
-  - clientes ligados a esses contatos;
-  - apólices, sinistros, assistências e comissões dessas apólices.
-- Aplicado por `scopeFor(ctx)` em todas as queries envolvidas. Registro fora da carteira retorna **404**.
-- **Transferência de carteira** (ADMIN/OWNER): move contatos, propostas abertas e conversas de um membro para outro numa transação, com auditoria.
-- **Chat:**
-  - A fila `WAITING_HUMAN` é compartilhada entre quem tem `chat:attend`.
-  - Contato com vendedor → a conversa vai para a fila desse vendedor.
-  - Conversa assumida → visível para quem assumiu e para ADMIN/MANAGER/OWNER.
-  - Quem assume a conversa de um contato sem vendedor vira o vendedor quando o lead é qualificado.
-
-### Entitlements do plano
-
-Checagem separada do RBAC:
-- `requireFeature('ai')`;
-- `assertQuota(ctx, 'users' | 'whatsappNumbers')`;
-- bloqueio `402` quando a assinatura está `PAST_DUE`/`EXPIRED`, exceto se `billingManagedExternally`.
-
-A assinatura é lida na mesma query da membership.
-
-### Isolamento de tenant (ADR-004)
-
-1. O tenant vem só da sessão validada contra `Member`.
-2. **RLS forçado** em toda tabela com `organizationId`: política `tenant_isolation` (`USING` + `WITH CHECK` por `current_setting('app.tenant_id')`), criada na migration da tabela.
-3. Todo acesso a tabela tenant-scoped passa por `db.withTenant(ctx, async (tx) => …)`; fora dela a query falha. As queries **não** filtram nem gravam `organizationId` (default da coluna = tenant da transação). Registro de outro tenant retorna 404 porque o banco não o devolve.
-4. Runtime, testes e pg-boss conectam como `bens_app` (sem superuser nem `BYPASSRLS`); o boot recusa outro role. Só o Prisma CLI usa o owner (`MIGRATION_DATABASE_URL`).
-5. FKs compostas com `organizationId` em toda relação entre models tenant-scoped; todo índice único de tabela tenant-scoped inclui `organizationId` (exceto a PK: ids são gerados no server, nunca vêm do input); FK para `Organization` é `RESTRICT` (cascade ignoraria o RLS).
-6. `withTwoTenants()`: teste cross-tenant obrigatório por endpoint; teste de schema cobre os itens 2 e 5.
+- `shared/permissions.ts`: `ROLE_PERMISSIONS` estático; toda rota declara `requirePermission(...)`
+  (o boot falha sem ela em `/api/v1`); snapshot da matriz. Papéis hoje: `OWNER, ADMIN, MANAGER,
+  COMMERCIAL, VIEWER`; **[F1]** `ADMIN, MANAGER, COMMERCIAL` com "≥ 1 ADMIN ativo".
+- Carteira: COMMERCIAL vê a própria carteira **e a fila**; a carteira alheia → 404. MANAGER e ADMIN
+  veem tudo. Aplicada por `scopeFor(ctx)` no repository [existe, hoje por `salespersonId`; revisada
+  para `ownerId` + fila na primeira tabela com dono].
+- Encerrar conversa: COMMERCIAL só as próprias; MANAGER e ADMIN qualquer uma.
+- Organização suspensa ou trial expirado: escrita → 402, leitura liberada [F10, ADR-017].
 
 ### Controles de segurança
 
@@ -349,198 +358,95 @@ A assinatura é lida na mesma query da membership.
 | --- | --- |
 | Validação | Zod `.strict()` em todo body, query e params |
 | Mass assignment | mapeamento campo a campo para o Prisma |
-| Headers | `@fastify/helmet` na API. CSP e `X-Frame-Options` no Caddy para a SPA; `frame-ancestors *` só em `/embed/*` |
-| CORS | desligado em produção; em dev, o proxy do Vite mantém a mesma origem |
-| CSRF | `SameSite=Lax` + checagem de `Origin` em métodos mutáveis |
-| Rate limit | ver §5 |
-| Uploads | limite de tamanho, allowlist de MIME confirmada por magic bytes, `Content-Disposition: attachment` |
-| Isolamento | RLS forçado por tabela + `withTenant` (ADR-004) |
-| PII | CPF/CNPJ cifrado; presenter por role; `pino.redact`; Sentry `beforeSend`; **redação de PII antes do provider de IA** (as tools recebem o dado real no server) |
-| Auditoria | só ações sensíveis, **sem PII**: login, mudança de role, transferência de carteira, aprovação/pagamento/estorno de comissão, emissão/importação/cancelamento de apólice, exclusão LGPD, acesso a documento, mudanças de billing |
-| Webhooks | Meta (`X-Hub-Signature-256`), Asaas (token com rotação); dedup em `WebhookEvent` |
-| Secrets | env validado no boot. Chaves separadas: sessão, cifra de PII, HMAC de busca, cifra de credenciais de canal |
+| Headers | `@fastify/helmet` na API; CSP no Caddy para a SPA |
+| CSRF | `SameSite=Lax` + checagem de `Origin` em todo método mutável (AD-004) |
+| Canal público | tenant pelo `publicChatKey`, token de visitante, visitante só vê a própria sessão, rate limit, Turnstile (ADR-014) |
+| Consentimento | `ConsentRecord` antes do atendimento: checkbox no Web Chat, opt-in "SIM" no WhatsApp (ADR-014) |
+| IA | `ToolContext` fixo, allowlist de campos, sem SQL, sem escrita comercial, saída validada (ADR-015) |
+| PII | `pino.redact`; auditoria sem PII (AD-008); telefone fora do prompt da IA |
+| Auditoria | só ações sensíveis, lista fechada na AD-008 (ampliada por fase: atribuição, handoff, humano entra/sai, lead, oportunidade, etapa, follow-up) |
+| Secrets | env validado no boot (`shared/config.ts`); chave própria para o auth state do WhatsApp [F9] |
 
-## 8. Arquitetura da API
+---
 
-- **Prefixos:** `/api/v1/*` (autenticado), `/api/auth/*` (Better Auth), `/api/public/*` (widget, convite, planos), `/api/webhooks/*`.
-- **REST com ações de domínio como sub-recursos:**
+## 9. API
+
+- **Prefixos:** `/api/v1/*` (autenticado, com tenant), `/api/auth/*` (Better Auth),
+  `/api/public/chat/*` [F3] (visitante do Web Chat). Sem webhooks no MVP.
+- **REST com ações de domínio como sub-recursos**, por exemplo [F5–F7]:
 
   ```text
-  GET    /api/v1/proposals?stage=QUOTE&cursor=…&limit=50
-  POST   /api/v1/proposals
-  PATCH  /api/v1/proposals/:id
-  POST   /api/v1/proposals/:id/advance | /lose | /reopen | /send-quote
-  PUT    /api/v1/proposals/:id/checklist/:itemKey
-  POST   /api/v1/policies                 # emissão a partir de proposta
-  POST   /api/v1/policies/import          # CSV → job
-  POST   /api/v1/commissions/:id/approve | /reject | /pay | /reverse
-  POST   /api/v1/members/:id/transfer-portfolio { toMemberId }
+  POST /api/v1/contacts/:id/claim | /assign
+  POST /api/v1/conversations/:id/take | /return-to-queue | /return-to-ai | /close
+  POST /api/v1/opportunities/:id/move { stage } | /lose { reason } | /reopen
   ```
 
-- **Rota:**
-
-  ```ts
-  app.post('/api/v1/proposals/:id/advance', {
-    schema: { params: idParams, response: { 200: proposalOutput }, tags: ['Proposals'], operationId: 'advanceProposal' },
-    preHandler: [requirePermission('proposal:write')],
-  }, (req) => advanceProposal(deps, req.ctx, req.params.id))
-  ```
-
-- **Respostas:** o recurso direto, sem envelope. Listas: `{ items, nextCursor }`.
-- **Erros:** `{ error: { code, message, details? } }`.
+- **Rota:** schema Zod `.strict()`, `operationId` estável, `requirePermission(...)`.
+- **Respostas:** o recurso direto, sem envelope. Listas: `{ items, nextCursor }`. Erros:
+  `{ error: { code, message, details? } }`, mensagens em pt-BR, `code` estável.
 
   | Situação | Status |
   | --- | --- |
   | Zod | 400 |
   | Sem sessão | 401 |
   | Sem permissão | 403 |
-  | Não encontrado / fora do escopo | 404 |
-  | P2002 | 409 |
+  | Não encontrado / fora do tenant ou da carteira | 404 |
+  | Conflito (P2002, já atribuído) | 409 |
   | Regra de negócio | 422 |
-  | Plano / quota | 402 |
-  | Inesperado | 500 + Sentry + `requestId` |
+  | Organização suspensa / trial expirado | 402 |
+  | Inesperado | 500 + `requestId` |
 
-  Mensagens em pt-BR, `code` estável.
-- **OpenAPI:** gerado pelos schemas Zod (`@fastify/swagger` + `fastify-type-provider-zod`). `operationId` obrigatório e estável, porque dá nome aos hooks do Orval. `scripts/export-openapi.ts` grava o `openapi.json` **sem subir o server**. Docs em `/api/docs` só fora de produção.
-- **Paginação por cursor**, com `limit` máximo de 100. **Export CSV** em streaming síncrono.
+- **OpenAPI** gerado dos schemas Zod; `scripts/export-openapi.ts` sem subir o server; docs em
+  `/api/docs` fora de produção. **Paginação por cursor**, `limit` máximo 100.
 
-## 9. Arquitetura do frontend (ADR-009)
+## 10. Frontend (ADR-009)
 
-**Vite + React + TanStack Router** (file-based), como SPA estática servida pelo Caddy.
+SPA Vite + React + TanStack Router (file-based), servida pelo Caddy.
 
 ```text
 apps/web/src/routes/
-├── __root.tsx
-├── (public)/                  index (landing), terms, privacy, pricing   ← pré-renderizadas no build
-├── (auth)/                    login, register, forgot-password, reset-password, verify-email
-├── (onboarding)/              onboarding, select-org, select-plan, accept-invitation
-├── _app.tsx                   layout autenticado (beforeLoad: ensureQueryData(/me) → redirect /login)
+├── (public)/        index, terms, privacy                                  [existe]
+├── (auth)/          login, register, forgot/reset-password, verify-email, two-factor  [existe]
+├── (onboarding)/    onboarding, select-org, accept-invitation              [existe]
+├── terms-acceptance.tsx                                                    [existe]
+├── _app.tsx         layout autenticado (beforeLoad: /me → redirect)        [existe]
 ├── _app/
-│   ├── dashboard  contacts  clients  proposals  policies  endorsements
-│   ├── claims  assistances  commissions  insurers  chat  audit
-│   └── settings/              organization, members, channels, ai-agents, billing
-├── billing.expired.tsx
-└── embed.chat.$channelId.tsx  # widget em iframe (sem sessão do painel, token de visitante)
+│   ├── dashboard    [existe, placeholder] → métricas [F11]
+│   ├── inbox        [F3] fila, minhas conversas, conversa
+│   ├── contacts     [F6] leads com filtros (status, dono, fila)
+│   ├── pipeline     [F7] Kanban (`dnd-kit`)
+│   ├── followups    [F8] hoje / atrasados
+│   └── settings/    organization, members, security [existe] · branding, channels [F1, F9]
+└── c.$slug.tsx      [F3] Web Chat público (token de visitante, sem sessão do painel)
 ```
 
-- **Contrato (ADR-007):** `pnpm api:generate` exporta o `openapi.json` e roda o Orval, que gera em `src/api/` hooks do TanStack Query + tipos (**sem Zod**). O mutator em `lib/http.ts` usa `fetch` com `credentials: 'include'` e converte `{ error }` em `ApiError`. O CI falha se o código gerado estiver desatualizado.
-- **Fluxo de dados:**
-  - rota → `loader` com `queryClient.ensureQueryData` (prefetch) → componente com o hook do Orval;
-  - mutations embrulhadas em `features/*/hooks` (toast + invalidação).
-- **Estado:**
-  - servidor → TanStack Query;
-  - filtros e paginação → **search params do TanStack Router validados com Zod** (sem `nuqs`);
-  - formulários → React Hook Form + schemas em `features/*/schemas.ts`;
-  - local → `useState`.
-  - Sem store global.
-- **Tempo real:** o socket entra nas rooms `org:*` e `user:*`. Eventos de chat e notificação chamam `setQueryData`/`invalidateQueries`.
-- **UI:**
-  - shadcn/ui + Tailwind 4, com o design do legado (Inter, teal `#1f4b5f`, gold `#b98927`, oklch, dark mode);
-  - TanStack Table; `dnd-kit` no Kanban; `recharts`;
-  - os 4 estados em toda listagem.
-- **Code splitting** por rota (automático no plugin do TanStack Router).
-- **Páginas públicas:** pré-renderizadas no build em HTML estático, para SEO.
-- **Widget:** `public/widget.js` (~1 KB) injeta `<iframe src="/embed/chat/{channelId}">`. A rota embed usa `/api/public/widget/*` + o namespace Socket.IO `/widget`.
+- **Contrato (ADR-007):** `pnpm api:generate` exporta o `openapi.json` e roda o Orval → hooks do
+  TanStack Query + tipos em `src/api/` (gerado, não editar). O CI falha se estiver desatualizado.
+- **Estado:** servidor → TanStack Query; filtros e paginação → search params validados com Zod;
+  formulários → React Hook Form; sem store global.
+- **Tempo real:** o socket entra nas rooms `org:*` e `user:*` [existe] e `conversation:*` [F2]; eventos
+  chamam `setQueryData`/`invalidateQueries`; ao reconectar, refaz as consultas (o banco é a fonte de
+  verdade).
+- **UI:** shadcn/ui + Tailwind 4; **4 estados** (vazio, carregando, erro, sucesso) em toda listagem.
+- **Link público:** a API serve em `/c/:slug` um HTML mínimo com Open Graph (nome e logo da corretora)
+  que carrega a SPA [F3].
 
-## 10. Deploy (ADR-008)
+## 11. Deploy e observabilidade (ADR-008)
 
 ```text
-Local   docker compose up -d   → postgres, minio, mailpit
-        pnpm dev               → server (tsx watch :3001) + web (vite :3000, proxy /api e /socket.io → :3001)
-
-Build   apps/server/Dockerfile → node:24-slim, multi-stage (deps → prisma generate → tsc → runtime não-root)
-        apps/web               → `vite build` → dist/ copiado para a imagem do Caddy (caddy + estáticos)
-
-CI      install → biome → typecheck → vitest (service: postgres) → api:generate + checar diff
-        → build → Playwright (5–6 fluxos) em main
-
-Deploy  tag v* → imagens `server` e `caddy-web` no GHCR → SSH → pull → run --rm migrate → up -d
-        → health check /api/ready → rollback = redeploy da tag anterior
-
-VPS     caddy (TLS + SPA + proxy) · server · postgres · migrate (one-shot)
-        backup: pg_dump diário → R2 (30 dias) + teste de restore mensal
+Local   docker compose up -d → postgres, mailpit (+ minio até a F0)
+        pnpm dev             → server (tsx watch :3001) + web (vite :3000, proxy /api e /socket.io)
+Build   apps/server/Dockerfile → uma imagem, dois entrypoints (server.js [existe], whatsapp.js [F9])
+        apps/web → vite build → estáticos na imagem do Caddy
+CI      install → biome → typecheck → vitest (postgres) → api:generate + diff → build → Playwright
+VPS     caddy · server · whatsapp [F9] · postgres · migrate (one-shot)
+        staging publicado: marco antes da F3 (runbook em docs/runbooks/staging.md)
 ```
 
-### Observabilidade
-
-- **Logs:** pino em JSON no stdout, com `requestId`, `organizationId` e `userId`; rotação do Docker.
-- **Sentry** no server e no web, com alertas por e-mail/Telegram (erro novo, pico).
-- **Monitor externo de uptime** em `/api/ready`, que checa o PG e se os workers do pg-boss estão ativos.
-- **Alertas operacionais para o super-admin** (notificação + e-mail):
-  - job falhou em todas as tentativas;
-  - canal WhatsApp desconectado há mais de 30 min;
-  - webhook do Asaas falhou.
-- **Tela de admin:** jobs com falha, com opção de re-executar.
-
-## 11. Mapeamento legado → v2
-
-| Legado | v2 |
-| --- | --- |
-| `apps/server/src/routes/v1/<x>/*` | `modules/<x>/<x>.routes.ts` |
-| `apps/server/src/routes/internal/*` (HMAC) | removido (chamadas diretas) |
-| `apps/server/src/middlewares/*` | `modules/auth`, `shared/permissions.ts`, plugins no `app.ts` |
-| `apps/server/src/pdf-templates/*` | `proposals/proposal-quote.pdf.tsx`, `policies/policy-summary.pdf.tsx`, `dashboard/dashboard-report.pdf.tsx` |
-| `packages/core/.../sales/leads` | `modules/contacts` |
-| `packages/core/.../sales/proposals` | `modules/proposals` |
-| `packages/core/.../sales/policies` (+ endorsement) | `modules/policies` |
-| `packages/core/.../client` | `modules/clients` |
-| `packages/core/.../commission` | `modules/commissions` |
-| `packages/core/.../servicing/{claims,occurrences}` | `modules/claims` |
-| `packages/core/.../servicing/assistance` | `modules/assistances` |
-| `packages/core/.../{document,insurer,notification,search}` | `modules/{documents,insurers,notifications,search}` |
-| `packages/core/.../performance/dashboard` | `modules/dashboard` |
-| `packages/core/.../performance/goals` | **removido** (fora do escopo) |
-| `packages/core/.../workspace` | `modules/organizations` |
-| `packages/core/.../billing` + `billing-port` + `asaas-adapter` | `modules/billing` (+ `asaas.ts`) |
-| `packages/core/src/platform/audit` | `modules/audit` |
-| `packages/core/src/platform/lookups/{cep,vehicle}` | `proposals/{cep-lookup,vehicle-lookup}.ts` |
-| `packages/core/src/platform/storage` | `infrastructure/storage.ts` |
-| `packages/auth` (Better Auth + CASL) | `modules/auth` + `shared/permissions.ts` |
-| `packages/env` | `shared/config.ts` (server) + `import.meta.env` validado (web) |
-| `packages/db` | `apps/server/prisma` (RLS nas migrations, role da aplicação sem bypass) |
-| `packages/db-chat` | modelos Prisma |
-| `packages/shared`, `packages/ai` | server; `ai` + `@ai-sdk/anthropic` + `@ai-sdk/openai` em `chat/bot` |
-| `packages/aggilizador` | removido |
-| `apps/chat-server` + `apps/chat-worker` | `modules/chat` + `infrastructure/realtime.ts` + jobs `chat.*` |
-| `apps/worker` | `*.jobs.ts` por módulo + pg-boss |
-| `apps/widget` (Vite) | rota `embed.chat.$channelId` + `public/widget.js` |
-| `apps/web` (Next.js 16) | `apps/web` (Vite + TanStack Router) |
-| `apps/web/src/api` (Orval) | `apps/web/src/api` (Orval enxuto, sem Zod) |
-| Redis (BullMQ, adapter, pub/sub, cache) | removido: pg-boss, rate limit em memória/BD, cache em tabela |
-| nginx, Vercel | Caddy (proxy + SPA) |
-
-## 12. Complexidade removida
-
-**Processos e infraestrutura:**
-
-- `chat-server`, `chat-worker`, `worker`, `widget`, e o runtime Node do web.
-- MongoDB (replica set, Mongoose, `mongo-init`).
-- **Redis.**
-- nginx, Vercel.
-- Deploys separados.
-
-**Dados:**
-
-- O RLS do legado como era: `rls-policies.sql` separado, a role `app_user` criada à mão, o `prismaAdmin` (bypass) e o passo manual após `db:reset`. No v2 as políticas estão nas migrations e o role vem de um script versionado (ADR-004).
-- `AuditLogArchive` e particionamento.
-- Migração de mídia do chat.
-- Cache de assinatura + pub/sub de invalidação.
-- Contato duplicado PG ↔ Mongo.
-- Proposta sintética na importação.
-- Metas.
-
-**Código:**
-
-- 11 packages.
-- tsyringe, decorators, CASL.
-- Entidades com construtor privado, mappers, ports/adapters.
-- Rotas internas HMAC, JWT de socket.
-- Envelope de resposta.
-- Zod gerado pelo Orval.
-- Zustand, framer-motion, `nuqs`.
-- Wrapper de IA, port de billing, `aggilizador`.
-- `"use client"` × Server Components.
-
-**Tooling:** Turborepo, tsup, dependency-cruiser, jscpd, `.quality-gates`, testes de arquitetura extensos, Husky.
-
-**Adiados até haver necessidade:** Messenger, Instagram, Embedded Signup, cobrança de excedente de IA, quotas além de usuários e números de WhatsApp, plano anual, worker separado para o Baileys, mais de 1 instância do server, OpenTelemetry, logs centralizados.
+- **Logs:** pino em JSON com `requestId` [existe], `organizationId` e `userId`; `conversationId` e
+  `channelId` nos fluxos de mensagem [F2+].
+- **Health:** `/api/health` [existe]; `/api/ready` (PG, pg-boss, heartbeat do WhatsApp) [F11].
+- **Sentry** (api, whatsapp, web, sem PII), monitor externo, alertas (job esgotado, canal
+  desconectado > 30 min, runtime WhatsApp sem heartbeat), backup + restore testado, runbooks [F11].
+- **Fora até haver gatilho:** Redis, adapter do Socket.IO e 2+ réplicas da API, storage S3, vários
+  providers de IA, Meta Cloud API, tracing distribuído (análise §6).

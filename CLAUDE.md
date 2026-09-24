@@ -1,10 +1,10 @@
 # Bens Seguros v2
 
-ERP SaaS multi-tenant para corretoras de seguros. Modular monolith: `apps/server` (Fastify) + `apps/web` (Vite + React + TanStack Router).
+MVP SaaS multi-tenant para corretoras de seguros: captura de leads + atendimento com IA + handoff humano + acompanhamento comercial de propostas (ADR-011). Não é um ERP. Modular monolith: `apps/server` (Fastify) + `apps/web` (Vite + React + TanStack Router).
 
-**Leia antes de mudar código:** `docs/architecture.md` (arquitetura), `docs/decisions/` (ADRs), `docs/migration.md` (regras de negócio e checklist de paridade), `docs/roadmap.md` (fase atual).
+**Leia antes de mudar código:** `docs/architecture.md` (arquitetura; **[existe]** × **[Fx]**), `docs/decisions/` (ADRs; os do MVP são 011–017 e prevalecem sobre os anteriores), `docs/roadmap.md` (fase atual), `docs/handoff.md` (requisitos do produto). Invariantes do domínio do MVP: ADR-012 a ADR-016.
 
-Legado (somente referência de regras, não de arquitetura): `github.com/arturmois/bens-seguros`.
+Legado (somente referência de comportamento, não de arquitetura: etapas do Kanban, tools do bot, reconexão do Baileys): `github.com/arturmois/bens-seguros`.
 
 ## Regras
 
@@ -35,8 +35,8 @@ Ao receber o prompt de uma feature ou fase, **antes de codar**, declare em 1–2
 
 | Processo | Quando usar |
 | --- | --- |
-| **`tlc-spec-lean`** (padrão) | Toda mudança que não pede o driven, inclusive infraestrutura e bug fix. Mudança pequena (menos de ~3 arquivos, sem porta de mão única): só `checks.md` com `## Intent`, como a skill permite. Em feature com regras de negócio: máquina de estados, cálculo, permissões ou carteira, integração externa. Os itens da checklist do `migration.md` viram critérios EARS verificáveis |
-| **`tlc-spec-driven`** | Só quando a feature é grande **e** incerta: muitas partes móveis, várias sessões de trabalho, decisões ainda abertas que precisam de registro (ex.: o chat inteiro, a integração com o Asaas). Justifique por que o lean não basta |
+| **`tlc-spec-lean`** (padrão) | Toda mudança que não pede o driven, inclusive infraestrutura e bug fix. Mudança pequena (menos de ~3 arquivos, sem porta de mão única): só `checks.md` com `## Intent`, como a skill permite. Em feature com regras de negócio: máquina de estados, cálculo, permissões ou carteira, integração externa. Os requisitos do `handoff.md` e as regras dos ADRs viram critérios EARS verificáveis |
+| **`tlc-spec-driven`** | Só quando a feature é grande **e** incerta: muitas partes móveis, várias sessões de trabalho, decisões ainda abertas que precisam de registro (ex.: a IA na F4, o runtime WhatsApp na F9). Justifique por que o lean não basta |
 
 Na dúvida entre lean e driven, escolha o **lean**. Se a escolha envolver decisão de produto, pergunte ao usuário (em pt-BR, uma pergunta por vez, com recomendação).
 

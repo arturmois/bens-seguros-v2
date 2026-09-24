@@ -11,37 +11,21 @@
 | AD-005 | Aceite pendente de termos bloqueia rota de tenant: o `requireTenant` da Fase 4 responde `403 TERMS_NOT_ACCEPTED`; `/me` e o próprio aceite ficam liberados (só `requireSession`) | active | `.specs/features/terms/plan.md` (Landing 3) |
 | AD-006 | RLS de quem ainda não está dentro do tenant. `Member` usa a política `tenant_isolation`: `USING` é `organizationId = app.tenant_id` ou `userId = app.user_id` (`current_setting(..., true)`); `WITH CHECK` é só o tenant. `Organization` não tem `organizationId`; a política homônima libera a linha quando `id = app.tenant_id` ou existe `Member` daquele `app.user_id`. `app.user_id` só é setado em `database.ts` (`withUser`). Sem isso a troca de organização não lê o próprio membro, e sem RLS qualquer sessão lista as corretoras. O predicado de `Invitation` saiu daqui: é a AD-007 | active | `.specs/features/org-core/plan.md` (Landing 5 e 6) |
 | AD-007 | Convite legível fora do tenant só pelo token. `Invitation.tenant_isolation`: `USING` é `organizationId = app.tenant_id` ou `tokenHash = current_setting('app.invitation_token', true)`; `WITH CHECK` é só o tenant. `app.invitation_token` só é setado em `database.ts` (`withInvitation`). O `organizationId` do `Member` criado no aceite sai dessa linha, nunca do request. Não usa `userId`: a linha não tem usuário até o aceite | active | `.specs/features/invitations/plan.md` (Landing 4) |
-| AD-008 | Trilha sem PII. Toda ação sensível chama `audit.record(tx, ctx, { action, entityId, changes })` dentro da mesma transação do ato. `changes` é jsonb; as chaves `email`, `name`, `phone`, `document`, `documentEncrypted`, `token`, `password`, `ipAddress` e `userAgent` (em qualquer nível) são gravadas como `"[alterado]"`. A linha guarda `actorUserId`, nunca o e-mail. `AuditLog` é tenant-scoped, RLS só por `app.tenant_id`. Ações sensíveis (lista fechada): `member.update`, `portfolio.transfer`, `invitation.create`, `invitation.revoke`, `invitation.accept`, `organization.create`, `organization.update`; ação nova entra na AD antes do código. Fora da lista: troca de organização ativa (navegação) e aceite de termos (registro próprio em `TermsAcceptance`) | active | `.specs/features/audit/plan.md` (Landing 1 e 2); lista em `.specs/features/health-fixes/plan.md` (Landing 1) |
-| AD-009 | Carteira do COMMERCIAL. `scopeFor(ctx)` devolve `{ salespersonId: ctx.userId }` para `COMMERCIAL` e `{}` para os outros papéis. O repository aplica isso na query e devolve 404 fora da carteira; o RLS não filtra carteira. A transferência soma `portfolioMoves`, lista de `(tx, fromUserId, toUserId) => Promise<number>`, vazia até existir tabela com `salespersonId` | active | `.specs/features/audit/plan.md` (Landing 3 e 4) |
+| AD-008 | **Revisão pendente na F2** (ADR-013: ator não-usuário `AI`/`SYSTEM`, ações do MVP). Trilha sem PII. Toda ação sensível chama `audit.record(tx, ctx, { action, entityId, changes })` dentro da mesma transação do ato. `changes` é jsonb; as chaves `email`, `name`, `phone`, `document`, `documentEncrypted`, `token`, `password`, `ipAddress` e `userAgent` (em qualquer nível) são gravadas como `"[alterado]"`. A linha guarda `actorUserId`, nunca o e-mail. `AuditLog` é tenant-scoped, RLS só por `app.tenant_id`. Ações sensíveis (lista fechada): `member.update`, `portfolio.transfer`, `invitation.create`, `invitation.revoke`, `invitation.accept`, `organization.create`, `organization.update`; ação nova entra na AD antes do código. Fora da lista: troca de organização ativa (navegação) e aceite de termos (registro próprio em `TermsAcceptance`) | active | `.specs/features/audit/plan.md` (Landing 1 e 2); lista em `.specs/features/health-fixes/plan.md` (Landing 1) |
+| AD-009 | **Revisão pendente na F2/F5** (ADR-016: `ownerId`/`assigneeId`, COMMERCIAL vê a própria carteira + a fila). Carteira do COMMERCIAL. `scopeFor(ctx)` devolve `{ salespersonId: ctx.userId }` para `COMMERCIAL` e `{}` para os outros papéis. O repository aplica isso na query e devolve 404 fora da carteira; o RLS não filtra carteira. A transferência soma `portfolioMoves`, lista de `(tx, fromUserId, toUserId) => Promise<number>`, vazia até existir tabela com `salespersonId` | active | `.specs/features/audit/plan.md` (Landing 3 e 4) |
 | AD-010 | Organização inicial da sessão. `databaseHooks.session.create.before` do Better Auth define `activeOrganizationId`: `User.lastActiveOrganizationId` se ainda há `Member` ativo nela; senão, a única organização com `Member` ativo; senão, `null` (o web manda para `/select-org` ou `/onboarding`). `assignActiveOrganization` grava a sessão e `User.lastActiveOrganizationId` na mesma transação; apagar a organização zera o campo (`SET NULL`). Guardado no `User` porque o sign-out apaga a `Session`; nada vem do cliente (o legado usava cookie) | active | `.specs/features/org-web/plan.md` (Landing 4) |
 
-## Phase 3 — features
+## MVP (pivot 2026-09-23)
 
-Ordem e escopo. Cada feature tem `plan.md` → `checks.md` → build → Verifier.
+Escopo, fases e decisões: `docs/roadmap.md`, ADR-011 a ADR-017. Cada fase: `plan.md` revisado → `checks.md` → build → Verifier.
 
-1. `auth-core` — Better Auth no server: tabelas, e-mail/senha, verificação, reset, 2FA, rate limit persistido, `email.send`, contexto de usuário, `/me`, Origin, helmet, Socket.IO autenticado, `/api/docs` fora de produção, chaves novas no config.
-2. `auth-web` — telas de auth no web, guard `_app`, 2FA no web, e2e de login (Playwright).
-3. `staging` — Dockerfiles, `docker-compose.prod.yml`, `Caddyfile`, provisionamento do `bens_app`, validação local em HTTPS. Para antes do deploy.
-4. `signup-gates` — `SIGNUP_MODE`, bloqueio de e-mail temporário, Turnstile (server + web).
-5. `terms` — aceite versionado de termos e privacidade (server + web).
+- **Pivot documentado:** gates do v2 verdes (31 arquivos, 272 testes); análise validada contra o código; decisões abertas resolvidas (`WAITING` = aguardando o cliente; opt-in "SIM" no WhatsApp, pendente de parecer jurídico antes do go-live; P1–P6 confirmadas; `Organization.maxUsers`; staging publicado vira marco antes da F3); ADRs 011–017 escritos e ADRs do v2 marcados; `architecture.md`, `roadmap.md`, `CLAUDE.md` e este arquivo reescritos; `migration.md` aposentado.
+- **Próximo:** F0 — poda do ERP (`.specs/features/erp-prune/`), depois o checkpoint H3.
+- **Pendências registradas:** revisão da AD-008 (F2) e da AD-009 (F2/F5); AD nova para o tenant do link público (F3) e para a função `SECURITY DEFINER` do runtime WhatsApp (F9); parecer jurídico do opt-in do WhatsApp (antes do go-live).
 
-## Phase 4 — features
+## Histórico v2 (Fases 3–4, concluídas)
 
-Ordem. Cada uma: `plan.md` revisado → `checks.md` → build → Verifier. Perfil standard.
-
-1. `org-core` — onboarding (org + OWNER + trial), teto de orgs, troca da ativa, `requireTenant`, RLS de `Organization`/`Member` (AD-006), `permissions[]` no `/me`, fim do módulo `examples`.
-2. `invitations` — convite com papel e expiração, e-mail `email.send`, aceite checa `maxUsers` do plano.
-3. `audit` — `audit.record` sem PII, papel e OWNER na API, transferência de carteira com o que existir, `scopeFor`, `withTwoSalespeople`.
-4. `org-web` — onboarding, seletor e settings, depois dos termos.
-
-## Handoff
-
-- Fase 4 fechada: `org-core`, `invitations`, `audit` e `org-web` com `verification.md` PASS.
-- `org-web`: `verification.md` PASS na rodada 3 (`c445910`). Rodada 1 FAIL em `90ca899` (regressão do login sem organização ativa → AD-010; testes que não discriminavam), rodada 2 FAIL em `16dbd6f` (dois membros sem prova).
-- Checkpoint H2 fechado: `harness-h2` com `verification.md` PASS na rodada 2 (`a885893`). Rodada 1 FAIL em `e6c1b8e` (o `CLAUDE.md` dizia que `withoutTenant` servia às tabelas de identidade → L-037). Resultado e o que foi mantido: `docs/roadmap.md`, Checkpoint H2.
-- `health-fixes` (correções da auditoria de saúde, entre as Fases 4 e 5): `verification.md` PASS na rodada 2 (`202b2a7`). Rodada 1 FAIL em `9b85471` (testes com `toMatchObject` e ramo do índice único sem prova). AD-008 ganhou a lista fechada de ações auditadas.
-- Próximo: Fase 5 (`prompts/prompt-05.md`).
-- `audit`: `verification.md` PASS (`3ab6b69`).
-- `invitations`: `verification.md` PASS (`121a060`).
-- `org-core`: `verification.md` PASS (`8869be9`).
-- Fase 3 fechada: `signup-gates` e `terms` com `verification.md` PASS.
+- Fase 3: `auth-core`, `auth-web`, `staging` (validação local), `signup-gates`, `terms` — `verification.md` PASS.
+- Fase 4: `org-core` (`8869be9`), `invitations` (`121a060`), `audit` (`3ab6b69`), `org-web` (rodada 3, `c445910`) — `verification.md` PASS.
+- Checkpoint H2: `harness-h2` PASS na rodada 2 (`a885893`); rodada 1 FAIL → L-037.
+- `health-fixes`: PASS na rodada 2 (`202b2a7`); AD-008 ganhou a lista fechada de ações auditadas.
