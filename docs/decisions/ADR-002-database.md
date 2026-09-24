@@ -1,6 +1,11 @@
 # ADR-002 — PostgreSQL como único serviço de dados (sem MongoDB, sem Redis)
 
-**Status:** aceito · **Data:** 2026-09-21
+**Status:** aceito, revisado por ADR-011 e ADR-013 (2026-09-23) · **Data:** 2026-09-21
+
+## Revisão (pivot para o MVP, 2026-09-23)
+- Continua valendo: só PostgreSQL, sem MongoDB nem Redis; pg-boss; rate limit do Better Auth no banco.
+- A lista de models de chat abaixo (`ConversationRead`, `AiAgent`, `Contact` com `CHAT_ONLY | QUALIFIED`) é do ERP: o modelo do MVP está no ADR-013 e em `docs/architecture.md`.
+- Mídia no S3 e `VehicleLookupCache` saem (ADR-011): não há anexos nem lookup de placa no MVP.
 
 ## Context
 O legado usa três serviços de dados:

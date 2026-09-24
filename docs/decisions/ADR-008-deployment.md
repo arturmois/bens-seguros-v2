@@ -1,6 +1,11 @@
 # ADR-008 — Deploy em VPS única: Caddy serve a SPA e faz proxy da API
 
-**Status:** aceito · **Data:** 2026-09-21
+**Status:** aceito, revisado por ADR-011 e ADR-012 (2026-09-23) · **Data:** 2026-09-21
+
+## Revisão (pivot para o MVP, 2026-09-23)
+- Continua valendo: VPS única, Caddy com a SPA e proxy da API, mesma origem, `migrate` one-shot, CI, backup `pg_dump` off-site.
+- O compose de produção ganha o serviço `whatsapp` (mesma imagem do `server`, outro entrypoint; ADR-012).
+- `/embed/*` sai: o Web Chat é o link `/c/:slug` (ADR-014). O workflow de deploy por tag ainda não existe; o staging na VPS é um marco antes da F3 (ADR-011).
 
 ## Context
 No legado, o web fica na Vercel, e server, workers, chat, Mongo, Redis e PG ficam na VPS atrás de nginx, com deploys separados.

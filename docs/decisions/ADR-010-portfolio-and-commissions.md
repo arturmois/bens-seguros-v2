@@ -1,6 +1,11 @@
 # ADR-010 — Carteira do vendedor e modelo de comissão
 
-**Status:** aceito · **Data:** 2026-09-21
+**Status:** aceito, carteira revisada pelo ADR-016; comissão **substituída** pelo ADR-011 (2026-09-23) · **Data:** 2026-09-21
+
+## Revisão (pivot para o MVP, 2026-09-23)
+- **Carteira:** a regra "COMMERCIAL só vê a própria carteira, 404 fora dela" continua, agora por `ownerId`/`assigneeId` e **incluindo a fila** (ADR-016). Fila `WAITING_HUMAN`, `CHAT_ONLY | QUALIFIED` e `captureLead` são do modelo antigo (ver ADR-013).
+- **Comissão:** fora do escopo do MVP (ADR-011). A seção *Comissão* abaixo e `Member.commissionSplitBp` não valem mais.
+- `withTwoSalespeople()` continua obrigatório, agora para contatos, conversas e oportunidades.
 
 ## Context
 O legado tem três problemas nesta área:

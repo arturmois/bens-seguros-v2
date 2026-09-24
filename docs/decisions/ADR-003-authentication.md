@@ -1,6 +1,11 @@
 # ADR-003 — Better Auth para identidade e sessão; organizações em código próprio
 
-**Status:** aceito · **Data:** 2026-09-21
+**Status:** aceito, revisado por ADR-014, ADR-016 e ADR-017 (2026-09-23) · **Data:** 2026-09-21
+
+## Revisão (pivot para o MVP, 2026-09-23)
+- Continua valendo: Better Auth só para identidade e sessão, organizações em código próprio, cookie host-only, sessão em banco.
+- "OWNER único" → "≥ 1 ADMIN ativo" (ADR-016). "Quota de usuários do plano" → `Organization.maxUsers` (ADR-017).
+- O token de visitante do Web Chat está no ADR-014 (link público `/c/:slug`, não mais widget por canal).
 
 ## Context
 O legado usa Better Auth com o plugin `organization`, mas reimplementa membros e convites com CASL e rotas próprias, o que duplica a lógica. O web fica na Vercel com cookies cross-subdomain, e o socket usa um JWT separado.

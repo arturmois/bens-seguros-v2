@@ -1,6 +1,11 @@
 # ADR-005 — RBAC por mapa estático de permissões (CASL removido)
 
-**Status:** aceito · **Data:** 2026-09-21
+**Status:** aceito, revisado por ADR-016 e ADR-017 (2026-09-23) · **Data:** 2026-09-21
+
+## Revisão (pivot para o MVP, 2026-09-23)
+- Continua valendo: mapa estático `ROLE_PERMISSIONS`, `requirePermission` obrigatório, `permissions[]` no `/me`, snapshot da matriz.
+- Papéis: `ADMIN | MANAGER | COMMERCIAL` (ADR-016). Os exemplos de permissão abaixo (`proposal:write`, `commission:approve-admin`, `client:lgpd-delete`) são do ERP.
+- Entitlements de plano (`requireFeature`, `assertQuota`) não existem no MVP: o bloqueio 402 vem do estado da organização (ADR-017).
 
 ## Context
 O legado usa CASL (ações × Subject) com 5 roles fixas e um overlay de entitlements do plano. A regra de carteira do vendedor está na especificação, mas não é aplicada.

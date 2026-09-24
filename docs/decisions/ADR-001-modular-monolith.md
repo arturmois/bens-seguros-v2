@@ -1,6 +1,11 @@
 # ADR-001 — Modular monolith com 2 apps
 
-**Status:** aceito · **Data:** 2026-09-21
+**Status:** aceito, revisado por ADR-012 (2026-09-23) · **Data:** 2026-09-21
+
+## Revisão (pivot para o MVP, 2026-09-23)
+- Continua valendo: 2 apps, módulos em `src/modules/<x>`, sem `packages/*`, composição explícita.
+- O gatilho "extrair um processo" foi acionado pelo WhatsApp: o `apps/server` passa a ter **dois entrypoints** (`api` e `whatsapp`), mesma imagem, mesmo código (ADR-012).
+- `apps/web` é Vite + TanStack Router (ADR-009), não Next.js como está escrito na *Decision* abaixo.
 
 ## Context
 O legado tem 6 apps (`web`, `server`, `worker`, `chat-server`, `chat-worker`, `widget`) e 11 packages internos. A complexidade vem da distribuição, não do domínio:

@@ -2,6 +2,9 @@
 
 **Status:** aceito (revisado) · **Data:** 2026-09-21 · **Revisão:** 2026-09-21 — substitui a decisão original "isolamento na aplicação, sem RLS" (ver *Histórico*)
 
+## Nota (pivot para o MVP, 2026-09-23)
+Mantido sem mudança. O MVP acrescenta dois caminhos de entrada fora da sessão, cada um com AD e política própria, na fase que os cria: o link público do Web Chat pelo `publicChatKey` (ADR-014, F3) e a leitura de boot do runtime WhatsApp por função `SECURITY DEFINER` (ADR-012, F9).
+
 ## Context
 O legado aplica RLS (`SET LOCAL app.current_tenant`) em 23 tabelas, mas:
 - usa `prismaAdmin` (bypass) em 28 arquivos: worker inteiro, billing, PDFs, aprovação de comissão;

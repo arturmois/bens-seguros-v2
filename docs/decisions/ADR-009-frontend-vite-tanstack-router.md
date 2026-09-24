@@ -1,6 +1,20 @@
 # ADR-009 — Frontend: Vite + React + TanStack Router (SPA estática)
 
-**Status:** aceito · **Data:** 2026-09-21
+**Status:** aceito, revisado em 2026-09-23 (pivot para o MVP) · **Data:** 2026-09-21
+
+## Revisão (pivot para o MVP, 2026-09-23)
+A decisão foi reavaliada contra os requisitos do MVP (`docs/architecture-analysis.md` §5): Next.js
+full-stack (opção A) e Next.js + backend separado (opção B) contra a SPA atual (B′). **Mantida a SPA
+Vite + TanStack Router.**
+- **Por quê:** o Next.js não resolve nenhum requisito do MVP que a stack atual não resolva, e piora
+  dois: realtime (Route Handlers não fazem WebSocket; exigiria custom server) e jobs (sem worker de
+  longa duração natural). A stack atual já tem Socket.IO autenticado, pg-boss e testes com
+  `app.inject` + PostgreSQL real; trocar reescreveria auth, tenancy e rotas.
+- **Onde o Next.js ganharia:** metatags dinâmicas numa página pública. A única no MVP é o link do Web
+  Chat, e o que importa ali é o preview no WhatsApp (nome e logo da corretora). A API serve um HTML
+  mínimo com Open Graph em `/c/:slug`, que carrega a SPA.
+- **O que muda abaixo:** o widget (`embed.chat.$channelId` + `public/widget.js`) dá lugar à rota
+  pública `/c/:slug` (ADR-014); a página de planos (`pricing`) sai com o billing (ADR-011, ADR-017).
 
 ## Context
 - O legado usa Next.js 16 no modo "Server Components por padrão", mas na prática os dados vêm de hooks do TanStack Query no client, e há uma API separada (Fastify).

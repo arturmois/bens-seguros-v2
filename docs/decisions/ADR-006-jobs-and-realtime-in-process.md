@@ -1,6 +1,11 @@
 # ADR-006 — Jobs (pg-boss) e realtime (Socket.IO) no processo do server
 
-**Status:** aceito · **Data:** 2026-09-21
+**Status:** aceito, **parcialmente substituído** pelo ADR-012 (2026-09-23) · **Data:** 2026-09-21
+
+## Revisão (pivot para o MVP, 2026-09-23)
+- **Continua valendo:** pg-boss via `infrastructure/queue.ts` com `enqueue(tx)` transacional, handlers idempotentes, dedupe por fila; Socket.IO no processo da API com auth por cookie.
+- **Substituído pelo ADR-012:** todo o item *WhatsApp* abaixo. O Baileys roda num runtime próprio (`whatsapp`), não no processo do server; não há `WhatsAppProvider` nem Meta Cloud API no MVP; a comunicação com a API é pg-boss (comandos) + `NOTIFY` (eventos).
+- O namespace `/widget` dá lugar ao namespace de visitante do Web Chat (ADR-014). Os trade-offs "restart derruba as sessões" e "não dá para escalar a API" deixam de valer.
 
 ## Context
 O legado roda BullMQ em dois workers e Socket.IO num chat-server, conectados por Redis pub/sub. A escala esperada é de dezenas de corretoras com 1 a 3 números de WhatsApp cada. O Baileys mantém uma conexão de longa duração por número, e cada sessão precisa de um único dono.
