@@ -103,6 +103,7 @@ describe('POST /api/v1/onboarding', () => {
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({
       action: 'organization.create',
+      actorType: 'USER',
       actorUserId: userId,
       entityId: organizationId,
     })

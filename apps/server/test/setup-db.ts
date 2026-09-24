@@ -41,6 +41,26 @@ export async function withOwnerClient<T>(run: (client: pg.Client) => Promise<T>)
   }
 }
 
+// Every migration directory name, in the order `prisma migrate deploy` applies them.
+export function migrationNames(): string[] {
+  return readdirSync(migrationsDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort()
+}
+
+// Runs one migration's SQL on a client whose search_path is the target schema, in a transaction.
+export async function applyMigration(client: pg.Client, name: string) {
+  await client.query('BEGIN')
+  try {
+    await client.query(readFileSync(`${migrationsDir}/${name}/migration.sql`, 'utf8'))
+    await client.query('COMMIT')
+  } catch (error) {
+    await client.query('ROLLBACK')
+    throw error
+  }
+}
+
 let prepared: Promise<void> | undefined
 
 // Applies pending migrations to this worker's schema (the SQL files `prisma migrate deploy` would run).
@@ -57,15 +77,9 @@ export function prepareTestDatabase(): Promise<void> {
       ),
     )
 
-    const pending = readdirSync(migrationsDir, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && !applied.has(entry.name))
-      .map((entry) => entry.name)
-      .sort()
-    for (const name of pending) {
-      await client.query('BEGIN')
-      await client.query(readFileSync(`${migrationsDir}/${name}/migration.sql`, 'utf8'))
+    for (const name of migrationNames().filter((candidate) => !applied.has(candidate))) {
+      await applyMigration(client, name)
       await client.query('INSERT INTO _test_migrations (name) VALUES ($1)', [name])
-      await client.query('COMMIT')
     }
     // Default privileges only cover `public`; the worker schema gets its grants here.
     await client.query(`GRANT USAGE ON SCHEMA "${schema}" TO ${APP_ROLE}`)
@@ -74,6 +88,32 @@ export function prepareTestDatabase(): Promise<void> {
     )
   })
   return prepared
+}
+
+// A throwaway schema built by the migrations that come before `migration`, so a test can seed the
+// data that existed before it and then apply it (backfills). Dropped afterwards.
+export async function withSchemaBefore<T>(
+  label: string,
+  migration: string,
+  run: (client: pg.Client, apply: () => Promise<void>, schema: string) => Promise<T>,
+): Promise<T> {
+  const names = migrationNames()
+  if (!names.includes(migration)) throw new Error(`Unknown migration ${migration}`)
+  const schema = `${workerSchema()}_${label}_before`
+  return withOwnerClient(async (client) => {
+    await client.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`)
+    await client.query(`CREATE SCHEMA "${schema}"`)
+    await client.query(`SET search_path TO "${schema}"`)
+    try {
+      for (const name of names.filter((candidate) => candidate < migration)) {
+        await applyMigration(client, name)
+      }
+      return await run(client, () => applyMigration(client, migration), schema)
+    } finally {
+      await client.query('RESET ROLE')
+      await client.query(`DROP SCHEMA "${schema}" CASCADE`)
+    }
+  })
 }
 
 // Vitest globalSetup: start every run from empty worker schemas (migrations may have changed).

@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import type pg from 'pg'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { prepareTestDatabase, withOwnerClient, workerSchema } from './setup-db.ts'
+import { prepareTestDatabase, withOwnerClient, withSchemaBefore, workerSchema } from './setup-db.ts'
 
 // ADR-004: every table with `organizationId` has row level security enabled and forced with the
 // `tenant_isolation` policy, and its unique indexes include the tenant (integrity checks bypass RLS).
@@ -514,5 +514,138 @@ describe('identity tables', () => {
 
     // org-web door 4: the row stays, the choice goes (ON DELETE SET NULL).
     expect(remembered).toEqual([{ last: null }])
+  })
+})
+
+// Seeds, as the owner, one organization and `users` users in `schema`.
+async function seedOrganizationWithUsers(client: pg.Client, schema: string, users: number) {
+  const organizationId = randomUUID()
+  await client.query(
+    `INSERT INTO "${schema}"."Organization" (id, name, slug, "publicChatKey", "updatedAt")
+     VALUES ($1, 'Semente', $2, replace(gen_random_uuid()::text, '-', ''), now())`,
+    [organizationId, `semente-${organizationId}`],
+  )
+  const userIds: string[] = []
+  for (let index = 0; index < users; index++) {
+    const userId = randomUUID()
+    await client.query(
+      `INSERT INTO "${schema}"."User" (id, name, email, "updatedAt")
+       VALUES ($1, 'Ator', $2, now())`,
+      [userId, `${userId}@example.com`],
+    )
+    userIds.push(userId)
+  }
+  return { organizationId, userIds }
+}
+
+const AUDIT_ACTORS_MIGRATION = '20260924150000_audit_actors'
+
+describe('AuditLog actor', () => {
+  // audit-actors door 1: USER carries the user, AI and SYSTEM never do.
+  it('ties the audit actor type to the actor user', async () => {
+    const schema = workerSchema()
+    const outcomes = await withOwnerClient(async (client) => {
+      const {
+        organizationId,
+        userIds: [userId],
+      } = await seedOrganizationWithUsers(client, schema, 1)
+      const insert = (actorType: string, actorUserId: string | null) =>
+        client
+          .query(
+            `INSERT INTO "${schema}"."AuditLog"
+               (id, "organizationId", "actorType", "actorUserId", action, "entityId", changes)
+             VALUES ($1, $2, $3::"${schema}"."AuditActorType", $4, 'test', $1, '{}')`,
+            [randomUUID(), organizationId, actorType, actorUserId],
+          )
+          .then(
+            () => 'ok',
+            (error: { code?: string; constraint?: string }) =>
+              `${error.code} ${error.constraint ?? ''}`.trim(),
+          )
+      return {
+        userWithUser: await insert('USER', userId ?? null),
+        userWithoutUser: await insert('USER', null),
+        systemWithoutUser: await insert('SYSTEM', null),
+        systemWithUser: await insert('SYSTEM', userId ?? null),
+        aiWithoutUser: await insert('AI', null),
+        aiWithUser: await insert('AI', userId ?? null),
+      }
+    })
+
+    expect(outcomes).toEqual({
+      userWithUser: 'ok',
+      userWithoutUser: '23514 AuditLog_actor_check',
+      systemWithoutUser: 'ok',
+      systemWithUser: '23514 AuditLog_actor_check',
+      aiWithoutUser: 'ok',
+      aiWithUser: '23514 AuditLog_actor_check',
+    })
+  })
+
+  it('backfills existing audit rows as user actors', async () => {
+    const result = await withSchemaBefore(
+      'audit',
+      AUDIT_ACTORS_MIGRATION,
+      async (client, apply, schema) => {
+        const {
+          organizationId,
+          userIds: [first, second],
+        } = await seedOrganizationWithUsers(client, schema, 2)
+        await client.query(
+          `INSERT INTO "AuditLog" (id, "organizationId", "actorUserId", action, "entityId", changes)
+           VALUES ($1, $3, $4, 'member.update', $1, '{}'), ($2, $3, $5, 'member.update', $2, '{}')`,
+          [randomUUID(), randomUUID(), organizationId, first, second],
+        )
+        await apply()
+        const { rows } = await client.query<{ actorType: string; actorUserId: string }>(
+          `SELECT "actorType", "actorUserId" FROM "AuditLog" ORDER BY "actorUserId"`,
+        )
+        return { rows, expected: [first, second].sort() }
+      },
+    )
+
+    expect(result.rows).toEqual(
+      result.expected.map((actorUserId) => ({ actorType: 'USER', actorUserId })),
+    )
+  })
+
+  it('requires an explicit audit actor type', async () => {
+    const schema = workerSchema()
+    const { missing, columns } = await withOwnerClient(async (client) => {
+      const {
+        organizationId,
+        userIds: [userId],
+      } = await seedOrganizationWithUsers(client, schema, 1)
+      const missing = await client
+        .query(
+          `INSERT INTO "${schema}"."AuditLog"
+             (id, "organizationId", "actorUserId", action, "entityId", changes)
+           VALUES ($1, $2, $3, 'test', $1, '{}')`,
+          [randomUUID(), organizationId, userId],
+        )
+        .then(
+          () => undefined,
+          (reason: unknown) => reason,
+        )
+      const { rows: columns } = await client.query<{
+        column: string
+        default: string | null
+        nullable: string
+      }>(
+        `SELECT column_name AS column, column_default AS default, is_nullable AS nullable
+           FROM information_schema.columns
+          WHERE table_schema = $1 AND table_name = 'AuditLog'
+            AND column_name IN ('actorType', 'actorUserId')
+          ORDER BY column_name`,
+        [schema],
+      )
+      return { missing, columns }
+    })
+
+    expect(missing).toMatchObject({ code: '23502', column: 'actorType' })
+    expect(columns).toEqual([
+      { column: 'actorType', default: null, nullable: 'NO' },
+      { column: 'actorUserId', default: null, nullable: 'YES' },
+    ])
   })
 })

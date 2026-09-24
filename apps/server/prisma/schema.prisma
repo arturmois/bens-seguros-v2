@@ -99,19 +99,28 @@ model Invitation {
   @@unique([organizationId, tokenHash])
 }
 
-// Tenant-scoped (ADR-004, AD-008). `changes` never stores the denylisted personal keys;
+// Who acted: a user, the AI or the system itself (ADR-013). `actorUserId` is set only for USER
+// (`AuditLog_actor_check` in the migration).
+enum AuditActorType {
+  USER
+  AI
+  SYSTEM
+}
+
+// Tenant-scoped (ADR-004, AD-013). `changes` never stores the denylisted personal keys;
 // `audit.record` rewrites those values to "[alterado]" before insert.
 model AuditLog {
-  id             String   @id @default(uuid(7)) @db.Uuid
-  organizationId String   @default(dbgenerated("(current_setting('app.tenant_id'::text))::uuid")) @db.Uuid
-  actorUserId    String   @db.Uuid
+  id             String         @id @default(uuid(7)) @db.Uuid
+  organizationId String         @default(dbgenerated("(current_setting('app.tenant_id'::text))::uuid")) @db.Uuid
+  actorType      AuditActorType
+  actorUserId    String?        @db.Uuid
   action         String
-  entityId       String   @db.Uuid
+  entityId       String         @db.Uuid
   changes        Json
-  createdAt      DateTime @default(now())
+  createdAt      DateTime       @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  actor        User         @relation(fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actor        User?        @relation(fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([id, organizationId])
 }

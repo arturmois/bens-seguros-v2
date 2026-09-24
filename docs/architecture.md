@@ -153,7 +153,7 @@ export async function claimLead(deps: Deps, ctx: RequestContext, id: string) {
 | --- | --- | --- |
 | `auth` [existe] | Better Auth em `/api/auth/*` (e-mail/senha, verificação, reset, 2FA, rate limit persistido); sessão → contexto; `GET /me`; organização inicial da sessão (AD-010); termos do usuário do painel; Turnstile, e-mail temporário, `SIGNUP_MODE` | User, Session, Account, Verification, TwoFactor, TermsAcceptance, RateLimit |
 | `organizations` [existe] | Org, membros, convites, quota de usuários, carteira, onboarding (ADMIN + `publicChatKey`), troca da org ativa, papéis do MVP com "≥ 1 ADMIN ativo", branding (nome, logo, cor, saudação). [F2] canal Web Chat padrão no onboarding. [F10] `status`, `trialEndsAt`, `maxUsers` | Organization, Member, Invitation |
-| `audit` [existe] | `record()` sem PII; ator não-usuário (`AI`/`SYSTEM`) [F2] | AuditLog |
+| `audit` [existe] | `record()` sem PII; ator usuário, `AI` ou `SYSTEM` (AD-013) | AuditLog |
 | `billing` [existe, sai na F10] | Só `startTrial` do onboarding | Plan, Subscription |
 | `contacts` [F2] | Contato por telefone E.164 (único por org), dados do lead, `leadStatus`, dono (`ownerId`), fila de leads, atribuição, consentimento | Contact, ConsentRecord |
 | `conversations` [F2] | Conversa, mensagens, `status` × `handler`, `seq`, handoff, encerrar/reabrir, `receiveInbound`/`sendMessage` | Conversation, Message |
@@ -361,8 +361,8 @@ server.**
 | Canal público | tenant pelo `publicChatKey`, token de visitante, visitante só vê a própria sessão, rate limit, Turnstile (ADR-014) |
 | Consentimento | `ConsentRecord` antes do atendimento: checkbox no Web Chat, opt-in "SIM" no WhatsApp (ADR-014) |
 | IA | `ToolContext` fixo, allowlist de campos, sem SQL, sem escrita comercial, saída validada (ADR-015) |
-| PII | `pino.redact`; auditoria sem PII (AD-008); telefone fora do prompt da IA |
-| Auditoria | só ações sensíveis, lista fechada na AD-008 (ampliada por fase: atribuição, handoff, humano entra/sai, lead, oportunidade, etapa, follow-up) |
+| PII | `pino.redact`; auditoria sem PII (AD-013); telefone fora do prompt da IA |
+| Auditoria | só ações sensíveis, lista fechada na AD-013 (ampliada por fase: atribuição, handoff, humano entra/sai, lead, oportunidade, etapa, follow-up) |
 | Secrets | env validado no boot (`shared/config.ts`); chave própria para o auth state do WhatsApp [F9] |
 
 ---
