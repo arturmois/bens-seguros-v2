@@ -561,11 +561,28 @@ const steps = {
     )
   },
 
-  // C15
+  // C15 (feature `staging`), C34-C35 (feature `cd-vps`): the tutorial replaced the staging runbook.
   async runbook() {
-    const text = readFileSync('docs/runbooks/staging.md', 'utf8')
+    const text = readFileSync('docs/runbooks/deploy.md', 'utf8')
     const headings = [...text.matchAll(/^## (.+)$/gm)].map((match) => match[1])
-    const order = ['DNS', '.env', 'Subir', 'Verificar', 'Rollback']
+    const order = [
+      'Visão geral',
+      'Pré-requisitos',
+      'Criar a VPS na Hostinger',
+      'Proteger a VPS',
+      'Instalar o Docker',
+      'Usuário de deploy',
+      'DNS',
+      '.env',
+      'Chave SSH do deploy',
+      'Configurar o GitHub',
+      'Primeiro deploy',
+      'Produção por tag',
+      'Rollback',
+      'Operação do dia a dia',
+      'Problemas comuns',
+      'Pendências',
+    ]
     const found = order.map((prefix) => headings.findIndex((heading) => heading.startsWith(prefix)))
     assert(
       found.every((index) => index >= 0),
@@ -575,14 +592,52 @@ const steps = {
       found.every((index, i) => i === 0 || index > found[i - 1]),
       'in that order',
     )
-    for (const file of [
-      'docker-compose.prod.yml',
-      '.env.prod.example',
-      'docker/postgres/init/01-app-role.sh',
-      'Caddyfile',
-    ]) {
-      assert(text.includes(file) && existsSync(file), `cites ${file}, which exists`)
+    // Repository paths cited in inline code, outside the command blocks: relative, with a folder or
+    // a file extension; hosts (ghcr.io/...), VPS paths (/opt/...), placeholders and the repository
+    // name itself are not.
+    const prose = text.replace(/^```[\s\S]*?^```/gm, '')
+    const cited = [...prose.matchAll(/`([^`\s<>:]+)`/g)]
+      .map((match) => match[1])
+      .filter(
+        (span) =>
+          span !== 'arturmois/bens-seguros-v2' &&
+          (/^\.?[\w-]+(\/[\w.-]+)+$/.test(span) || /^[\w.-]+\.(yml|example)$/.test(span)),
+      )
+    assert(cited.length > 0, `cites repository paths (${cited.length})`)
+    for (const path of new Set(cited)) {
+      assert(existsSync(path), `cites ${path}, which exists`)
     }
+    const workflows = ['.github/workflows/deploy.yml', '.github/workflows/deploy-environment.yml']
+      .map((file) => readFileSync(file, 'utf8'))
+      .join('\n')
+    const names = [...workflows.matchAll(/\b(?:secrets|vars)\.([A-Z_]+)/g)]
+      .map((match) => match[1])
+      .filter((name) => name !== 'GITHUB_TOKEN')
+    for (const name of [
+      'SSH_HOST',
+      'SSH_USER',
+      'SSH_PRIVATE_KEY',
+      'SSH_KNOWN_HOSTS',
+      'DEPLOY_PATH',
+      'SITE_URL',
+    ]) {
+      assert(names.includes(name), `the workflows read ${name}`)
+    }
+    for (const name of new Set(names)) {
+      assert(text.includes(`\`${name}\``), `the tutorial names ${name}`)
+    }
+    const section = (title) => {
+      const from = text.indexOf(`\n## ${title}`)
+      const to = text.indexOf('\n## ', from + 1)
+      return text.slice(from, to < 0 ? undefined : to)
+    }
+    const rollback = section('Rollback')
+    assert(
+      rollback.includes('migration') && rollback.includes('não volta'),
+      'Rollback says the migration does not roll back',
+    )
+    const pending = section('Pendências')
+    assert(/backup/i.test(pending) && pending.includes('F11'), 'Pendências names the backup as F11')
   },
 }
 

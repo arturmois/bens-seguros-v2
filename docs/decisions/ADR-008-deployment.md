@@ -1,11 +1,16 @@
 # ADR-008 — Deploy em VPS única: Caddy serve a SPA e faz proxy da API
 
-**Status:** aceito, revisado por ADR-011 e ADR-012 (2026-09-23) · **Data:** 2026-09-21
+**Status:** aceito, revisado por ADR-011 e ADR-012 (2026-09-23) e pela feature `cd-vps` (2026-09-24) · **Data:** 2026-09-21
 
 ## Revisão (pivot para o MVP, 2026-09-23)
 - Continua valendo: VPS única, Caddy com a SPA e proxy da API, mesma origem, `migrate` one-shot, CI, backup `pg_dump` off-site.
 - O compose de produção ganha o serviço `whatsapp` (mesma imagem do `server`, outro entrypoint; ADR-012).
-- `/embed/*` sai: o Web Chat é o link `/c/:slug` (ADR-014). O workflow de deploy por tag ainda não existe; o staging na VPS é um marco antes da F3 (ADR-011).
+- `/embed/*` sai: o Web Chat é o link `/c/:slug` (ADR-014). O staging na VPS é um marco antes da F3 (ADR-011).
+
+## Revisão (CD, 2026-09-24)
+- O deploy existe em `.github/workflows/deploy.yml` (feature `cd-vps`, tutorial em `docs/runbooks/deploy.md`). Uma VPS por ambiente.
+- Além da tag: todo push em `main` com CI verde compila as imagens uma vez (`sha-<SHA>`) e instala no **staging**. A tag `v*` não recompila: dá às mesmas imagens a tag da versão e instala na **produção**, depois da aprovação do environment.
+- O rollback é o "Run workflow" do `deploy.yml` com a tag anterior. Na VPS, `scripts/deploy-remote.sh` faz `pull`, `run --rm migrate` e `up -d --wait` e confere a imagem em execução; os segredos da aplicação ficam só no `.env` da VPS.
 
 ## Context
 No legado, o web fica na Vercel, e server, workers, chat, Mongo, Redis e PG ficam na VPS atrás de nginx, com deploys separados.

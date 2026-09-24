@@ -437,8 +437,10 @@ Local   docker compose up -d → postgres, mailpit
 Build   apps/server/Dockerfile → uma imagem, dois entrypoints (server.js [existe], whatsapp.js [F9])
         apps/web → vite build → estáticos na imagem do Caddy
 CI      install → biome → typecheck → vitest (postgres) → api:generate + diff → build → Playwright
-VPS     caddy · server · whatsapp [F9] · postgres · migrate (one-shot)
-        staging publicado: marco antes da F3 (runbook em docs/runbooks/staging.md)
+CD      .github/workflows/deploy.yml [existe]: CI verde em main → imagens sha-<SHA> no GHCR → staging;
+        tag vX.Y.Z → mesmas imagens → produção (aprovação); Run workflow → redeploy/rollback
+VPS     caddy · server · whatsapp [F9] · postgres · migrate (one-shot), via scripts/deploy-remote.sh
+        staging publicado: marco antes da F3 (tutorial em docs/runbooks/deploy.md)
 ```
 
 - **Logs:** pino em JSON com `requestId` [existe], `organizationId` e `userId`; `conversationId` e
