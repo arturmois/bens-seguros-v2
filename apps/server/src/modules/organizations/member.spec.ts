@@ -372,6 +372,9 @@ describe('GET /api/v1/members', () => {
       email: newer.user.email,
       name: 'Membro',
     })
+    for (const item of listed.json().items) {
+      expect(Object.keys(item).sort()).toEqual(['active', 'email', 'id', 'name', 'role', 'userId'])
+    }
 
     await setRole(host.organizationId, host.userId, 'ADMIN')
     const asAdmin = await host.client.get('/api/v1/members')

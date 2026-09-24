@@ -3,7 +3,7 @@
 Profile: standard
 Plan: `.specs/features/erp-prune/plan.md`
 
-30 checks in 4 slices · 2 one-way doors · 0 open
+31 checks in 4 slices · 2 one-way doors · 0 open
 
 Proof command prefix for the server, omitted below when a proof starts with `src/` or `test/`:
 `pnpm --filter @bens/server exec vitest run`. Every other command runs from the repo root and is
@@ -108,8 +108,10 @@ Proof: `rg -n -i "minio|S3_|commissionSplit" README.md docs/runbooks/staging.md 
 Proof: `rg -n -i "storage\.ts|pdf\.ts|minio|sai na F0" docs/architecture.md` exits 1
 
 **C31** - A landing (`apps/web/src/routes/(public)/index.tsx`) descreve captura de leads, atendimento com IA e acompanhamento comercial, e não contém `ERP`, `apólices` nem `comissões` (AC 17; acrescentado após a rodada 1)
-Proof: `rg -n "ERP|apólices|comissões" "apps/web/src/routes/(public)/index.tsx"` exits 1
-Proof: `rg -n "leads" "apps/web/src/routes/(public)/index.tsx"` exits 0
+Proof: `rg -n -i "\bERP\b|apólice|comiss" "apps/web/src/routes/(public)/index.tsx"` exits 1 (case-insensitive and by stem, tightened after round 2)
+Proof: `rg -n "Captura de leads" "apps/web/src/routes/(public)/index.tsx"` exits 0
+Proof: `rg -n "atendimento com IA" "apps/web/src/routes/(public)/index.tsx"` exits 0
+Proof: `rg -n "acompanhamento comercial" "apps/web/src/routes/(public)/index.tsx"` exits 0
 
 ### S4 - nenhuma regressão na fundação · 0 extra files · ~0k
 
@@ -195,3 +197,4 @@ to existing tests. Nothing else may change.
 - **Blocked:** C9 red - the `server` container exits with `TURNSTILE_SECRET_KEY`/`TURNSTILE_SITE_KEY: Required when NODE_ENV is production and SIGNUP_MODE is self_serve`. Pre-existing since `152bf11` (signup-gates): `docker-compose.prod.yml` never passed `SIGNUP_MODE`/`TURNSTILE_*` to the server, at `<base>` included. Not caused by this feature; awaiting the user's call.
 - **Progress (round 2):** C31 green (landing copy); AC 17 added with the user after round 1
 - **Progress (round 2):** C9 green after `staging-signup-env` (smoke `up && all` exits 0, 84 e2e passed)
+- **Round 3 fix:** C31 proofs tightened (each of the three terms, case-insensitive stem absence) after round 2 found a surviving mutant; C10 OWNER call now checks every item; header count 31
