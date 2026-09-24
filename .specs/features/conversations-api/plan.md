@@ -97,8 +97,8 @@ Status tirados do caminho real de cada handler: `400` do Zod (`.strict()` em que
 
 | Assumption | Chosen default | Rationale | Confirmed? |
 | --- | --- | --- | --- |
-| telefone na resposta | `contact.phoneE164` sai para quem pode ler a conversa | é o identificador do cliente no painel (§9); os usuários são da própria corretora | n |
-| ordem da lista | `id` decrescente (conversa mais nova primeiro) | é o padrão de `shared/pagination.ts`; a F3 decide a ordem do inbox junto com os filtros | n |
+| telefone na resposta | `contact.phoneE164` sai para quem pode ler a conversa | é o identificador do cliente no painel (§9); os usuários são da própria corretora | y (usuário, 2026-09-24) |
+| ordem da lista | `id` decrescente (conversa mais nova primeiro) | é o padrão de `shared/pagination.ts`; a F3 decide a ordem do inbox junto com os filtros | y (usuário, 2026-09-24) |
 
 **Open questions:** none - all resolved or logged above.
 
