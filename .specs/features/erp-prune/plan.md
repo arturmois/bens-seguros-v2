@@ -108,6 +108,7 @@ Agentes e humanos que leem o repositório não encontram instruções do produto
 11. The system SHALL começar cada arquivo `prompts/*.md`, `docs/legacy-analysis.md` e `docs/original-brief.md` com um aviso de arquivado que cita o ADR-011.
 12. The system SHALL não conter nenhuma ocorrência (sem diferenciar maiúsculas) de `minio`, `S3_` ou `commissionSplit` em `README.md`, `docs/runbooks/staging.md`, `.env.example`, `.env.prod.example`, `docker-compose.yml`, `docker-compose.prod.yml`, `docker-compose.staging-local.yml` e `scripts/staging-smoke.mjs`.
 13. The system SHALL não conter `storage.ts`, `pdf.ts` nem `minio` em `docs/architecture.md`, nem as marcações "sai na F0" nesse arquivo.
+17. WHEN um visitante abre a landing (`/`) THEN the system SHALL descrever o produto como captura de leads, atendimento com IA e acompanhamento comercial, sem as palavras `ERP`, `apólices` nem `comissões`. (acrescentado em 2026-09-23 após a rodada 1 da verificação, com aprovação do usuário)
 
 **Independent test:** `git grep -i -E "minio|S3_|commissionSplit"` restrito aos arquivos acima volta vazio.
 
@@ -132,6 +133,7 @@ A poda não enfraquece o que as Fases 1–4 provaram.
 | Publicar o staging na VPS | marco antes da F3 (ADR-011) |
 | Prompts novos por fase do MVP | o roadmap e as specs em `.specs/features/` cumprem esse papel |
 | Reescrever ADRs antigos e o apêndice histórico do `roadmap.md` | são histórico; já marcados pelos ADRs do MVP |
+| Reescrever os Termos de Uso (`apps/web/src/features/legal/documents.ts`), que ainda descrevem o ERP | texto jurídico versionado: mudar obriga novo aceite; vira bloqueio de go-live junto do parecer do opt-in do WhatsApp, numa revisão jurídica única (decisão do usuário, 2026-09-23) |
 
 ## Assumptions
 

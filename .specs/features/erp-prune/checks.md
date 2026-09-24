@@ -107,6 +107,10 @@ Proof: `rg -n -i "minio|S3_|commissionSplit" README.md docs/runbooks/staging.md 
 **C27** - `docs/architecture.md` não contém `storage.ts`, `pdf.ts`, `minio` nem `sai na F0` (AC 13)
 Proof: `rg -n -i "storage\.ts|pdf\.ts|minio|sai na F0" docs/architecture.md` exits 1
 
+**C31** - A landing (`apps/web/src/routes/(public)/index.tsx`) descreve captura de leads, atendimento com IA e acompanhamento comercial, e não contém `ERP`, `apólices` nem `comissões` (AC 17; acrescentado após a rodada 1)
+Proof: `rg -n "ERP|apólices|comissões" "apps/web/src/routes/(public)/index.tsx"` exits 1
+Proof: `rg -n "leads" "apps/web/src/routes/(public)/index.tsx"` exits 0
+
 ### S4 - nenhuma regressão na fundação · 0 extra files · ~0k
 
 **C28** - Os quatro gates terminam com exit code `0` (AC 14)
@@ -135,8 +139,10 @@ Proof: `pnpm --filter @bens/server exec vitest list` em `<base>` e em `HEAD` (wo
 | one-way doors (2) | door 1 migration C19, C20 · door 2 contract C10, C13, C21 | - |
 | writers of `Member` that set `commissionSplitBp` today (3) | onboarding C24 · invitation accept C24 · portfolio move probe C22, C23 | - |
 | archived documents (8) | `prompt-01.md` C25 · `prompt-02.md` C25 · `prompt-03.md` C25 · `prompt-04.md` C25 · `prompt-05.md` C25 · `prompt-h2.md` C25 · `legacy-analysis.md` C25 · `original-brief.md` C25 | - |
-| living docs and config free of ERP terms (9) | `README.md` C26 · runbook C26 · `.env.example` C26 · `.env.prod.example` C26 · `docker-compose.yml` C26 · `docker-compose.prod.yml` C26 · `docker-compose.staging-local.yml` C26 · `staging-smoke.mjs` C26 · `architecture.md` C27 | - |
+| living docs and config free of ERP terms (10) | `README.md` C26 · runbook C26 · `.env.example` C26 · `.env.prod.example` C26 · `docker-compose.yml` C26 · `docker-compose.prod.yml` C26 · `docker-compose.staging-local.yml` C26 · `staging-smoke.mjs` C26 · `architecture.md` C27 · landing C31 | - |
+| ERP wording in the web app outside `src/api` (1 in scope) | landing C31 | - |
 
+- ERP wording in the web app: 2 hits (landing, Terms of Use); the Terms of Use are out of scope by the plan (go-live blocker), so the in-scope set is the landing.
 - Claims naming a status code, route or response shape: C3, C10–C18 - each proof crosses the HTTP boundary with `app.inject`.
 - C1 is table-free: one exact-object assertion over the whole default set.
 - No other check claims more than the single case its proof exercises.
@@ -187,3 +193,4 @@ to existing tests. Nothing else may change.
 - **Progress:** S3 (C25-C27) green
 - **Progress:** S4 C28-C30 green (29 files, 272 tests; only the 2 listed tests left, 2 new ones entered)
 - **Blocked:** C9 red - the `server` container exits with `TURNSTILE_SECRET_KEY`/`TURNSTILE_SITE_KEY: Required when NODE_ENV is production and SIGNUP_MODE is self_serve`. Pre-existing since `152bf11` (signup-gates): `docker-compose.prod.yml` never passed `SIGNUP_MODE`/`TURNSTILE_*` to the server, at `<base>` included. Not caused by this feature; awaiting the user's call.
+- **Progress (round 2):** C31 green (landing copy); AC 17 added with the user after round 1

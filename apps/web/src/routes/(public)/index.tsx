@@ -23,8 +23,8 @@ function Home() {
         </span>
         <h1 className="font-semibold text-4xl text-primary tracking-tight">Bens Seguros</h1>
         <p className="max-w-md text-balance text-muted-foreground">
-          ERP para corretoras de seguros: propostas, apólices, comissões e atendimento em um só
-          lugar.
+          Captura de leads, atendimento com IA e acompanhamento comercial para corretoras de
+          seguros.
         </p>
       </div>
 

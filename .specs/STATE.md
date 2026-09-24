@@ -21,7 +21,7 @@ Escopo, fases e decisões: `docs/roadmap.md`, ADR-011 a ADR-017. Cada fase: `pla
 
 - **Pivot documentado:** gates do v2 verdes (31 arquivos, 272 testes); análise validada contra o código; decisões abertas resolvidas (`WAITING` = aguardando o cliente; opt-in "SIM" no WhatsApp, pendente de parecer jurídico antes do go-live; P1–P6 confirmadas; `Organization.maxUsers`; staging publicado vira marco antes da F3); ADRs 011–017 escritos e ADRs do v2 marcados; `architecture.md`, `roadmap.md`, `CLAUDE.md` e este arquivo reescritos; `migration.md` aposentado.
 - **Próximo:** F0 — poda do ERP (`.specs/features/erp-prune/`), depois o checkpoint H3.
-- **Pendências registradas:** revisão da AD-008 (F2) e da AD-009 (F2/F5); AD nova para o tenant do link público (F3) e para a função `SECURITY DEFINER` do runtime WhatsApp (F9); parecer jurídico do opt-in do WhatsApp (antes do go-live).
+- **Pendências registradas:** revisão da AD-008 (F2) e da AD-009 (F2/F5); AD nova para o tenant do link público (F3) e para a função `SECURITY DEFINER` do runtime WhatsApp (F9); parecer jurídico do opt-in do WhatsApp e reescrita dos Termos de Uso para o MVP, com nova versão (antes do go-live).
 
 ## Histórico v2 (Fases 3–4, concluídas)
 

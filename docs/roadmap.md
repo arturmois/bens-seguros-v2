@@ -28,7 +28,7 @@ F5 ─▶ F6 Leads/Comercial ─▶ F7 Kanban ─▶ F8 Follow-up ─▶ F9 What
 - **Dependências:** este roadmap e os ADRs 011–017 aprovados.
 - **Mudanças:** remover `infrastructure/storage.ts` e `pdf.ts` (+ specs), `@aws-sdk/*`, `@react-pdf/renderer`, `S3_*` do config, `ensureBucket` do boot, MinIO do compose de dev, do CI e dos `.env*`; `Member.commissionSplitBp` (schema, saída da API, web e testes); aposentar `prompts/prompt-0*.md`, `docs/legacy-analysis.md`, `docs/original-brief.md`; `S3_*` do runbook de staging. Plano: `.specs/features/erp-prune/`.
 - **Testes:** suíte herdada verde (schema de RLS, `withTwoTenants`, arquitetura); `staging-smoke.mjs` local.
-- **Critério:** CI verde; nenhum código, config ou doc vivo referencia storage, PDF, MinIO, comissão ou módulos do ERP.
+- **Critério:** CI verde; nenhum código, config ou doc vivo referencia storage, PDF, MinIO, comissão ou módulos do ERP. Exceção: o texto dos Termos de Uso, reescrito na revisão jurídica antes do go-live (F11).
 
 ## Checkpoint H3 — Harness depois da poda
 
@@ -146,7 +146,7 @@ F5 ─▶ F6 Leads/Comercial ─▶ F7 Kanban ─▶ F8 Follow-up ─▶ F9 What
 - **Dependências:** todas.
 - **Mudanças:** dashboard por consultas SQL (leads recebidos/atendidos, oportunidades, ganhos/perdas, tempo até o primeiro atendimento humano, conversão por etapa); Sentry sem PII; logs com `organizationId`/`conversationId`/`channelId`; `/api/ready`; monitor externo; alertas (job esgotado, canal fora > 30 min, runtime sem heartbeat); backup diário + restore testado; runbooks (deploy, rollback, restore, re-pareamento); deploy por tag.
 - **Testes:** `/ready` 503 com o PG fora; métricas com dados que não passam por constante ou ordem; restore num ambiente limpo.
-- **Critério:** restore executado; alerta de canal fora chega; go-live (com o parecer jurídico do opt-in do WhatsApp).
+- **Critério:** restore executado; alerta de canal fora chega; go-live (com o parecer jurídico do opt-in do WhatsApp e os Termos de Uso reescritos para o MVP, nova versão).
 
 > **Observabilidade não é só a F11:** `requestId`/`organizationId`/`conversationId` no log e `/api/health` valem desde já; a F11 fecha alertas, Sentry e dashboards.
 
