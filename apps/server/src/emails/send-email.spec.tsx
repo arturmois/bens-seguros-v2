@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { createTestDeps } from '../../test/app.ts'
+import { testDatabaseUrl, workerSchema } from '../../test/setup-db.ts'
 import { closeDependencies, type Deps } from '../dependencies.ts'
 import { registerWorkers } from '../workers.ts'
 import { enqueueEmail, SEND_EMAIL, sendEmail } from './send-email.tsx'
@@ -31,14 +32,21 @@ function bossSchemaOf(target: Deps) {
   return `${new URL(target.config.DATABASE_URL).searchParams.get('schema')}_pgboss`
 }
 
-// Test files that ran earlier in this worker schema enqueue e-mails without starting a worker. Their
-// jobs would sit ahead of this test's, and the worker takes one per poll every 2 s, oldest first.
-// Those files have finished (one schema runs its files one after another), so the jobs are nobody's.
-async function clearPendingEmails(target: Deps) {
-  await target.db.$queryRawUnsafe(
-    `DELETE FROM "${bossSchemaOf(target)}".job WHERE name = $1 AND state IN ('created', 'retry')`,
-    SEND_EMAIL,
+// A queue of its own for each queue test. The worker schema is shared by the test files a Vitest
+// worker runs one after another, and each file closes before its e-mail worker has drained its jobs;
+// a worker there would take those leftovers first, one per poll every 2 s, and time out. The schema
+// name keeps the `test_w` prefix, so the next run's global setup drops it with the worker schemas.
+async function isolatedQueueDeps(env: Record<string, string> = {}) {
+  const url = new URL(testDatabaseUrl())
+  url.searchParams.set('schema', `${workerSchema()}_q${randomUUID().slice(0, 8)}`)
+  const target = await createTestDeps({ DATABASE_URL: url.toString(), ...env })
+  await target.queue.start()
+  const [pending] = await target.db.$queryRawUnsafe<{ count: number }[]>(
+    `SELECT count(*)::int AS count FROM "${bossSchemaOf(target)}".job`,
   )
+  expect(pending?.count).toBe(0)
+  await registerWorkers(target)
+  return target
 }
 
 let deps: Deps
@@ -119,10 +127,7 @@ describe('email.send', () => {
   })
 
   it('delivers each template through the queue', async () => {
-    const queued = await createTestDeps()
-    await queued.queue.start()
-    await clearPendingEmails(queued)
-    await registerWorkers(queued)
+    const queued = await isolatedQueueDeps()
     const cases = [
       { template: 'verify-email' as const, subject: 'Confirme seu e-mail', to: recipient() },
       { template: 'reset-password' as const, subject: 'Redefina sua senha', to: recipient() },
@@ -155,10 +160,7 @@ describe('email.send', () => {
 
   it('retries a failed send', async () => {
     // Nothing listens on port 1: every SMTP attempt fails.
-    const failing = await createTestDeps({ SMTP_URL: 'smtp://127.0.0.1:1' })
-    await failing.queue.start()
-    await clearPendingEmails(failing)
-    await registerWorkers(failing)
+    const failing = await isolatedQueueDeps({ SMTP_URL: 'smtp://127.0.0.1:1' })
     const bossSchema = bossSchemaOf(failing)
     const to = recipient()
 
