@@ -2,7 +2,6 @@ import { pino } from 'pino'
 import { createDatabase, parseDatabaseUrl } from './infrastructure/database.ts'
 import { createMailer } from './infrastructure/email.ts'
 import { createQueue } from './infrastructure/queue.ts'
-import { createStorage } from './infrastructure/storage.ts'
 import { createAuth } from './modules/auth/index.ts'
 import type { Config } from './shared/config.ts'
 import { loggerOptions } from './shared/logger.ts'
@@ -26,7 +25,6 @@ export function createDependencies(config: Config) {
     logger,
     db,
     queue,
-    storage: createStorage(config),
     mailer: createMailer(config),
     auth: createAuth({ config, db, queue }),
   }
@@ -37,6 +35,5 @@ export type Deps = ReturnType<typeof createDependencies>
 export async function closeDependencies(deps: Deps) {
   await deps.queue.stop()
   await deps.db.$disconnect()
-  deps.storage.close()
   deps.mailer.close()
 }

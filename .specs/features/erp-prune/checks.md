@@ -180,3 +180,5 @@ to existing tests. Nothing else may change.
   80k; S4 adds no files. Total ~80k, under the 150k budget - one builder.
 - Mechanism: one builder (fits; no ask).
 - C9 needs the `docker` CLI inside WSL (Docker Desktop WSL integration) - plan assumption, confirmed.
+
+- **Progress:** S1 (C1-C8) green; C9 (staging smoke) runs after S3

@@ -45,15 +45,6 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
-      # Job services cannot pass a command, and MinIO needs `server /data`.
-      - name: Start MinIO
-        run: |
-          docker run -d --name minio -p 9000:9000 \
-            -e MINIO_ROOT_USER=bens -e MINIO_ROOT_PASSWORD=bens-minio \
-            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
-          curl --silent --fail --retry 20 --retry-delay 1 --retry-all-errors \
-            http://localhost:9000/minio/health/live
-
       # The application role the server and the tests connect as (ADR-004). The runner ships psql.
       - name: Create the application database role
         run: APP_DB_PASSWORD=bens_app PROVISION_DATABASE_URL=postgresql://bens:bens@localhost:5432/bens docker/postgres/init/01-app-role.sh
@@ -112,11 +103,6 @@ jobs:
       BETTER_AUTH_SECRET: ci-e2e-secret-with-at-least-32-characters
       DATABASE_URL: postgresql://bens_app:bens_app@localhost:5432/bens
       MIGRATION_DATABASE_URL: postgresql://bens:bens@localhost:5432/bens
-      # Nothing in the e2e touches storage; the client only needs a configuration.
-      S3_ENDPOINT: http://localhost:9000
-      S3_BUCKET: bens-e2e
-      S3_ACCESS_KEY_ID: bens
-      S3_SECRET_ACCESS_KEY: bens-minio
       SMTP_URL: smtp://localhost:1025
       EMAIL_FROM: Bens Seguros <nao-responda@bensseguros.local>
 

@@ -19,14 +19,6 @@ const configSchema = z
     // Only behind a reverse proxy that overwrites X-Forwarded-For (Caddy), with the server port closed.
     TRUST_PROXY: z.stringbool().default(false),
 
-    // Unset for AWS S3; MinIO in dev and R2 in production need it.
-    S3_ENDPOINT: z.url().optional(),
-    S3_REGION: z.string().min(1).default('auto'),
-    S3_BUCKET: z.string().min(1),
-    S3_ACCESS_KEY_ID: z.string().min(1),
-    S3_SECRET_ACCESS_KEY: z.string().min(1),
-    S3_FORCE_PATH_STYLE: z.stringbool().default(false),
-
     SMTP_URL: z.url({ protocol: /^smtps?$/ }),
     EMAIL_FROM: z.string().min(3),
 

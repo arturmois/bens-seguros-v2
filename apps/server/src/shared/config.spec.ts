@@ -3,9 +3,6 @@ import { ConfigError, loadConfig } from './config.ts'
 
 const required = {
   DATABASE_URL: 'postgresql://bens:bens@localhost:5432/bens',
-  S3_BUCKET: 'bens-dev',
-  S3_ACCESS_KEY_ID: 'bens',
-  S3_SECRET_ACCESS_KEY: 'bens-minio',
   SMTP_URL: 'smtp://localhost:1025',
   EMAIL_FROM: 'Bens Seguros <nao-responda@bensseguros.local>',
   APP_URL: 'http://localhost:3000',
@@ -20,8 +17,6 @@ describe('loadConfig', () => {
       HOST: '0.0.0.0',
       PORT: 3001,
       LOG_LEVEL: 'info',
-      S3_REGION: 'auto',
-      S3_FORCE_PATH_STYLE: false,
       TRUST_PROXY: false,
       SIGNUP_MODE: 'self_serve',
       MAX_ORGS_PER_USER: 3,
@@ -33,10 +28,10 @@ describe('loadConfig', () => {
   })
 
   it('coerces numbers and booleans from environment strings', () => {
-    const config = loadConfig({ ...required, PORT: '4000', S3_FORCE_PATH_STYLE: 'true' })
+    const config = loadConfig({ ...required, PORT: '4000', TRUST_PROXY: 'true' })
 
     expect(config.PORT).toBe(4000)
-    expect(config.S3_FORCE_PATH_STYLE).toBe(true)
+    expect(config.TRUST_PROXY).toBe(true)
   })
 
   it('rejects invalid values listing every offending variable', () => {
@@ -53,7 +48,6 @@ describe('loadConfig', () => {
 
     expect(load).toThrow(/DATABASE_URL/)
     expect(load).toThrow(/SMTP_URL/)
-    expect(load).toThrow(/S3_BUCKET/)
     expect(load).toThrow(/EMAIL_FROM/)
   })
 

@@ -22,9 +22,6 @@ const caddyfile = fileURLToPath(new URL('../../../../../Caddyfile', import.meta.
 
 const requiredEnv = {
   DATABASE_URL: 'postgresql://bens:bens@127.0.0.1:5432/bens',
-  S3_BUCKET: 'bens-dev',
-  S3_ACCESS_KEY_ID: 'bens',
-  S3_SECRET_ACCESS_KEY: 'bens-minio',
   SMTP_URL: 'smtp://127.0.0.1:1025',
   EMAIL_FROM: 'Bens Seguros <teste@bensseguros.local>',
   APP_URL: 'http://localhost:3000',

@@ -33,7 +33,6 @@ process.once('SIGTERM', shutdown)
 
 try {
   await deps.db.assertRowSecurityApplies()
-  if (config.NODE_ENV !== 'production') await deps.storage.ensureBucket()
   await deps.queue.start()
   await registerWorkers(deps)
   await app.listen({ host: config.HOST, port: config.PORT })

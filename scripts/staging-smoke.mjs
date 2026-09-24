@@ -48,10 +48,6 @@ function localEnv() {
         'POSTGRES_DB=bens',
         `APP_DB_PASSWORD=${secret()}`,
         `BETTER_AUTH_SECRET=${secret()}`,
-        'S3_ENDPOINT=http://localhost:9000',
-        'S3_BUCKET=bens-staging-local',
-        'S3_ACCESS_KEY_ID=bens',
-        'S3_SECRET_ACCESS_KEY=bens-minio',
         'SMTP_URL=smtp://host.docker.internal:1025',
         'EMAIL_FROM="Bens Seguros <nao-responda@bensseguros.local>"',
         'LOG_LEVEL=warn',
@@ -520,12 +516,10 @@ const steps = {
     const health = await fetch(`${BASE}/api/health`)
     assert(health.status === 200, `the pruned server answers /api/health -> ${health.status}`)
     // The boot path is not the whole image: every infrastructure module must still load, including
-    // the ones no request touches until a later phase (PDF, storage).
+    // the ones no request touches yet.
     const modules = [
       'app.js',
       'dependencies.js',
-      'infrastructure/pdf.js',
-      'infrastructure/storage.js',
       'infrastructure/email.js',
       'infrastructure/queue.js',
       'infrastructure/realtime.js',
