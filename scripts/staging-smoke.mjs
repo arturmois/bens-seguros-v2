@@ -595,7 +595,7 @@ const steps = {
     // Repository paths cited in inline code, outside the command blocks: relative, with a folder or
     // a file extension; hosts (ghcr.io/...), VPS paths (/opt/...), placeholders and the repository
     // name itself are not.
-    const prose = text.replace(/^```[\s\S]*?^```/gm, '')
+    const prose = text.replace(/^[ \t]*```[\s\S]*?^[ \t]*```/gm, '')
     const cited = [...prose.matchAll(/`([^`\s<>:]+)`/g)]
       .map((match) => match[1])
       .filter(

@@ -3,7 +3,7 @@
 Profile: standard
 Plan: `.specs/features/cd-vps/plan.md`
 
-35 checks in 7 slices · 6 one-way doors · 1 open, of which 0 block (1 blocks go-live)
+40 checks in 8 slices · 6 one-way doors · 1 open, of which 0 block (1 blocks go-live)
 
 Every command runs from the repo root. `rg` means real ripgrep; in this shell it runs as
 `ARGV0=rg ~/.local/bin/claude <args>` (see erp-prune checks, Handoff).
@@ -150,15 +150,35 @@ Proof: `node scripts/staging-smoke.mjs runbook`
 Proof: `git grep -n 'runbooks/staging\.md' -- ':!.specs' ':!prompts'` exits 1
 Proof: `grep -n 'deploy\.yml' docs/decisions/ADR-008-deployment.md` exits 0
 
+### S8 - achados da verificação, rodada 1 · 4 files · ~40 KB · ~10k
+
+Acrescentado depois do FAIL da rodada 1 (`verification.md`): quatro lacunas que os checks acima não pegavam. Nenhum check anterior foi alterado.
+
+**C36** - The health step exits non-zero when the answer is not `200`: against `http://localhost:8180` (Caddy's `308` to `https://`) it fails and prints the status it got (AC 12)
+Proof: `node scripts/deploy-smoke.mjs health-step` exits 0
+
+**C37** - The preflight step rejects a `SITE_URL` that does not start with `https://` (`http://staging.example.com`, `staging.example.com`) with a non-zero exit and the message `SITE_URL precisa começar com https://` (AC 12)
+Proof: `node scripts/deploy-smoke.mjs preflight-step` exits 0
+
+**C38** - With `IMAGE_TAG=tag-a` in the script's environment (it beats the env files), `deploy-remote.sh tag-b` exits non-zero on the running-image check (`esperado …/server:tag-b`), leaves `deploy.env` byte-identical and the `server` on `tag-a` (AC 4)
+Proof: `node scripts/deploy-smoke.mjs image-mismatch` exits 0
+
+**C39** - After each failed deploy (`missing-tag`, `bad-migrate`), the `server`, `caddy` and `postgres` containers have the same ID **and** the same `State.StartedAt` as before the call (none recreated, stopped or restarted) (AC 6, 7)
+Proof: `node scripts/deploy-smoke.mjs missing-tag` exits 0
+Proof: `node scripts/deploy-smoke.mjs bad-migrate` exits 0
+
+**C40** - ADR-008's CD revision names the three images `server`, `migrate` and `web` and says they replace `server` and `caddy-web`
+Proof: `grep -n 'substituem as `server` e `caddy-web`' docs/decisions/ADR-008-deployment.md` exits 0
+
 ## Coverage
 
 | Set (size) | Member -> proof | Unproven |
 | --- | --- | --- |
 | build guard conjuncts (5) | event_name C1 · conclusion C1 · event C1 · head_branch C1 · head_repository C1 | - |
 | images (3) | `server` C2, C6, C28 · `migrate` C2, C6, C28 · `web` C2, C6, C28 | - |
-| `deploy-remote.sh` outcomes (7) | success C6 · rotation of `deploy.env` C7, C15 · same tag again C8 · missing tag C9 · migrate fails C10 · `.env` absent or open C11 · no token C12 | - |
-| `deploy-remote.sh` exit codes (2) | `0` C6, C7, C8, C15 · non-zero C9, C10, C11, C12 | - |
-| containers a failed deploy must not recreate (3) | `server` C9, C10 · `caddy` C9 · `postgres` C8 | - |
+| `deploy-remote.sh` outcomes (8) | success C6 · rotation of `deploy.env` C7, C15 · same tag again C8 · missing tag C9 · migrate fails C10 · `.env` absent or open C11 · no token C12 · running image differs C38 | - |
+| `deploy-remote.sh` exit codes (2) | `0` C6, C7, C8, C15 · non-zero C9, C10, C11, C12, C38 | - |
+| containers a failed deploy must not recreate (3) | `server` C9, C10, C39 · `caddy` C9, C39 · `postgres` C39 | - |
 | where the registry credential could leak (4) | ssh command line C19 · script output C14 · Docker config after success C13 · Docker config after failure C13 | - |
 | workflow triggers (3) | `workflow_run` C1 · tag push C24 · `workflow_dispatch` C30 | - |
 | deploy callers (3) | staging C17 · production C29 · redeploy C30 | - |
@@ -166,6 +186,8 @@ Proof: `grep -n 'deploy\.yml' docs/decisions/ADR-008-deployment.md` exits 0
 | files copied to the VPS (3) | `docker-compose.prod.yml` C18 · `01-app-role.sh` C18 · `deploy-remote.sh` C18 | - |
 | release tag format (6) | `v1.2.3` C25 · `v10.0.12` C25 · `v1.2` C25 · `1.2.3` C25 · `v1.2.3-rc.1` C25 · `V1.2.3` C25 | - |
 | dispatch image_tag format (8) | 40-hex sha C31 · `v1.2.3` C31 · short sha C31 · uppercase sha C31 · `v1.2` C31 · `latest` C31 · `v1.2.3; id` C31 · empty C31 | - |
+| health step outcomes (3) | `200` C21 · redirect `308` C36 · unreachable C21 | - |
+| `SITE_URL` accepted by the preflight (3) | `https://…` C22 · `http://…` C37 · no scheme C37 | - |
 | promote outcomes (3) | not on main C26 · images missing C27 · retag with same digest C28 | - |
 | Landing doors (6) | 1 C2, C28, C31 · 2 C28 · 3 C18, C7 · 4 C33 · 5 C19, C22 · 6 C4, C20 | - |
 | tutorial sections (16) | C34, table-driven over all 16 | - |
@@ -210,3 +232,4 @@ the remote script (C9-C12) would be proven only by the first deploy that fails i
 - Mechanism: one builder (under budget, no ask)
 - **Settled mid-build:** (1) C35 excludes `prompts/` as well as `.specs/`: `prompts/prompt-04.md` and `prompt-05.md` still name `docs/runbooks/staging.md`, but both are archived records headed "Arquivado em 2026-09-23 (ADR-011) … Não use como instrução", so they were not rewritten. (2) The `rg` proofs of C33 and C35 became `grep`/`git grep` with the same pattern: `ARGV0=rg ~/.local/bin/claude` hung past 120 s in this shell. (3) `scp` copies with `-p`, so the executable bit of `deploy-remote.sh` survives the copy and the remote `./deploy-remote.sh` of C18 runs. (4) The deploy jobs are one reusable workflow, `.github/workflows/deploy-environment.yml`, called three times (placement; C4, C17-C23 name it).
 - **Abandoned:** nothing.
+- **Round 1 fix (after `verification.md` FAIL):** the health step loops on `curl --write-out '%{http_code}'` until exactly `200` or 60 s (was `curl --fail`, which passed a `308`); the preflight requires `https://`; the smoke's failed-deploy snapshot covers `postgres` and `State.StartedAt`; step `image-mismatch` proves the running-image guard; ADR-008 names the three images; the `runbook` step also strips indented code fences. C36-C40 added; no earlier check edited.

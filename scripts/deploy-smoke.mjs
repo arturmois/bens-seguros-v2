@@ -91,7 +91,10 @@ function registryAuths() {
 }
 
 // scripts/deploy-remote.sh as the workflow runs it; every output goes to the transcript (C14).
-function deploy(tag, { dir = DEPLOY, input = state().password, path = process.env.PATH } = {}) {
+function deploy(
+  tag,
+  { dir = DEPLOY, input = state().password, path = process.env.PATH, env = {} } = {},
+) {
   const result = spawnSync(join(dir, 'deploy-remote.sh'), [tag], {
     encoding: 'utf8',
     input,
@@ -102,6 +105,7 @@ function deploy(tag, { dir = DEPLOY, input = state().password, path = process.en
       REGISTRY_USER,
       DOCKER_CONFIG,
       COMPOSE_PROJECT_NAME: PROJECT,
+      ...env,
     },
   })
   const output = `${result.stdout}${result.stderr}`
@@ -225,19 +229,28 @@ function removeStack() {
   if (networks) docker(['network', 'rm', ...networks.split('\n')])
 }
 
-// A failed deploy must leave these exactly as they were (C9, C10).
+// A failed deploy must leave these exactly as they were (C9, C10, C39): same container, never
+// stopped or restarted (same start time), and the same deploy.env.
+const RUNNING = ['server', 'caddy', 'postgres']
+
 function snapshot() {
-  return {
-    server: containerId('server'),
-    caddy: containerId('caddy'),
-    deployEnv: deployEnv(),
-  }
+  const containers = Object.fromEntries(
+    RUNNING.map((service) => {
+      const id = containerId(service)
+      return [service, `${id} ${docker(['inspect', '--format', '{{.State.StartedAt}}', id])}`]
+    }),
+  )
+  return { containers, server: containerId('server'), deployEnv: deployEnv() }
 }
 
 function assertUntouched(before, label) {
   const after = snapshot()
-  assert(after.server === before.server, `${label}: the server container was not recreated`)
-  assert(after.caddy === before.caddy, `${label}: the caddy container was not recreated`)
+  for (const service of RUNNING) {
+    assert(
+      after.containers[service] === before.containers[service],
+      `${label}: the ${service} container is the same and was not restarted`,
+    )
+  }
   assert(
     imageOf(after.server) === `${REGISTRY}/server:tag-b`,
     `${label}: the server still runs tag-b`,
@@ -738,6 +751,14 @@ const steps = {
         `fails and names ${name} when empty`,
       )
     }
+    // C37
+    for (const url of ['http://staging.example.com', 'staging.example.com']) {
+      const result = runStep(run, { ...full, SITE_URL: url })
+      assert(
+        result.status !== 0 && result.output.includes('SITE_URL precisa começar com https://'),
+        `rejects SITE_URL=${url}`,
+      )
+    }
   },
 
   // C27, C32
@@ -893,13 +914,35 @@ const steps = {
     )
   },
 
-  // C21
+  // C38: a stale IMAGE_TAG in the SSH session beats the env files, so `up` keeps the old image;
+  // the check of the running image is what stops the script from recording the wrong version.
+  async 'image-mismatch'() {
+    const before = deployEnv()
+    const result = deploy('tag-b', { env: { IMAGE_TAG: 'tag-a' } })
+    assert(
+      result.status !== 0 && result.output.includes(`esperado ${REGISTRY}/server:tag-b`),
+      'deploy tag-b with IMAGE_TAG=tag-a in the environment fails on the image check',
+    )
+    assert(deployEnv() === before, 'deploy.env is byte-identical')
+    assert(
+      imageOf(containerId('server')) === `${REGISTRY}/server:tag-a`,
+      'the server still runs tag-a',
+    )
+  },
+
+  // C21, C36
   async 'health-step'() {
     const { run } = step(workflow(ENVIRONMENT_YML).jobs.deploy, 'Health check')
     const ca = join(SCRATCH, 'caddy-root.crt')
     docker(['cp', `${containerId('caddy')}:/data/caddy/pki/authorities/local/root.crt`, ca])
     const live = runStep(run, { SITE_URL: `${HTTPS_BASE}/`, CURL_CA_BUNDLE: ca })
     assert(live.status === 0, `passes against ${HTTPS_BASE}`)
+    // C36: Caddy answers http:// with a 308 to https://, which is not the health of the server.
+    const redirect = runStep(run, { SITE_URL: 'http://localhost:8180', CURL_CA_BUNDLE: ca })
+    assert(
+      redirect.status !== 0 && redirect.output.includes('308'),
+      'fails against the 308 of http:// and prints the status',
+    )
     const started = Date.now()
     const closed = runStep(run, { SITE_URL: 'http://127.0.0.1:9', CURL_CA_BUNDLE: ca })
     const seconds = (Date.now() - started) / 1000
@@ -953,6 +996,7 @@ const ORDER = [
   'missing-tag',
   'bad-migrate',
   'rollback',
+  'image-mismatch',
   'health-step',
   'no-leak',
 ]

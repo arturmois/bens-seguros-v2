@@ -501,6 +501,7 @@ quantos certificados um mesmo nome pode emitir por semana. Nunca rode na produç
 | --- | --- |
 | O Deploy não começa depois do push | O CI falhou, ou o push não foi em `main`. O Deploy só roda depois de CI verde num push em `main` deste repositório |
 | Preflight: `SSH_HOST não está configurado no environment ...` | Falta o secret ou a variable citada no environment daquele ambiente |
+| Preflight: `SITE_URL precisa começar com https://` | A variable `SITE_URL` tem `http://` ou está sem esquema; use `https://staging.seudominio.com.br` |
 | `Host key verification failed` | `SSH_KNOWN_HOSTS` errado, ou a VPS foi reinstalada e ganhou outra host key. Refaça o `ssh-keyscan` e confira a impressão digital |
 | `Permission denied (publickey)` | A chave pública não está no `authorized_keys` do `deploy`, as permissões não são 700/600, ou `SSH_USER` está errado |
 | `deploy: erro: .env precisa de permissão 600` | `chmod 600 /opt/bens-seguros/.env` |

@@ -54,6 +54,11 @@ jobs:
               missing=1
             fi
           done
+          # http:// would stop at Caddy's redirect to https and never reach the server.
+          if [ -n "$SITE_URL" ] && [[ ! "$SITE_URL" =~ ^https:// ]]; then
+            echo "::error::SITE_URL precisa começar com https:// (ex.: https://staging.seudominio.com.br)."
+            missing=1
+          fi
           if [ -n "$DEPLOY_PATH" ] && [[ ! "$DEPLOY_PATH" =~ ^/[A-Za-z0-9._/-]+$ ]]; then
             echo "::error::DEPLOY_PATH precisa ser um caminho absoluto sem espaços (ex.: /opt/bens-seguros)."
             missing=1
@@ -96,11 +101,23 @@ jobs:
           printf '%s' "$REGISTRY_TOKEN" | ssh "${ssh_opts[@]}" "$target" \
             "cd '$DEPLOY_PATH' && IMAGE_REGISTRY='$IMAGE_REGISTRY' REGISTRY_USER='$REGISTRY_USER' ./deploy-remote.sh '$IMAGE_TAG'"
 
-      # From outside the VPS, through DNS, TLS and Caddy, like a user.
+      # From outside the VPS, through DNS, TLS and Caddy, like a user. Only a 200 passes: a redirect
+      # or an error page means the request never reached a healthy server.
       - name: Health check
         env:
           SITE_URL: ${{ vars.SITE_URL }}
         run: |
-          curl --fail --silent --show-error --max-time 10 \
-            --retry 30 --retry-delay 2 --retry-all-errors --retry-max-time 60 \
-            "${SITE_URL%/}/api/health"
+          url="${SITE_URL%/}/api/health"
+          deadline=$((SECONDS + 60))
+          while true; do
+            status=$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 10 "$url" || true)
+            if [ "$status" = 200 ]; then
+              echo "$url respondeu 200"
+              exit 0
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::$url não respondeu 200 em 60 segundos (último status: $status)."
+              exit 1
+            fi
+            sleep 2
+          done

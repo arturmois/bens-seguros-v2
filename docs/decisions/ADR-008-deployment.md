@@ -9,6 +9,7 @@
 
 ## Revisão (CD, 2026-09-24)
 - O deploy existe em `.github/workflows/deploy.yml` (feature `cd-vps`, tutorial em `docs/runbooks/deploy.md`). Uma VPS por ambiente.
+- As imagens no GHCR são três, `server`, `migrate` e `web` (a imagem do Caddy com a SPA), em `ghcr.io/arturmois/bens-seguros-v2/<imagem>`; substituem as `server` e `caddy-web` da decisão original. O `migrate` ganha imagem própria porque é o target `migrate` do Dockerfile do server, com o Prisma CLI.
 - Além da tag: todo push em `main` com CI verde compila as imagens uma vez (`sha-<SHA>`) e instala no **staging**. A tag `v*` não recompila: dá às mesmas imagens a tag da versão e instala na **produção**, depois da aprovação do environment.
 - O rollback é o "Run workflow" do `deploy.yml` com a tag anterior. Na VPS, `scripts/deploy-remote.sh` faz `pull`, `run --rm migrate` e `up -d --wait` e confere a imagem em execução; os segredos da aplicação ficam só no `.env` da VPS.
 
