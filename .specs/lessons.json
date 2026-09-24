@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 49,
+  "next_id": 53,
   "lessons": [
     {
       "id": "L-001",
@@ -872,6 +872,78 @@
       ],
       "created": "2026-09-24T13:00:36Z",
       "last_seen": "2026-09-24T13:00:36Z"
+    },
+    {
+      "id": "L-049",
+      "key": "ac_gap::prove a health or status probe against a redirect and a non 200 answer not only a closed port curl fail passes a 3xx",
+      "text": "Prove a health or status probe against a redirect and a non-200 answer, not only a closed port: curl --fail passes a 3xx.",
+      "signal": "ac_gap",
+      "scope": "ci",
+      "status": "candidate",
+      "features": [
+        "cd-vps"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "AC 12 / deploy-environment.yml Health check (ci)"
+      ],
+      "created": "2026-09-24T15:20:07Z",
+      "last_seen": "2026-09-24T15:20:07Z"
+    },
+    {
+      "id": "L-050",
+      "key": "surviving_mutant::every guard in a deploy script needs a smoke case that reaches it a guard no scenario triggers can be deleted with the suite green",
+      "text": "Every guard in a deploy script needs a smoke case that reaches it; a guard no scenario triggers can be deleted with the suite green.",
+      "signal": "surviving_mutant",
+      "scope": "scripts",
+      "status": "candidate",
+      "features": [
+        "cd-vps"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "scripts/deploy-remote.sh:57 (scripts)"
+      ],
+      "created": "2026-09-24T15:20:07Z",
+      "last_seen": "2026-09-24T15:20:07Z"
+    },
+    {
+      "id": "L-051",
+      "key": "ac_gap::a nothing changed claim on containers compares every service the claim names by id and state startedat not a subset by id",
+      "text": "A 'nothing changed' claim on containers compares every service the claim names, by ID and State.StartedAt, not a subset by ID.",
+      "signal": "ac_gap",
+      "scope": "scripts",
+      "status": "candidate",
+      "features": [
+        "cd-vps"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "AC 6 / deploy-smoke.mjs snapshot (scripts)"
+      ],
+      "created": "2026-09-24T15:20:07Z",
+      "last_seen": "2026-09-24T15:20:07Z"
+    },
+    {
+      "id": "L-052",
+      "key": "spec_deviation::when a feature changes a literal an adr fixes image names routes write the replacement into the adr revision in the same feature",
+      "text": "When a feature changes a literal an ADR fixes (image names, routes), write the replacement into the ADR revision in the same feature.",
+      "signal": "spec_deviation",
+      "scope": "docs",
+      "status": "candidate",
+      "features": [
+        "cd-vps"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "ADR-008:26 (docs)"
+      ],
+      "created": "2026-09-24T15:20:07Z",
+      "last_seen": "2026-09-24T15:20:07Z"
     }
   ]
 }

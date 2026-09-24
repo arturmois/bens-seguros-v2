@@ -300,6 +300,30 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: C47 and plan.md:51 claimed a 422 that invitation.ts:56-120 never returns (round 1, e89952f) (specs)
 - last seen: 2026-09-24T13:00:36Z
 
+### L-049 - Prove a health or status probe against a redirect and a non-200 answer, not only a closed port: curl --fail passes a 3xx.
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `ci` · harmful: 0
+- features: cd-vps
+- evidence: AC 12 / deploy-environment.yml Health check (ci)
+- last seen: 2026-09-24T15:20:07Z
+
+### L-050 - Every guard in a deploy script needs a smoke case that reaches it; a guard no scenario triggers can be deleted with the suite green.
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `scripts` · harmful: 0
+- features: cd-vps
+- evidence: scripts/deploy-remote.sh:57 (scripts)
+- last seen: 2026-09-24T15:20:07Z
+
+### L-051 - A 'nothing changed' claim on containers compares every service the claim names, by ID and State.StartedAt, not a subset by ID.
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `scripts` · harmful: 0
+- features: cd-vps
+- evidence: AC 6 / deploy-smoke.mjs snapshot (scripts)
+- last seen: 2026-09-24T15:20:07Z
+
+### L-052 - When a feature changes a literal an ADR fixes (image names, routes), write the replacement into the ADR revision in the same feature.
+- signal: `spec_deviation` · recurrence: 1 feature(s) · scope: `docs` · harmful: 0
+- features: cd-vps
+- evidence: ADR-008:26 (docs)
+- last seen: 2026-09-24T15:20:07Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.
