@@ -58,8 +58,24 @@ Onde fica cada coisa:
 - Acesso de administrador ao repositório `arturmois/bens-seguros-v2` no GitHub.
 - Na sua máquina: `ssh`, `ssh-keygen` e `git`.
 
-Nos comandos abaixo, troque `203.0.113.10` pelo IP da sua VPS e `staging.seudominio.com.br`
-pelo seu hostname.
+## Como ler os comandos
+
+Cada bloco de comando diz **onde** rodar. São quatro lugares:
+
+| Onde | Como chegar | Prompt |
+| --- | --- | --- |
+| 💻 sua máquina | o terminal do seu computador, na pasta que quiser | o do seu terminal |
+| 🖥️ VPS, como `root` | `ssh root@203.0.113.10` (só até a seção "Proteger a VPS" desligar o login de root) | `root@srv…:~#` |
+| 🖥️ VPS, como `ops` | `ssh ops@203.0.113.10` (seu usuário administrador, criado em "Proteger a VPS") | `ops@srv…:~$` |
+| 🖥️ VPS, como `deploy` | já dentro como `ops`: `sudo -iu deploy`; para voltar a ser `ops`: `exit` | `deploy@srv…:~$` |
+
+Os comandos usam **valores de exemplo**. Troque sempre:
+
+- `203.0.113.10` pelo IP da sua VPS (hPanel → VPS → visão geral);
+- `staging.seudominio.com.br` pelo nome real do seu staging (ex.: `staging.bensseguros.com.br`);
+- `seudominio.com.br` pelo seu domínio.
+
+Um comando com o valor de exemplo não dá erro óbvio: o `dig`, por exemplo, só devolve vazio.
 
 ## Criar a VPS na Hostinger
 
@@ -74,14 +90,18 @@ pelo seu hostname.
    **Adicionar chave SSH**.
 5. Anote o IPv4 (e o IPv6, se houver) que aparece na visão geral da VPS.
 
-Se ainda não tem uma chave SSH pessoal, crie na sua máquina e cole o conteúdo do `.pub` no hPanel:
+Se ainda não tem uma chave SSH pessoal, crie e cole o conteúdo do `.pub` no hPanel.
+
+**Onde:** 💻 sua máquina.
 
 ```bash
 ssh-keygen -t ed25519 -C "seu-nome@sua-maquina"
 cat ~/.ssh/id_ed25519.pub
 ```
 
-Primeiro acesso:
+Primeiro acesso.
+
+**Onde:** 💻 sua máquina.
 
 ```bash
 ssh root@203.0.113.10
@@ -89,7 +109,9 @@ ssh root@203.0.113.10
 
 ## Proteger a VPS
 
-Ainda como root, atualize o sistema e crie um usuário administrador para você, `ops` (não use `admin`: o Ubuntu já tem um grupo com esse nome e o `adduser` falha):
+Ainda como root, atualize o sistema e crie um usuário administrador para você, `ops` (não use `admin`: o Ubuntu já tem um grupo com esse nome e o `adduser` falha).
+
+**Onde:** 🖥️ VPS, como `root` (prompt `root@srv…:~#`).
 
 ```bash
 apt update && apt full-upgrade -y
@@ -105,7 +127,10 @@ rsync --archive --chown=ops:ops ~/.ssh /home/ops
 dessa confirmação e espere um minuto. O próximo passo desliga o login de root e por senha; se o acesso do
 `ops` não estiver funcionando, você perde o acesso SSH (sobra o terminal do navegador no hPanel).
 
-Desligue o login por senha e o de root:
+Desligue o login por senha e o de root. A partir daqui, tudo na VPS é como `ops`: saia da sessão
+de root (`exit`) e entre com `ssh ops@203.0.113.10`.
+
+**Onde:** 🖥️ VPS, como `ops` (prompt `ops@srv…:~$`).
 
 ```bash
 sudo tee /etc/ssh/sshd_config.d/99-hardening.conf <<'EOF'
@@ -127,7 +152,9 @@ firewall**, crie um chamado `bens` e adicione regras **accept** para:
 Ative o firewall. Ele bloqueia tudo o que não tem regra de accept, e a mudança vale em até dois
 minutos.
 
-Firewall da própria VPS (segunda camada):
+Firewall da própria VPS (segunda camada).
+
+**Onde:** 🖥️ VPS, como `ops` (prompt `ops@srv…:~$`).
 
 ```bash
 sudo ufw allow OpenSSH
@@ -141,7 +168,9 @@ Portas publicadas por containers passam por fora do `ufw` (limitação do Docker
 `docker-compose.prod.yml` só publica as portas do Caddy; o `server` e o Postgres não têm porta no
 host. Não acrescente `ports:` a eles.
 
-Atualizações de segurança automáticas:
+Atualizações de segurança automáticas.
+
+**Onde:** 🖥️ VPS, como `ops` (prompt `ops@srv…:~$`).
 
 ```bash
 sudo apt install -y unattended-upgrades
@@ -151,7 +180,9 @@ sudo dpkg-reconfigure -plow unattended-upgrades
 Opcional: `sudo apt install -y fail2ban` bloqueia IPs que erram o login SSH repetidamente (a
 configuração padrão já protege o `sshd`).
 
-Com 2 GB de RAM ou menos, crie um swap para um pico de memória não derrubar o server:
+Com 2 GB de RAM ou menos, crie um swap para um pico de memória não derrubar o server.
+
+**Onde:** 🖥️ VPS, como `ops` (prompt `ops@srv…:~$`).
 
 ```bash
 sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
@@ -161,7 +192,9 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
 ## Instalar o Docker
 
-Repositório oficial do Docker (documentação: docs.docker.com, "Install Docker Engine on Ubuntu"):
+Repositório oficial do Docker (documentação: docs.docker.com, "Install Docker Engine on Ubuntu").
+
+**Onde:** 🖥️ VPS, como `ops` (prompt `ops@srv…:~$`).
 
 ```bash
 sudo apt update
@@ -182,7 +215,9 @@ sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin d
 sudo systemctl enable --now docker
 ```
 
-Confira:
+Confira.
+
+**Onde:** 🖥️ VPS, como `ops` (prompt `ops@srv…:~$`).
 
 ```bash
 sudo docker run --rm hello-world
@@ -191,7 +226,9 @@ docker compose version
 
 ## Usuário de deploy
 
-O GitHub entra na VPS como um usuário próprio, `deploy`, que só serve para isso:
+O GitHub entra na VPS como um usuário próprio, `deploy`, que só serve para isso.
+
+**Onde:** 🖥️ VPS, como `ops` (prompt `ops@srv…:~$`).
 
 ```bash
 sudo adduser --disabled-password --gecos "" deploy
@@ -215,7 +252,9 @@ A pasta `/opt/bens-seguros` é o `DEPLOY_PATH`. Depois do primeiro deploy ela co
 1. No editor de zona DNS do seu domínio (na Hostinger: **Domínios** → seu domínio → **DNS /
    Nameservers**), crie um registro `A` de `staging` apontando para o IPv4 da VPS. Se a VPS tem
    IPv6, crie também o `AAAA`.
-2. Espere o nome resolver para a VPS:
+2. Espere o nome resolver para a VPS. **Onde:** 💻 sua máquina (com o nome real, não o de
+   exemplo). O resultado esperado é o IP da VPS; vazio quer dizer que o registro ainda não
+   propagou (espere alguns minutos) ou que o nome está errado.
 
    ```bash
    dig +short staging.seudominio.com.br
@@ -227,7 +266,10 @@ portas 80 e 443 estão abertas nos dois firewalls. Faça o DNS antes do primeiro
 ## .env
 
 Os segredos da aplicação ficam só na VPS. Entre como `ops`, vire o usuário `deploy` e crie o
-arquivo a partir do modelo `.env.prod.example` do repositório:
+arquivo a partir do modelo `.env.prod.example` do repositório.
+
+**Onde:** 🖥️ VPS, começando como `ops`; o primeiro comando troca para `deploy`, e o resto roda como
+`deploy`.
 
 ```bash
 sudo -iu deploy
@@ -265,7 +307,9 @@ Regras:
 
 ## Chave SSH do deploy
 
-Uma chave por ambiente, criada **na sua máquina**, sem senha (o GitHub precisa usá-la sozinho):
+Uma chave por ambiente, sem senha (o GitHub precisa usá-la sozinho).
+
+**Onde:** 💻 sua máquina.
 
 ```bash
 ssh-keygen -t ed25519 -N "" -C "github-actions-staging" -f ~/.ssh/bens-deploy-staging
@@ -273,34 +317,46 @@ ssh-keygen -t ed25519 -N "" -C "github-actions-staging" -f ~/.ssh/bens-deploy-st
 
 Instale a chave pública na VPS (como `ops`), com a opção `restrict`, que proíbe port
 forwarding, agent forwarding e terminal interativo (o deploy continua podendo rodar comandos e
-copiar arquivos):
+copiar arquivos). Primeiro, copie a linha que este comando mostrar.
+
+**Onde:** 💻 sua máquina.
 
 ```bash
-# na sua máquina: copie a linha que aparecer
 cat ~/.ssh/bens-deploy-staging.pub
+```
 
-# na VPS, como ops: troque <CHAVE PÚBLICA> pela linha copiada
+Depois, troque `<CHAVE PÚBLICA>` pela linha copiada (mantenha as aspas simples).
+
+**Onde:** 🖥️ VPS, como `ops` (prompt `ops@srv…:~$`).
+
+```bash
 sudo install -d -o deploy -g deploy -m 700 /home/deploy/.ssh
 echo 'restrict <CHAVE PÚBLICA>' | sudo tee /home/deploy/.ssh/authorized_keys
 sudo chown deploy:deploy /home/deploy/.ssh/authorized_keys
 sudo chmod 600 /home/deploy/.ssh/authorized_keys
 ```
 
-Teste da sua máquina:
+Teste.
+
+**Onde:** 💻 sua máquina.
 
 ```bash
 ssh -i ~/.ssh/bens-deploy-staging deploy@203.0.113.10 'docker compose version'
 ```
 
 Agora a **impressão digital do servidor** (host key). O GitHub só aceita conectar numa VPS cuja
-chave ele já conhece; isso impede que alguém se passe pelo seu servidor. Na sua máquina:
+chave ele já conhece; isso impede que alguém se passe pelo seu servidor.
+
+**Onde:** 💻 sua máquina.
 
 ```bash
 ssh-keyscan -t ed25519 203.0.113.10 > known_hosts-staging
 ssh-keygen -lf known_hosts-staging
 ```
 
-Na VPS (sessão `ops` ou o terminal do navegador no hPanel), compare com:
+Compare com a impressão digital vista de dentro da VPS.
+
+**Onde:** 🖥️ VPS, como `ops` (ou o terminal do navegador no hPanel).
 
 ```bash
 ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
@@ -375,7 +431,9 @@ Checklist: DNS resolvendo, portas liberadas nos dois firewalls, `.env` preenchid
    `bens_app`; o `migrate` aplica as migrations como dono das tabelas.
 4. O job termina verde só se `https://staging.seudominio.com.br/api/health` responder `200`.
 
-Verifique:
+Verifique.
+
+**Onde:** 💻 sua máquina.
 
 ```bash
 curl https://staging.seudominio.com.br/api/health      # {"status":"ok"}
@@ -384,7 +442,7 @@ curl -I http://staging.seudominio.com.br/              # 308 para https://
 
 No navegador: criar conta, confirmar pelo e-mail, entrar e sair.
 
-Na VPS, como `deploy`:
+**Onde:** 🖥️ VPS, como `deploy` (prompt `deploy@srv…:~$`).
 
 ```bash
 cd /opt/bens-seguros
@@ -405,7 +463,8 @@ Pré-requisito: a VPS de produção e o environment `production` configurados co
 anteriores, com os valores da produção.
 
 1. Escolha um commit de `main` que já está no staging e foi testado ali.
-2. Crie e envie a tag (versão no formato `vMAJOR.MINOR.PATCH`):
+2. Crie e envie a tag (versão no formato `vMAJOR.MINOR.PATCH`). **Onde:** 💻 sua máquina, na
+   pasta do repositório.
 
    ```bash
    git switch main && git pull
@@ -423,7 +482,9 @@ Números de versão: aumente o `PATCH` para correções, o `MINOR` para funciona
 `MAJOR` para mudanças que quebram algo para quem usa.
 
 Se o `promote` falhar com `Imagens sha-<SHA> não encontradas: o CI deste commit passou em main?`,
-a tag está num commit que não passou pelo CI em `main`. Apague a tag e crie no commit certo:
+a tag está num commit que não passou pelo CI em `main`. Apague a tag e crie no commit certo.
+
+**Onde:** 💻 sua máquina, na pasta do repositório.
 
 ```bash
 git push --delete origin v0.1.0 && git tag -d v0.1.0
@@ -448,7 +509,9 @@ F11 (ver "Pendências"). Até lá, escreva migrations que só acrescentam: prime
 passa a usar a estrutura nova; a remoção da antiga vem numa release seguinte.
 
 Sem o GitHub (emergência), na VPS como `deploy`, com um token pessoal clássico do GitHub que tenha
-só o escopo `read:packages`:
+só o escopo `read:packages`.
+
+**Onde:** 🖥️ VPS, como `deploy` (prompt `deploy@srv…:~$`).
 
 ```bash
 cd /opt/bens-seguros
@@ -459,12 +522,16 @@ unset TOKEN
 
 ## Operação do dia a dia
 
-Na VPS, como `deploy`, um atalho para o compose com os dois arquivos de variáveis:
+Um atalho para o compose com os dois arquivos de variáveis.
+
+**Onde:** 🖥️ VPS, como `deploy` (prompt `deploy@srv…:~$`).
 
 ```bash
 echo "alias dc='docker compose -f /opt/bens-seguros/docker-compose.prod.yml --env-file /opt/bens-seguros/.env --env-file /opt/bens-seguros/deploy.env'" >> ~/.bashrc
 source ~/.bashrc
 ```
+
+Todos os comandos da tabela rodam na 🖥️ VPS, como `deploy`.
 
 | Tarefa | Comando |
 | --- | --- |
@@ -478,7 +545,9 @@ source ~/.bashrc
 | Limpar imagens antigas | `docker image prune -a --filter until=336h` |
 
 Trocar `APP_DB_PASSWORD` num banco que já existe: edite o `.env` e rode o script de role à mão,
-depois recrie o server:
+depois recrie o server.
+
+**Onde:** 🖥️ VPS, como `deploy` (prompt `deploy@srv…:~$`).
 
 ```bash
 cd /opt/bens-seguros
