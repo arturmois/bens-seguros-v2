@@ -1,132 +1,145 @@
 # Conversation core verification
 
-**Verdict**: FAIL
+**Verdict**: PASS
 **Profile**: standard
-**Diff range**: ce5f992..8633a73
-**Round**: 1 - full
+**Diff range**: ce5f992..fc9cc70
+**Round**: 2 - scoped
 **Verifier**: independent sub-agent (author != verifier)
 
-One surviving mutant: plan Landing door 10 says a duplicate rolls back the whole transaction, and part of that is unproven. A duplicate `externalId` arriving from a different phone must not leave a new contact or conversation behind. Replacing the rollback with a commit keeps every proof green (fault 5). The checks' `Landing doors` row counts 9 doors, but the plan has 10. All 58 checks pass with located evidence.
+Round 1 (d5d58e8) failed for three reasons. First, a mutant on the duplicate path survived. Second, door 10 had no member in the Landing doors row. Third, C48's seed could not catch removal of the `assigneeId` clause. Commit fc9cc70 adds C59 ("rolls back a repeated external id from a new phone") and moves C48's `humanOfA` onto a contact owned by B. Both re-injected faults are now killed. All 59 checks pass at fc9cc70 with located evidence. The fix changed only tests and `checks.md`; no production source changed in `d5d58e8..fc9cc70`.
 
 ## Binding sources
 
-Profile is `standard`, so step 1 (`ui`) does not run. The plan marks no source as a UI binding source. I opened ADR-013, ADR-016 and ADR-004 only to recompute the Coverage rows.
+carried from d5d58e8. The profile is `standard`, so step 1 (`ui`) does not run, and the plan marks no UI binding source. The fix did not touch the interface.
 
 ## Checks
 
-The proof run is one vitest invocation over 11 files, with a `-t` alternation of all 59 distinct proof names. It exited 0 with `Tests 59 passed | 78 skipped`, and each name appears once as `✓`. Every test file named in a proof was added or changed in `ce5f992..HEAD`. `rg` is unavailable in this shell (the rtk wrapper fails), so I did the lookups with `grep -n`.
+Proofs verified at fc9cc70. The run was one vitest invocation from `apps/server`: 11 files, with a `-t` alternation of all 60 distinct proof names (59 checks, where C31 and C57 carry more than one proof and C16/C17 and C29/C30 share one). It exited 0 with `Test Files 11 passed (11)` and `Tests 60 passed | 78 skipped (138)`. Each of the 60 names appears individually as `✓` in the verbose output. The citations for C48 and C59 were verified at fc9cc70. The fix shifted line numbers in `inbound.spec.ts` (+14 from line 187) and `scope.spec.ts` (+1 from line 28), and I refreshed and re-read every citation into those two files at fc9cc70. All other citations are carried from d5d58e8: their files are unchanged in `d5d58e8..fc9cc70`.
 
 | Check | Claim | Proof run | Evidence | Result |
 | --- | --- | --- | --- | --- |
-| C1 | onboarding creates exactly one `WEB_CHAT` `Web Chat` channel | batch, `creates the default web chat channel` ✓ | `apps/server/src/modules/organizations/onboarding.spec.ts:231` - `expect(channels).toEqual([{ kind: 'WEB_CHAT', name: 'Web Chat', organizationId }])` | PASS |
-| C2 | failing setup step after the channel rolls back organization and channel | batch ✓ | `apps/server/src/modules/organizations/onboarding.spec.ts:266-274` - `expect(channelStepRan).toBe(true)`, `expect(await channelCount()).toBe(before)`, `expect(leftover.rowCount).toBe(0)` | PASS |
-| C3 | backfill under a NOSUPERUSER NOBYPASSRLS owner: 1 channel per org (3) | batch ✓ | `apps/server/test/schema.spec.ts:712` - `expect(channels).toEqual([...organizations].sort().map(... ({ organizationId, kind: 'WEB_CHAT', name: 'Web Chat' })))`, where `{ owner: probeOwner() }` is at `:715` | PASS |
-| C4 | backfill as the superuser owner: 1 channel per org | batch ✓ | `apps/server/test/schema.spec.ts:730` - same `toEqual` without an owner | PASS |
-| C5 | Organization and Channel stay ENABLE+FORCE+`tenant_isolation` (probe and worker) | batch ✓ | `apps/server/test/schema.spec.ts:754-755` - `expect(probe).toEqual(expected)`, `expect(worker).toEqual(expected)` with `forced: true` | PASS |
-| C6 | a second `WEB_CHAT` in the same org fails 23505; another org is accepted | batch ✓ | `apps/server/test/schema.spec.ts:836` - `toEqual({ second: '23505 Channel_one_web_chat', other: 'ok' })` | PASS |
-| C7 | tenant B cannot see or update A's channel | batch ✓ | `apps/server/src/modules/channels/channel.spec.ts:27-29` - `not.toContain(channelA)`, `expect(renamedByB.count).toBe(0)` | PASS |
-| C8 | 7 BR inputs normalize to the listed E.164 values | batch ✓ | `apps/server/src/shared/phone.spec.ts:7-15` - table plus `expect(normalizePhone(raw), raw).toBe(expected)` | PASS |
-| C9 | an international number keeps its country | batch ✓ | `apps/server/src/shared/phone.spec.ts:19-20` - `toBe('+12024561111')`, `toBe('+351912345678')` | PASS |
-| C10 | 9 invalid inputs, including the 3 that only `max` refuses, give `null` | batch ✓ | `apps/server/src/shared/phone.spec.ts:24-36` - `expect(normalizePhone(raw), raw).toBeNull()` | PASS |
-| C11 | `abc` gives 422 `INVALID_PHONE` and writes nothing | batch ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:57-61` - `rejects.toMatchObject({ status: 422, code: 'INVALID_PHONE' })`, `toEqual({ contacts: 0, conversations: 0, messages: 0 })` | PASS |
-| C12 | two formats of one phone give 1 contact, 1 conversation, 2 messages | batch ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:72-73` - `toEqual(['+5511987654321'])`, `toEqual({ contacts: 1, conversations: 1, messages: 2 })` | PASS |
-| C13 | the same phone in A and B gives one contact each, isolated | batch ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:87-88` - `toHaveLength(1)`, `found[0]?.organizationId).toBe(tenant.organizationId)` | PASS |
-| C14 | non-E.164 phones fail 23514; a valid one is accepted | batch ✓ | `apps/server/test/schema.spec.ts:851` - `noPlus/leadingZero/tooLong: '23514 Contact_phoneE164_check', valid: 'ok'` | PASS |
-| C15 | an owner from another org fails 23503; a member is accepted | batch ✓ | `apps/server/test/schema.spec.ts:874` - `toEqual({ outsider: '23503 Contact_organizationId_ownerId_fkey', member: 'ok' })` | PASS |
-| C16 | a new contact has a null `ownerId` | batch ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:110` - `expect(contact.ownerId).toBeNull()` | PASS |
-| C17 | first inbound: OPEN/QUEUE/null/lastSeq 1 + INBOUND/CONTACT/seq 1/null delivery; `created: true` | batch ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:98-122` - `result.created).toBe(true)`, `toMatchObject({ status: 'OPEN', handler: 'QUEUE', assigneeId: null, lastSeq: 1 })`, `toMatchObject({ id: result.messageId, direction: 'INBOUND', author: 'CONTACT', seq: 1, deliveryStatus: null, kind: 'TEXT' })` | PASS |
-| C18 | lastSeq 7 becomes seq 8 and lastSeq 8; `lastMessageAt` newer | batch ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:132-136` - `lastSeq).toBe(8)`, `lastMessageAt?.getTime()).toBeGreaterThan(old.getTime())`, `toEqual([8])`. Precision note: "igual ao da transação" is asserted only as newer than the seed | PASS |
-| C19 | WAITING+HUMAN X becomes OPEN, still HUMAN X | batch ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:152-156` - `toMatchObject({ status: 'OPEN', handler: 'HUMAN', assigneeId: salespersonA.userId })` | PASS |
-| C20 | a repeated `wa-1` returns the original ids with `created: false` and changes nothing | batch ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:172-184` - `toEqual({ conversationId: original.conversationId, messageId: original.messageId, created: false })`, `status).toBe('WAITING')`, `toMatchObject({ lastSeq: before.lastSeq, lastMessageAt: before.lastMessageAt, handler: before.handler })`, `toHaveLength(2)` | PASS |
-| C21 | 10 parallel duplicates: 1 message, 1 `created: true`, same id | batch ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:197-199` - `filter(created)).toHaveLength(1)`, `Set(messageId).size).toBe(1)`, `toMatchObject({ messages: 1 })` | PASS |
-| C22 | 50 parallel inbounds give seq 1..50 and lastSeq 50 | batch ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:212-213` - `toEqual(range(1, 50))`, `lastSeq).toBe(50)` | PASS |
-| C23 | a locked conversation A does not block B (<2 s); A waits | batch ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:245-251` - `elapsed).toBeLessThan(2000)`, `waitingDone).toBe(false)`, then `toBe(true)` after release | PASS |
-| C24 | 10 parallel first messages give 1 contact, 1 conversation, seq 1..10 | batch ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:264-267` - `toEqual({ contacts: 1, conversations: 1, messages: 10 })`, `toEqual(range(1, 10))` | PASS |
-| C25 | `UNSUPPORTED` stores `text` null even when text is sent | batch ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:276` - `toMatchObject({ kind: 'UNSUPPORTED', text: null })` | PASS |
-| C26 | null/blank/65 537 give 422 and write nothing; 65 536 is accepted | batch ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:283-292` - `rejects.toMatchObject({ status: 422, code: 'INVALID_MESSAGE' })`, zero rows, `toHaveLength(65_536)` | PASS |
-| C27 | a foreign or unknown channel gives 404 and writes nothing | batch ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:300-305` - `rejects.toMatchObject({ status: 404, code: 'NOT_FOUND' })`, zero rows | PASS |
-| C28 | two inbounds without `externalId` give seq 1 and 2, both null | batch ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:316-319` - `toEqual([[1, null], [2, null]])` | PASS |
-| C29 | CLOSED reopens in place with history intact and new seq 4; 1 conversation | batch ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:351-364` - `conversationId).toBe(closed.id)`, `toMatchObject({ status: 'OPEN', closedAt: null, lastSeq: 4 })`, history `toEqual`, `toMatchObject({ seq: 4, text: 'Voltei' })`, `toMatchObject({ conversations: 1 })` | PASS |
-| C30 | a reopened HUMAN X conversation becomes QUEUE with a null assignee | batch ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:355-356` - `handler: 'QUEUE', assigneeId: null` | PASS |
-| C31 | reopen audit is SYSTEM with exact `changes` (both shapes); none on an open conversation | batch ✓ (2 proofs) | `apps/server/src/modules/conversations/inbound.spec.ts:379-389` - `toMatchObject({ actorType: 'SYSTEM', actorUserId: null })`, `changes).toEqual({ status: ['CLOSED','OPEN'], handler: ['HUMAN','QUEUE'], previousAssigneeId })`, `toEqual({ status: [...], handler: ['QUEUE','QUEUE'] })`; `:138` - `reopenAudits(...)).toEqual([])` | PASS |
-| C32 | 5 parallel inbounds on CLOSED (lastSeq 2): 1 open, 1 reopen audit, seq 3..7 | batch ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:405-407` - `toEqual([{ id: closed.id }])`, `toHaveLength(1)`, `toEqual(range(1, 7))` | PASS |
-| C33 | new and reopened conversations go to QUEUE; `aiAvailable()` is false | batch ✓ | `apps/server/src/modules/conversations/conversation-state.spec.ts:105` - `expect(aiAvailable()).toBe(false)`; QUEUE at `inbound.spec.ts:102` and `:355`. `inbound.ts:82,146` use `reopenHandler({ aiAvailable: aiAvailable() })` | PASS |
-| C34 | the assignee sends: OUTBOUND/HUMAN/X/seq 5/SENT/null ext; WAITING, lastSeq 5 | batch ✓ | `apps/server/src/modules/conversations/outbound.spec.ts:57-71` - `toMatchObject({ direction: 'OUTBOUND', author: 'HUMAN', authorUserId: userX, seq: 5, deliveryStatus: 'SENT', externalId: null })`, `toMatchObject({ status: 'WAITING', lastSeq: 5 })` | PASS |
-| C35 | Y on X's conversation, or X on QUEUE, gives 409 `NOT_HANDLER` with nothing changed | batch ✓ | `apps/server/src/modules/conversations/outbound.spec.ts:83-86` - `rejects.toMatchObject({ status: 409, code: 'NOT_HANDLER' })` inside `unchanged` (`:40-42` compares lastSeq, status and messages) | PASS |
-| C36 | AI on QUEUE/HUMAN gives 409; AI on AI stores with a null user | batch ✓ | `apps/server/src/modules/conversations/outbound.spec.ts:98-106` - `rejects.toMatchObject({ status: 409, code: 'NOT_HANDLER' })`, `toMatchObject({ author: 'AI', authorUserId: null })` | PASS |
-| C37 | SYSTEM sends on AI/QUEUE/HUMAN; each becomes WAITING | batch ✓ | `apps/server/src/modules/conversations/outbound.spec.ts:119-120` - `toMatchObject({ author: 'SYSTEM', seq: 1 })`, `status).toBe('WAITING')` | PASS |
-| C38 | CLOSED gives 409 `CONVERSATION_CLOSED` for HUMAN, AI and SYSTEM; nothing written | batch ✓ | `apps/server/src/modules/conversations/outbound.spec.ts:143-147` - `rejects.toMatchObject({ status: 409, code: 'CONVERSATION_CLOSED' })` inside `unchanged` | PASS |
-| C39 | a foreign or unknown conversation gives 404 | batch ✓ | `apps/server/src/modules/conversations/outbound.spec.ts:156-161` - `rejects.toMatchObject({ status: 404, code: 'NOT_FOUND' })`, `toEqual([])` | PASS |
-| C40 | outbound text: blank or 65 537 gives 422; 65 536 is stored | batch ✓ | `apps/server/src/modules/conversations/outbound.spec.ts:169-177` - `rejects.toMatchObject({ status: 422, code: 'INVALID_MESSAGE' })`, `toHaveLength(65_536)` | PASS |
-| C41 | 20 in + 20 out in parallel give seq 1..40 | batch ✓ | `apps/server/src/modules/conversations/outbound.spec.ts:191-194` - `toEqual(Array.from({ length: 40 }, (_, i) => i + 1))`, OUTBOUND `toHaveLength(20)` | PASS |
-| C42 | status × {in, out, close}, 9 cases | batch ✓ | `apps/server/src/modules/conversations/conversation-state.spec.ts:34-41` - table plus `toEqual(expected[status])` | PASS |
-| C43 | handler × event, 21 cases | batch ✓ | `apps/server/src/modules/conversations/conversation-state.spec.ts:48-86` - `toEqual(expected[handler][event])`, `cases).toBe(21)` | PASS |
-| C44 | no automatic event leads to AI from QUEUE or HUMAN | batch ✓ | `apps/server/src/modules/conversations/conversation-state.spec.ts:93,96` - `not.toBe('AI')` | PASS |
-| C45 | `reopenHandler` true gives AI; false gives QUEUE | batch ✓ | `apps/server/src/modules/conversations/conversation-state.spec.ts:100-101` - `toBe('AI')`, `toBe('QUEUE')` | PASS |
-| C46 | `canSend`, 30 cases | batch ✓ | `apps/server/src/modules/conversations/conversation-state.spec.ts:119-141` - `toBe(expected)`, `cases).toBe(30)` | PASS |
-| C47 | exact `scopeFor` for COMMERCIAL; `{}`/`{}` for ADMIN and MANAGER | batch ✓ | `apps/server/src/shared/scope.spec.ts:12-24` - `toEqual({ contact: { OR: [...] }, conversation: { OR: [4 clauses] } })`, `toEqual({ contact: {}, conversation: {} })` | PASS |
-| C48 | the portfolio filter against a seeded database gives the exact sets | batch ✓ | `apps/server/src/modules/conversations/scope.spec.ts:52-69` - `toEqual(new Set([humanOfA, queueContactOfB, aiOwnerless, humanOfBContactOfA]))`, `toEqual(new Set([a.userId, null]))`, `toHaveLength(3)`, manager `toHaveLength(6)` | PASS |
-| C49 | transfer moves X's 2 contacts to Y and returns `200 { transferred: 2 }` | batch ✓ | `apps/server/src/modules/organizations/member.spec.ts:724-726` - `statusCode).toBe(200)`, `toEqual({ transferred: 2 })`, owners `toEqual(new Map([...]))` | PASS |
-| C50 | the other tenant's contact is untouched | batch ✓ | `apps/server/src/modules/organizations/member.spec.ts:754-756` - `toEqual({ transferred: 1 })`, `.get(foreign)).toBe(source.user.id)` | PASS |
-| C51 | assignee FK 23503; assignee check and closed check 23514 | batch ✓ | `apps/server/test/schema.spec.ts:900` - `outsiderAssignee: '23503 Conversation_organizationId_assigneeId_fkey'`, two `'23514 Conversation_assignee_check'`, two `'23514 Conversation_closed_check'`. Precision note: only UPDATE is exercised, not INSERT | PASS |
-| C52 | forbidden module edges: 0 in the tree, 5 synthetic | batch ✓ | `apps/server/test/architecture.spec.ts:352-353` - `toEqual([])` and the exact list of 5 edges | PASS |
-| C53 | import cycles: 0 in the tree; `a->b->a` and `a->b->c->a` found | batch ✓ | `apps/server/test/architecture.spec.ts:373-380` - `toEqual([])`, `toEqual(['a -> b -> a'])`, `toEqual(['a -> b -> c -> a'])` | PASS |
-| C54 | writes to another module's tables: 0 in the tree; 10 forms flagged once; reads and own writes not flagged | batch ✓ | `apps/server/test/architecture.spec.ts:391,404-405` - `toEqual([])`, `toHaveLength(1)` per form, negatives `toEqual([])` | PASS |
-| C55 | the 5 unique indexes with literal columns and predicate | batch ✓ | `apps/server/test/schema.spec.ts:923-935` - 5 × `definitions.get(...)).toBe('CREATE UNIQUE INDEX ...')` | PASS |
-| C56 | index enforcement: 23505 and accepted cases | batch ✓ | `apps/server/test/schema.spec.ts:981` - `toEqual({ secondOpen: '23505 Conversation_one_open', closedBesideOpen: 'ok', sameExternal: '23505 Message_channel_externalId', secondNull: 'ok', sameSeq: '23505 Message_organizationId_conversationId_seq_key', ... })` | PASS |
-| C57 | 4 tables ENABLE+FORCE+policy with `app.tenant_id`; general RLS, composite-FK and cascade tests | batch ✓ (4 proofs) | `apps/server/test/schema.spec.ts:1006-1010` - `forced` `toEqual`, `qual`/`check` `toContain('app.tenant_id')`; `:199` `unprotected).toEqual([])`; `:436` `findSimpleTenantRelations(schema)).toEqual([])`; `:258` `real).toEqual([])` | PASS |
-| C58 | Message CHECKs give 23514 (8 cases); a different channel gives 23503 | batch ✓ | `apps/server/test/schema.spec.ts:1092` - `toEqual({ inboundFromSystem: '23514 Message_direction_check', ..., otherChannel: '23503 Message_conversationId_channelId_organizationId_fkey', valid: 'ok' })` | PASS |
+| C1 | onboarding creates exactly one `WEB_CHAT` `Web Chat` channel | batch fc9cc70 ✓ | `apps/server/src/modules/organizations/onboarding.spec.ts:231` - `expect(channels).toEqual([{ kind: 'WEB_CHAT', name: 'Web Chat', organizationId }])` (carried from d5d58e8) | PASS |
+| C2 | a failing setup step after the channel rolls back the organization and the channel | batch fc9cc70 ✓ | `apps/server/src/modules/organizations/onboarding.spec.ts:266-274` - `expect(channelStepRan).toBe(true)`, `expect(await channelCount()).toBe(before)`, `expect(leftover.rowCount).toBe(0)` (carried) | PASS |
+| C3 | backfill under a NOSUPERUSER NOBYPASSRLS owner: 1 channel per org (3) | batch fc9cc70 ✓ | `apps/server/test/schema.spec.ts:712` - `expect(channels).toEqual([...organizations].sort().map(... ({ organizationId, kind: 'WEB_CHAT', name: 'Web Chat' })))`, `{ owner: probeOwner() }` at `:715` (carried) | PASS |
+| C4 | backfill as the superuser owner: 1 channel per org | batch fc9cc70 ✓ | `apps/server/test/schema.spec.ts:730` - same `toEqual`, no owner (carried) | PASS |
+| C5 | Organization and Channel stay ENABLE+FORCE+`tenant_isolation` | batch fc9cc70 ✓ | `apps/server/test/schema.spec.ts:754-755` - `expect(probe).toEqual(expected)`, `expect(worker).toEqual(expected)` (carried) | PASS |
+| C6 | a second `WEB_CHAT` in the same org gives 23505; another org is accepted | batch fc9cc70 ✓ | `apps/server/test/schema.spec.ts:836` - `toEqual({ second: '23505 Channel_one_web_chat', other: 'ok' })` (carried) | PASS |
+| C7 | tenant B cannot see or update A's channel | batch fc9cc70 ✓ | `apps/server/src/modules/channels/channel.spec.ts:27-29` - `not.toContain(channelA)`, `expect(renamedByB.count).toBe(0)` (carried) | PASS |
+| C8 | 7 BR inputs normalize to the listed E.164 values | batch fc9cc70 ✓ | `apps/server/src/shared/phone.spec.ts:7-15` - `expect(normalizePhone(raw), raw).toBe(expected)` (carried) | PASS |
+| C9 | an international number keeps its country | batch fc9cc70 ✓ | `apps/server/src/shared/phone.spec.ts:19-20` - `toBe('+12024561111')`, `toBe('+351912345678')` (carried) | PASS |
+| C10 | 9 invalid inputs give `null` | batch fc9cc70 ✓ | `apps/server/src/shared/phone.spec.ts:24-36` - `expect(normalizePhone(raw), raw).toBeNull()` (carried) | PASS |
+| C11 | `abc` gives 422 `INVALID_PHONE` and writes nothing | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:57-61` - `rejects.toMatchObject({ status: 422, code: 'INVALID_PHONE' })`, `toEqual({ contacts: 0, conversations: 0, messages: 0 })` (lines unmoved) | PASS |
+| C12 | two formats of one phone give 1 contact, 1 conversation, 2 messages | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:72-73` - `toEqual(['+5511987654321'])`, `toEqual({ contacts: 1, conversations: 1, messages: 2 })` | PASS |
+| C13 | the same phone in A and B gives one contact each | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:87-88` - `toHaveLength(1)`, `found[0]?.organizationId).toBe(tenant.organizationId)` | PASS |
+| C14 | non-E.164 phones give 23514 | batch fc9cc70 ✓ | `apps/server/test/schema.spec.ts:851` - `'23514 Contact_phoneE164_check'` ×3, `valid: 'ok'` (carried) | PASS |
+| C15 | an owner from another org gives 23503 | batch fc9cc70 ✓ | `apps/server/test/schema.spec.ts:874` - `toEqual({ outsider: '23503 Contact_organizationId_ownerId_fkey', member: 'ok' })` (carried) | PASS |
+| C16 | a new contact has a null `ownerId` | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:110` - `expect(contact.ownerId).toBeNull()` | PASS |
+| C17 | first inbound: OPEN/QUEUE/null/lastSeq 1 + INBOUND/CONTACT/seq 1; `created: true` | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:98-122` - `result.created).toBe(true)`, `toMatchObject({ status: 'OPEN', handler: 'QUEUE', assigneeId: null, lastSeq: 1 })`, `toMatchObject({ direction: 'INBOUND', author: 'CONTACT', seq: 1, deliveryStatus: null, kind: 'TEXT' })` | PASS |
+| C18 | lastSeq 7 becomes seq 8 and lastSeq 8; `lastMessageAt` newer | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:132-136` - `lastSeq).toBe(8)`, `lastMessageAt?.getTime()).toBeGreaterThan(old.getTime())`, `toEqual([8])`. Precision note carried from d5d58e8: "igual ao da transação" is asserted only as newer than the seed | PASS |
+| C19 | WAITING+HUMAN X becomes OPEN, still HUMAN X | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:152-156` - `toMatchObject({ status: 'OPEN', handler: 'HUMAN', assigneeId: salespersonA.userId })` | PASS |
+| C20 | a repeated `wa-1` returns the original ids with `created: false` and changes nothing | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:172-184` - `toEqual({ conversationId: original.conversationId, messageId: original.messageId, created: false })`, `toMatchObject({ lastSeq: before.lastSeq, lastMessageAt: before.lastMessageAt, handler: before.handler })`, `toHaveLength(2)` | PASS |
+| C21 | 10 parallel duplicates: 1 message, 1 `created: true`, same id | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:211-213` - `filter(created)).toHaveLength(1)`, `Set(messageId).size).toBe(1)`, `toMatchObject({ messages: 1 })` (refreshed, was 197-199) | PASS |
+| C59 | repeated `wa-2` from another phone: original ids, `created: false`, exactly 1 contact, 1 conversation, 1 message | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:193-197` - `expect(repeated).toEqual({ conversationId: original.conversationId, messageId: original.messageId, created: false })`; `:198` - `expect(await rowsOf(tenant)).toEqual({ contacts: 1, conversations: 1, messages: 1 })`. The second phone comes from the `inbound` helper default `randomPhone()` (`test/conversations.ts:29`), and `freshTenant()` isolates the counts | PASS |
+| C22 | 50 parallel inbounds give seq 1..50 and lastSeq 50 | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:226-227` - `toEqual(range(1, 50))`, `lastSeq).toBe(50)` (refreshed) | PASS |
+| C23 | a locked conversation A does not block B (<2 s); A waits | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:259-265` - `elapsed).toBeLessThan(2000)`, `waitingDone).toBe(false)`, then `toBe(true)` (refreshed) | PASS |
+| C24 | 10 parallel first messages give 1 contact, 1 conversation, seq 1..10 | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:279-281` - `toEqual({ contacts: 1, conversations: 1, messages: 10 })`, `toEqual(range(1, 10))` (refreshed) | PASS |
+| C25 | `UNSUPPORTED` stores `text` null | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:290` - `toMatchObject({ kind: 'UNSUPPORTED', text: null })` (refreshed) | PASS |
+| C26 | null, blank or 65 537 characters give 422 and write nothing; 65 536 is accepted | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:297-306` - `rejects.toMatchObject({ status: 422, code: 'INVALID_MESSAGE' })`, `toHaveLength(65_536)` (refreshed) | PASS |
+| C27 | a foreign or unknown channel gives 404 and writes nothing | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:314-319` - `rejects.toMatchObject({ status: 404, code: 'NOT_FOUND' })`, `toEqual({ contacts: 0, conversations: 0, messages: 0 })` (refreshed) | PASS |
+| C28 | two inbounds without `externalId` give seq 1 and 2, both null | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:330-333` - `toEqual([[1, null], [2, null]])` (refreshed) | PASS |
+| C29 | CLOSED reopens in place, history intact, new seq 4, 1 conversation | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:365-378` - `conversationId).toBe(closed.id)`, `toMatchObject({ status: 'OPEN', closedAt: null, lastSeq: 4 })`, `toMatchObject({ conversations: 1 })` (refreshed) | PASS |
+| C30 | a reopened HUMAN X conversation becomes QUEUE with a null assignee | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:369-370` - `handler: 'QUEUE', assigneeId: null` (refreshed) | PASS |
+| C31 | reopen audit is SYSTEM with exact `changes`; none on an open conversation | batch fc9cc70 ✓ (2 proofs) | `apps/server/src/modules/conversations/inbound.spec.ts:393-403` - `toMatchObject({ actorType: 'SYSTEM', actorUserId: null })`, `changes).toEqual({ status: ['CLOSED','OPEN'], handler: ['HUMAN','QUEUE'], previousAssigneeId })` (refreshed); `:138` - `reopenAudits(...)).toEqual([])` | PASS |
+| C32 | 5 parallel inbounds on CLOSED: 1 open, 1 reopen audit, seq 3..7 | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/inbound.spec.ts:419-421` - `toEqual([{ id: closed.id }])`, `toHaveLength(1)`, `toEqual(range(1, 7))` (refreshed) | PASS |
+| C33 | new and reopened conversations go to QUEUE; `aiAvailable()` is false | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/conversation-state.spec.ts:105` - `expect(aiAvailable()).toBe(false)`; QUEUE at `inbound.spec.ts:102` and `:369` (refreshed) | PASS |
+| C34 | the assignee sends: OUTBOUND/HUMAN/X/seq 5/SENT; WAITING, lastSeq 5 | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/outbound.spec.ts:57-71` - `toMatchObject({ direction: 'OUTBOUND', author: 'HUMAN', authorUserId: userX, seq: 5, deliveryStatus: 'SENT', externalId: null })`, `toMatchObject({ status: 'WAITING', lastSeq: 5 })` (carried) | PASS |
+| C35 | Y, or X on QUEUE, gives 409 `NOT_HANDLER` with nothing changed | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/outbound.spec.ts:83-86` - `rejects.toMatchObject({ status: 409, code: 'NOT_HANDLER' })` (carried) | PASS |
+| C36 | AI on QUEUE/HUMAN gives 409; AI on AI stores with a null user | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/outbound.spec.ts:98-106` - `rejects.toMatchObject({ status: 409, code: 'NOT_HANDLER' })`, `toMatchObject({ author: 'AI', authorUserId: null })` (carried) | PASS |
+| C37 | SYSTEM sends on AI/QUEUE/HUMAN; each becomes WAITING | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/outbound.spec.ts:119-120` - `toMatchObject({ author: 'SYSTEM', seq: 1 })`, `status).toBe('WAITING')` (carried) | PASS |
+| C38 | CLOSED gives 409 `CONVERSATION_CLOSED` for every author | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/outbound.spec.ts:143-147` - `rejects.toMatchObject({ status: 409, code: 'CONVERSATION_CLOSED' })` (carried) | PASS |
+| C39 | a foreign or unknown conversation gives 404 | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/outbound.spec.ts:156-161` - `rejects.toMatchObject({ status: 404, code: 'NOT_FOUND' })` (carried) | PASS |
+| C40 | outbound text: blank or 65 537 characters give 422; 65 536 is stored | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/outbound.spec.ts:169-177` - `rejects.toMatchObject({ status: 422, code: 'INVALID_MESSAGE' })`, `toHaveLength(65_536)` (carried) | PASS |
+| C41 | 20 in + 20 out in parallel give seq 1..40 | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/outbound.spec.ts:191-194` - `toEqual(Array.from({ length: 40 }, (_, i) => i + 1))` (carried) | PASS |
+| C42 | status × event, 9 cases | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/conversation-state.spec.ts:34-41` - `toEqual(expected[status])` (carried) | PASS |
+| C43 | handler × event, 21 cases | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/conversation-state.spec.ts:48-86` - `toEqual(expected[handler][event])`, `cases).toBe(21)` (carried) | PASS |
+| C44 | no automatic event leads to AI | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/conversation-state.spec.ts:93,96` - `not.toBe('AI')` (carried) | PASS |
+| C45 | `reopenHandler` true gives AI; false gives QUEUE | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/conversation-state.spec.ts:100-101` - `toBe('AI')`, `toBe('QUEUE')` (carried) | PASS |
+| C46 | `canSend`, 30 cases | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/conversation-state.spec.ts:119-141` - `toBe(expected)`, `cases).toBe(30)` (carried) | PASS |
+| C47 | exact `scopeFor` for COMMERCIAL; `{}`/`{}` for ADMIN and MANAGER | batch fc9cc70 ✓ | `apps/server/src/shared/scope.spec.ts:12-24` - `toEqual({ contact: { OR: [...] }, conversation: { OR: [4 clauses] } })` (carried) | PASS |
+| C48 | the portfolio filter against a seeded database gives the exact sets | batch fc9cc70 ✓ | `apps/server/src/modules/conversations/scope.spec.ts:53-55` - `expect(commercial.conversations).toEqual(new Set([humanOfA.id, queueContactOfB.id, aiOwnerless.id, humanOfBContactOfA.id]))`; `:56-57` - `toEqual(new Set([a.userId, null]))`, `toHaveLength(2)`; `:60-70` - the manager sees all 6 conversations and all 6 contacts. The precondition the fix changed is at `:29`: `humanOfA` is seeded `HUMAN`/assignee A on a contact of B, so only the `assigneeId` clause admits it | PASS |
+| C49 | transfer moves X's 2 contacts to Y, `200 { transferred: 2 }` | batch fc9cc70 ✓ | `apps/server/src/modules/organizations/member.spec.ts:724-726` - `statusCode).toBe(200)`, `toEqual({ transferred: 2 })` (carried) | PASS |
+| C50 | the other tenant's contact is untouched | batch fc9cc70 ✓ | `apps/server/src/modules/organizations/member.spec.ts:754-756` - `toEqual({ transferred: 1 })`, `.get(foreign)).toBe(source.user.id)` (carried) | PASS |
+| C51 | assignee FK 23503; assignee and closed checks 23514 | batch fc9cc70 ✓ | `apps/server/test/schema.spec.ts:900` - `'23503 Conversation_organizationId_assigneeId_fkey'`, `'23514 Conversation_assignee_check'`, `'23514 Conversation_closed_check'` (carried). Precision note carried: only UPDATE is exercised, not INSERT | PASS |
+| C52 | forbidden module edges: 0 in the tree, 5 synthetic | batch fc9cc70 ✓ | `apps/server/test/architecture.spec.ts:352-353` - `toEqual([])` and the exact list of 5 edges (carried) | PASS |
+| C53 | import cycles: 0 in the tree; 2 synthetic cycles found | batch fc9cc70 ✓ | `apps/server/test/architecture.spec.ts:373-380` - `toEqual([])`, `toEqual(['a -> b -> a'])`, `toEqual(['a -> b -> c -> a'])` (carried) | PASS |
+| C54 | writes to other modules' tables: 0 in the tree; 10 forms flagged | batch fc9cc70 ✓ | `apps/server/test/architecture.spec.ts:391,404-405` - `toEqual([])`, `toHaveLength(1)` per form (carried) | PASS |
+| C55 | the 5 unique indexes with literal columns and predicate | batch fc9cc70 ✓ | `apps/server/test/schema.spec.ts:923-935` - 5 × `definitions.get(...)).toBe('CREATE UNIQUE INDEX ...')` (carried) | PASS |
+| C56 | index enforcement: 23505 and the accepted cases | batch fc9cc70 ✓ | `apps/server/test/schema.spec.ts:981` - `toEqual({ secondOpen: '23505 Conversation_one_open', closedBesideOpen: 'ok', sameExternal: '23505 Message_channel_externalId', secondNull: 'ok', ... })` (carried) | PASS |
+| C57 | 4 tables ENABLE+FORCE+policy; general RLS, composite-FK and cascade tests | batch fc9cc70 ✓ (4 proofs) | `apps/server/test/schema.spec.ts:1006-1010` - `forced` `toEqual`, `toContain('app.tenant_id')`; `:199`, `:436`, `:258` - `toEqual([])` (carried) | PASS |
+| C58 | Message CHECKs give 23514 (8 cases); a different channel gives 23503 | batch fc9cc70 ✓ | `apps/server/test/schema.spec.ts:1092` - `toEqual({ inboundFromSystem: '23514 Message_direction_check', ..., otherChannel: '23503 Message_conversationId_channelId_organizationId_fkey', valid: 'ok' })` (carried) | PASS |
 
 ## Coverage
 
+Landing doors, `receiveInbound` outcomes and the COMMERCIAL-visible conversations row were verified at fc9cc70: the fix touched their authority or their proofs. The other rows are carried from d5d58e8. No production source changed, so their members are the same.
+
 | Set (size) | Recomputed from | Member -> proof | Unproven |
 | --- | --- | --- | --- |
-| Landing doors (10, not 9) | `plan.md` Landing table (door 10 was added in the build and is absent from the checks' row) | doors 1-9 as in the checks (C1, C6 · C14, C15 · C29, C51, C56 · C20-C22, C58 · C42-C46 · C8-C10 · C3-C5 · C47, C48 · C1, C49, C53). Door 10: no seq burned or state changed by a duplicate (C20, C21). Rolling back a new contact or conversation has no proof | door 10: the transaction rollback of a new contact or conversation, when a duplicate `externalId` arrives from a different phone (`inbound.ts:78`); fault 5 survived |
-| Relations constraints (18) | `migration.sql:86-193` | one Web Chat `:142` C6 · phone unique `:92` C12, C24, C55 · E.164 `:145` C14 · owner is a member `:113` C15 · one open conversation `:150` C56 · assignee iff HUMAN `:152` C51 · closedAt iff CLOSED `:154` C51 · assignee is a member `:125` C51 · seq unique `:104` C56 · externalId unique `:159` C56 · message channel = conversation channel `:131` C58 · direction `:161`, delivery `:163`, author user `:165`, text `:167` C58 · RLS ×4 `:171-193` C57 · composite FKs `:119,122,131` C57 · RESTRICT to Organization/User `:107,110,116,128,134` C57 | - |
-| unique indexes, ADR-013 + channel (5) | ADR-013 "Ordem e idempotência" plus `migration.sql` | all 5 C55 (literal `indexdef`); enforced C6, C56 | - |
-| `receiveInbound` outcomes (10, plus door 10) | `inbound.ts:50-160` branches | invalid phone `:51` C11 · invalid text `:52` C26 · channel missing `:61` C27 · new conversation `:140` C17 · open conversation `:131` C18 · WAITING to OPEN `:87` C19 · CLOSED reopens `:80-106` C29-C32 · duplicate `:78,110` C20, C21 · UNSUPPORTED `:52` C25 · null externalId `:53` C28 | duplicate from another phone rolled back (see door 10) |
-| `sendMessage` author × outcome (9) | `outbound.ts:26-84` | the 9 as in the checks: C34-C40 | - |
-| error codes (5) | `inbound.ts:17-18`, `message-text.ts:6`, `outbound.ts:9-15` | INVALID_PHONE C11 · INVALID_MESSAGE C26, C40 · NOT_FOUND C27, C39 · NOT_HANDLER C35, C36 · CONVERSATION_CLOSED C38 | - |
-| status × event (9) | `conversation-state.ts:13-25` | C42, table-driven | - |
-| handler × event (21) | `conversation-state.ts:27-51` (3 × 7) | C43, table-driven with `cases === 21` | - |
-| `canSend` (30) | `conversation-state.ts:64-87` (5 senders × 3 × 2) | C46, table-driven with `cases === 30` | - |
-| `normalizePhone` inputs (18) | AC 6-8 + checks C8-C10 | all 18 in `phone.spec.ts:7-35` | - |
-| concurrency scenarios (6) | plan Criteria S3-S5 | C21, C22, C23, C24, C32, C41 | - |
-| `scopeFor` roles (3) | `Role` = ADMIN, MANAGER, COMMERCIAL (`scope.ts:14`) | C47 (all 3), C48 (COMMERCIAL, MANAGER) | - |
-| conversations visible to COMMERCIAL (4 clauses + 2 exclusions) | `scope.ts:18-23` | QUEUE, contact-owner and ownerless clauses are each discriminated by C48. The `assigneeId` clause is only discriminated by C47 (`scope.spec.ts:12`): C48's `humanOfA` is seeded with an ownerless contact (`scope.spec.ts:28`), so it stays visible if that clause is removed. Exclusions: C48 | - |
-| architecture rules (3) | AC 49-50 | C52, C53, C54 | - |
-| write forms (10) | AC 50 | the 10 forms in C54. The code regex also accepts `createManyAndReturn` and `updateManyAndReturn` (`architecture.spec.ts` `WRITE_METHODS`), which are outside the AC set and not exercised | - |
-| backfill owners (2) | door 7 / AD-016 | non-superuser C3 · superuser C4 | - |
-| startup config (1 assembly) | `app.ts:117,120` (`setupOrganization: [createDefaultChannel]`, `portfolioMoves: [moveContactOwner]`); `buildApp` is used by `server.ts:22`, `test/app.ts:42`, `scripts/export-openapi.ts:17` | C1, C49 via `buildTestApp`, which is the same `buildApp` | - |
+| Landing doors (10) - verified at fc9cc70 | `plan.md` Landing table, doors 1-10 (`plan.md:101` for door 10) | door 1 C1, C6 · door 2 C14, C15 · door 3 C29, C51, C56 · door 4 C20-C22, C58 · door 5 C42-C46 · door 6 C8-C10 · door 7 C3-C5 · door 8 C47, C48 · door 9 C1, C49, C53 · door 10: no seq or state change from a duplicate is C20, C21; a new contact and conversation rolled back is C59 (fault 1 killed). The door also names "reabertura e auditoria". At `inbound.ts:78-106` the reopen `update` and the `record` run only after the insert returned a row, so no single fault on the duplicate path can commit a reopen (see Notes) | - |
+| `receiveInbound` outcomes (11) - verified at fc9cc70 | `inbound.ts:50-118` branches | invalid phone `:51` C11 · invalid text `:52` C26 · channel missing `:61` C27 · new conversation `:140` C17 · open conversation `:131` C18 · WAITING to OPEN `:87` C19 · CLOSED reopens `:80-106` C29-C32 · duplicate, same phone, `:78,110-117` C20, C21 · duplicate, new phone, rolled back `:78` C59 · UNSUPPORTED `:52` C25 · null externalId `:53` C28 | - |
+| conversations visible to COMMERCIAL (4 clauses + 2 exclusions) - verified at fc9cc70 | `scope.ts:18-23` | assignee: `humanOfA` (`scope.spec.ts:29`, contact of B, HUMAN) is admitted only by this clause, so C48 fails without it (fault 2) · QUEUE `queueContactOfB` · contact owner `humanOfBContactOfA` · ownerless `aiOwnerless`, each admitted by one clause only · exclusions `aiOfB`, `humanOfBContactOfB` C48 | - |
+| Relations constraints (18) - carried from d5d58e8 | `migration.sql:86-193` | as in round 1: C6, C12, C14, C15, C24, C51, C55, C56, C57, C58 | - |
+| unique indexes, ADR-013 + channel (5) - carried | ADR-013 + `migration.sql` | C55 (literal), enforced C6, C56 | - |
+| `sendMessage` author × outcome (9) - carried | `outbound.ts:26-84` | C34-C40 | - |
+| error codes (5) - carried | `inbound.ts:17-18`, `message-text.ts:6`, `outbound.ts:9-15` | C11 · C26, C40 · C27, C39 · C35, C36 · C38 | - |
+| status × event (9) - carried | `conversation-state.ts:13-25` | C42 | - |
+| handler × event (21) - carried | `conversation-state.ts:27-51` | C43 | - |
+| `canSend` (30) - carried | `conversation-state.ts:64-87` | C46 | - |
+| `normalizePhone` inputs (18) - carried | AC 6-8 | `phone.spec.ts:7-35`, C8-C10 | - |
+| concurrency scenarios (6) - carried | plan Criteria S3-S5 | C21, C22, C23, C24, C32, C41 | - |
+| `scopeFor` roles (3) - carried | `scope.ts:14` | C47 (all 3), C48 (COMMERCIAL, MANAGER) | - |
+| architecture rules (3) - carried | AC 49-50 | C52, C53, C54 | - |
+| write forms (10) - carried | AC 50 | C54 (note carried: `createManyAndReturn`/`updateManyAndReturn` are accepted by `WRITE_METHODS` but are outside the AC set and not exercised) | - |
+| backfill owners (2) - carried | door 7 / AD-016 | C3, C4 | - |
+| startup config (1 assembly) - carried | `app.ts:117,120`, one `buildApp` for `server.ts`, `test/app.ts`, `export-openapi.ts` | C1, C49 | - |
 
-Sets with no row in the checks: Landing door 10 (above). ADR-013 "Consequences" requires the test "evento só após commit" in F2. This feature emits no events (no socket or queue code in the diff), so the member does not exist yet. I record this as a note, not a gap.
+Sets with no row: none new. The ADR-013 "evento só após commit" note is carried from d5d58e8. This feature still emits no events, so that member does not exist yet.
 
 ## Test policy rows
 
-`checks.md` adds no new rows and classifies three files under the repo's rules (CLAUDE.md "Testes"). Verdict on each:
+The row round 1 found unmet was re-judged at fc9cc70. The other two rows are carried from d5d58e8, and their files did not change.
 
 | Row | Files it classifies | Required proof | Expectation met |
 | --- | --- | --- | --- |
-| Decides, pure: unit test of every transition | `conversations/conversation-state.ts` | own layer, one case per row: C42 (9), C43 (21), C46 (30), C44, C45, C33 | yes |
-| Decides, reached across the use-case boundary: real PostgreSQL | `conversations/inbound.ts`, `conversations/outbound.ts` | real PostgreSQL through `receiveInbound`/`sendMessage`: C11-C41 | not met: the rollback branch at `inbound.ts:78` (door 10) survives a commit-instead-of-rollback mutant (fault 5); no proof sends a duplicate `externalId` from a new phone |
-| Decides, delegated to library metadata | `shared/phone.ts` | own layer with discriminating inputs: C8-C10 (including 3 inputs that only `max` rejects) | yes |
+| Decides, pure: unit test of every transition (carried from d5d58e8) | `conversations/conversation-state.ts` | C42 (9), C43 (21), C46 (30), C44, C45, C33 | yes |
+| Decides, reached across the use-case boundary: real PostgreSQL (verified at fc9cc70) | `conversations/inbound.ts`, `conversations/outbound.ts` | real PostgreSQL through `receiveInbound`/`sendMessage`: C11-C41 plus C59. The duplicate branch `inbound.ts:78` and the rollback it relies on are now proven by C59 (fault 1 killed) and C20/C21 | yes |
+| Decides, delegated to library metadata (carried from d5d58e8) | `shared/phone.ts` | C8-C10 | yes |
 
-Swept re-read: no `Swept` row cites an existing constraint; each resolves to a check id or to `n/a`, which is approved policy. The one startup-config claim was confirmed at `app.ts:117,120`.
+Swept re-read: carried from d5d58e8. The fix changed no `Swept` row; `idempotency` still resolves to C20, C21 and C28, and C59 adds to it.
 
 ## Faults injected
 
-Scratch `git worktree add --detach <scratchpad>/wt HEAD`, with `pnpm install --frozen-lockfile --prefer-offline` and the root `.env` copied in. `git status --porcelain` of the real tree was empty before and empty after the worktree was removed (identical).
+Verified at fc9cc70. I ran `git worktree add --detach <scratchpad>/wt HEAD`, then `pnpm install --frozen-lockfile --offline` in it, and symlinked the root `.env` into it. The real tree's `git status --porcelain` before was ` M .specs/LESSONS.md`, ` M .specs/lessons.json`. Those files were already modified before this round, and I did not touch them. After `git worktree remove --force` and `prune`, the porcelain was byte-identical (`diff` empty). No `git stash` was used. The fix created no production surface, only assertions. Fault 1 is aimed at the new C59 assertion and fault 2 at the changed C48 seed, and each also re-runs a round-1 surface.
 
 | Mutation | Location | Killed |
 | --- | --- | --- |
-| `QUEUE` + `requestHuman` returns `AI` | `apps/server/src/modules/conversations/conversation-state.ts:44` | yes - C43 `maps every handler transition` and C44 fail |
-| HUMAN send guard drops the `assigneeId` condition | `apps/server/src/modules/conversations/outbound.ts:31` | yes - C35 `refuses a human who does not handle the conversation` fails |
-| reopen keeps the previous handler and assignee | `apps/server/src/modules/conversations/inbound.ts:81-91` | yes - C29/C30 `reopens a closed conversation and keeps its history` fails |
-| backfill replaced by the rejected naive `INSERT … SELECT FROM "Organization"` | `apps/server/prisma/migrations/20260924160000_conversation_core/migration.sql:199-213` | yes - C3 (forced row security) fails; C4 (superuser) passes, as intended |
-| duplicate path returns the stored message inside the transaction (commit) instead of throwing `DuplicateInbound` (rollback) | `apps/server/src/modules/conversations/inbound.ts:78` | no - survived; all 26 tests of `inbound.spec.ts` + `outbound.spec.ts` pass. A scratch probe in the worktree (deleted with it) sent a duplicate `externalId` from a second phone: HEAD leaves `{ contacts: 1, conversations: 1 }` and the mutant leaves `{ contacts: 2, conversations: 2 }` |
+| duplicate path commits: `if (inserted.length === 0)` returns the stored message from `tx.message.findFirstOrThrow` inside the transaction instead of throwing `DuplicateInbound` (the round-1 surviving mutant, re-injected) | `apps/server/src/modules/conversations/inbound.ts:78` | yes - `inbound.spec.ts` + `outbound.spec.ts`: 1 failed, 26 passed. C59 fails at `inbound.spec.ts:198:34`, with `{ contacts: 2, conversations: 2, …}` expected to equal `{ contacts: 1, conversations: 1, …}` |
+| `{ assigneeId: ctx.userId }` removed from the COMMERCIAL conversation filter | `apps/server/src/shared/scope.ts:19` | yes - C48 fails at `modules/conversations/scope.spec.ts:53:38` (`Set{ …(3) }` vs `Set{ …(4) }`); C47 also fails at `shared/scope.spec.ts:12:45` |
 
 ## Gate
 
-`pnpm lint && pnpm typecheck && pnpm test && pnpm build` at the repo root, at HEAD 8633a73. Exit 0: biome checked 182 files with no fixes; `tsc --noEmit` passed for server and web; vitest ran 37 files and 370 tests, all passed, 0 failed; server and web builds finished.
+Verified at fc9cc70. `pnpm lint && pnpm typecheck && pnpm test && pnpm build` at the repo root exited 0:
 
-Proof batch: 11 files and 59 named tests, 59 passed, 0 failed.
+- biome: `Checked 182 files`, no fixes
+- `tsc --noEmit`: web and server Done
+- vitest: `Test Files 37 passed (37)`, `Tests 371 passed (371)`, 0 failed (370 in round 1, plus C59)
+- builds: server `tsc -p tsconfig.build.json` and web `vite build` Done
+
+Proof batch: 11 files, 60 named tests, 60 passed, 0 failed.
+
+## Notes
+
+None of these fail the feature.
+
+1. Door 10 "reabertura e auditoria": the plan says the rollback also undoes a reopen and its audit. No test sends a duplicate `externalId` to a CLOSED conversation. In the code, the reopen `update` (`inbound.ts:84-93`) and `record` (`:95-105`) run after the duplicate check at `:78`, so today a duplicate never writes them, rollback or not. A future reorder that put the check after the reopen would be caught only if it also dropped the rollback. A proof would be cheap: close the conversation that holds `wa-x`, repeat `wa-x`, and assert it is still `CLOSED` with no `conversation.reopen` row.
+2. C59 does not assert that the second phone differs from the first. It relies on `randomPhone()` (`test/conversations.ts:10-14,29`), which has about 9×10^7 values, so a collision is negligible. Fault 1 shows the precondition holds in practice: the mutant left 2 contacts.
+3. Carried from d5d58e8: C18 asserts `lastMessageAt` only as newer than the seed; C51 exercises only UPDATE, not INSERT; `WRITE_METHODS` has two forms outside the AC set.

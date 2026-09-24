@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 53,
+  "next_id": 55,
   "lessons": [
     {
       "id": "L-001",
@@ -944,6 +944,42 @@
       ],
       "created": "2026-09-24T15:20:07Z",
       "last_seen": "2026-09-24T15:20:07Z"
+    },
+    {
+      "id": "L-053",
+      "key": "surviving_mutant::a one way door added to landing during the build gets its own check in the same commit with a precondition that only that door s behaviour satisfies a duplicate from a new phone not the same phone before the verifier runs",
+      "text": "A one-way door added to Landing during the build gets its own check in the same commit, with a precondition that only that door's behaviour satisfies (a duplicate from a new phone, not the same phone), before the Verifier runs.",
+      "signal": "surviving_mutant",
+      "scope": "checks",
+      "status": "candidate",
+      "features": [
+        "conversation-core"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "inbound.ts:78 (door 10) (checks)"
+      ],
+      "created": "2026-09-24T23:13:47Z",
+      "last_seen": "2026-09-24T23:13:47Z"
+    },
+    {
+      "id": "L-054",
+      "key": "spec_precision_gap::when a filter is an or of rules seed each expected row so that exactly one rule admits it a row two rules admit keeps the result green when either rule is removed",
+      "text": "When a filter is an OR of rules, seed each expected row so that exactly one rule admits it; a row two rules admit keeps the result green when either rule is removed.",
+      "signal": "spec_precision_gap",
+      "scope": "repo-layer",
+      "status": "candidate",
+      "features": [
+        "conversation-core"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "C48 (repo-layer)"
+      ],
+      "created": "2026-09-24T23:13:50Z",
+      "last_seen": "2026-09-24T23:13:50Z"
     }
   ]
 }

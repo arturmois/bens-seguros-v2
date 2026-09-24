@@ -324,6 +324,18 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: ADR-008:26 (docs)
 - last seen: 2026-09-24T15:20:07Z
 
+### L-053 - A one-way door added to Landing during the build gets its own check in the same commit, with a precondition that only that door's behaviour satisfies (a duplicate from a new phone, not the same phone), before the Verifier runs.
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
+- features: conversation-core
+- evidence: inbound.ts:78 (door 10) (checks)
+- last seen: 2026-09-24T23:13:47Z
+
+### L-054 - When a filter is an OR of rules, seed each expected row so that exactly one rule admits it; a row two rules admit keeps the result green when either rule is removed.
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `repo-layer` · harmful: 0
+- features: conversation-core
+- evidence: C48 (repo-layer)
+- last seen: 2026-09-24T23:13:50Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.
