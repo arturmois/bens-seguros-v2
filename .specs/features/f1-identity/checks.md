@@ -5,7 +5,7 @@ Plan: `.specs/features/f1-identity/plan.md`
 
 Provas do server rodam em `apps/server` (`pnpm exec vitest run <arquivo> -t "<nome>"`); as do web, em `apps/web` (`pnpm exec playwright test <arquivo> -g "<nome>"`).
 
-47 checks in 4 slices · 5 one-way doors · 0 open
+50 checks in 4 slices · 5 one-way doors · 0 open
 
 ## Checks
 
@@ -36,8 +36,9 @@ Proof: `src/modules/organizations/member.spec.ts -t "demotes an admin while anot
 **C9** - Numa organização com um ADMIN ativo e um ADMIN inativo, rebaixar o inativo responde `200`; e numa com um só ADMIN ativo, desativar um MANAGER responde `200` (a guarda só dispara quando a mudança tira o último ADMIN **ativo**) (door 5, AC 4)
 Proof: `src/modules/organizations/member.spec.ts -t "only guards changes that remove the last active admin"`
 
-**C10** - Com exatamente dois ADMINs ativos, dois `PATCH` disparados em paralelo, cada um rebaixando um ADMIN diferente, terminam com exatamente um `200` e um `422 LAST_ADMIN`, e a organização fica com exatamente um ADMIN ativo; repetido 5 vezes (door 5, AC 6)
+**C10** - Com exatamente dois ADMINs ativos, dois rebaixamentos concorrentes, cada um de um ADMIN diferente, deixam exatamente um ADMIN ativo, repetido 5 vezes: pela API, exatamente um `200` e o outro `422 LAST_ADMIN` ou `403 FORBIDDEN` (quando a auto-rebaixa commita antes da checagem de permissão do outro); pelo use case `updateMember`, exatamente um sucesso e um `LAST_ADMIN` (door 5, AC 6; reescrito na rodada 1 do Verifier por decisão do usuário)
 Proof: `src/modules/organizations/member.spec.ts -t "keeps one admin when two demotions race"`
+Proof: `src/modules/organizations/member.spec.ts -t "lets exactly one of two racing demotions through the use case"`
 
 **C11** - Um ADMIN que rebaixa a si mesmo para `MANAGER`, com outro ADMIN ativo, recebe `200`, e o `GET /api/v1/me` seguinte traz `role: 'MANAGER'` e `permissions: ['organization:read']` (AC 7)
 Proof: `src/modules/organizations/member.spec.ts -t "lets an admin demote themself while another admin is active"`
@@ -160,11 +161,20 @@ Proof: `test/schema.spec.ts -t "every tenant table is protected by row security"
 **C49** - `PUT /api/v1/organization/logo` com corpo acima de 400 KB responde `413` e nada é gravado; um PNG de 204801 bytes (corpo de ~273 KB) ainda chega ao use case e recebe `422 LOGO_TOO_LARGE` (C32) (door 4)
 Proof: `src/modules/organizations/branding.spec.ts -t "rejects a logo body above the route limit"`
 
+**C50** - Numa organização com um ADMIN ativo e um ADMIN inativo, rebaixar o ativo responde `422 LAST_ADMIN`, sem mudança e sem auditoria (a guarda conta só ADMINs **ativos**) (door 5, AC 4)
+Proof: `src/modules/organizations/member.spec.ts -t "counts only active admins when guarding the last one"`
+
+**C51** - `PATCH …/branding` com `greeting` só de espaços e com corpo `{}` responde `400 VALIDATION_ERROR`, e a saudação gravada não muda (AC 15)
+Proof: `src/modules/organizations/branding.spec.ts -t "rejects a blank greeting and an empty body"`
+
+**C52** - Um ADMIN da organização B que chama `PATCH …/branding`, `PUT …/logo` e `DELETE …/logo` altera só a organização B; cor, saudação, logo e trilha da organização A ficam iguais (`withTwoTenants`) (AC 14, AC 18, AC 21)
+Proof: `src/modules/organizations/branding.spec.ts -t "writes branding and logo only in the active organization"`
+
 **C46** - Com o docker compose no ar, o gate do repositório passa depois do último commit, e o `pnpm api:generate` não deixa diff em `apps/web/src/api`
 Proof: `pnpm lint && pnpm typecheck && pnpm test && pnpm build`
 Proof: `bash -c 'pnpm api:generate >/dev/null && git diff --exit-code apps/web/src/api apps/server/openapi.json'`
 
-**C47** - Os status já existentes de onboarding, organização e convite continuam iguais com os papéis do MVP: `401` sem sessão e `422` na quarta organização (onboarding); `401` sem sessão e `403` sem organização ativa (`GET /api/v1/organization`); `200`, `401`, `403`, `409` e `422` do `POST /api/v1/invitations`
+**C47** - Os status já existentes de onboarding, organização e convite continuam iguais com os papéis do MVP: `401` sem sessão e `422` na quarta organização (onboarding); `401` sem sessão e `403` sem organização ativa (`GET /api/v1/organization`); `200`, `401`, `403` e `409` (e-mail já membro e convite pendente) do `POST /api/v1/invitations`
 Proof: `src/modules/organizations/onboarding.spec.ts -t "requires a session"`
 Proof: `src/modules/organizations/onboarding.spec.ts -t "rejects the fourth organization"`
 Proof: `src/modules/organizations/organization.spec.ts -t "requires a session"`
@@ -181,11 +191,13 @@ Proof: `src/modules/organizations/invitation.spec.ts -t "rejects a second pendin
 | --- | --- | --- |
 | papéis do MVP (3) | `ADMIN` C1, C2 · `MANAGER` C1, C2 · `COMMERCIAL` C1, C2 | - |
 | papéis que saem (2) | `OWNER` C2, C3, C4, C45 · `VIEWER` C2, C3, C4, C45 | - |
-| guarda do último ADMIN (5 linhas) | rebaixar o único ativo C6 · desativar o único ativo C7 · rebaixar com outro ativo C8 · alvo inativo ou não-ADMIN C9 · corrida C10 | - |
+| guarda do último ADMIN (6 linhas) | rebaixar o único ativo C6 · desativar o único ativo C7 · rebaixar com outro ativo C8 · alvo inativo ou não-ADMIN C9 · corrida C10 · ADMIN inativo não conta C50 | - |
 | lugares de papel no web (2) | convite C13 · alteração de membro C13, C14 | - |
 | tipos de logo (8) | PNG C29, C30 · JPEG C29, C30 · WebP C29, C30 · SVG C29, C33 · GIF C29 · texto C29, C33 · RIFF sem WEBP C29 · vazio C29 | - |
 | limites do logo (2 bordas) | 204800 C32 · 204801 C32 | - |
 | limites da saudação (2 bordas) | 500 C26 · 501 C26 | - |
+| saudação e corpo inválidos (2) | só espaços C51 · `{}` C51 |
+| isolamento das escritas novas (3) | branding C52 · PUT logo C52 · DELETE logo C52 |
 | formas inválidas de cor (5) | `1a2b3c` C25 · `#1a2b3` C25 · `#1a2b3cd` C25 · `#gggggg` C25 · `red` C25 | - |
 | escritas de branding × papel sem permissão (6) | branding×MANAGER C28 · branding×COMMERCIAL C28 · PUT logo×MANAGER C28 · PUT logo×COMMERCIAL C28 · DELETE logo×MANAGER C28 · DELETE logo×COMMERCIAL C28 | - |
 | estados da tela `/settings/organization` (5) | sem logo C39 · com logo C39 · erro do upload C40 · sucesso do salvar C41 · só leitura C42 | - |
@@ -196,8 +208,8 @@ Proof: `src/modules/organizations/invitation.spec.ts -t "rejects a second pendin
 | `DELETE /api/v1/organization/logo` statuses (3) | 204 C37 · 401 C38 · 403 C28, C38 | - |
 | `GET /api/v1/organization/logo` statuses (5) | 200 C35 · 304 C35 · 401 C38 · 403 C38 · 404 C36 | - |
 | `PATCH /api/v1/members/:id` statuses (6) | 200 C8 · 400 C3 · 401 C12 · 403 C12 · 404 C12 · 422 C6, C7 | - |
-| `POST /api/v1/invitations` statuses (6) | 200 C47 · 400 C4 · 401 C47 · 403 C47 · 409 C47 · 422 C47 | - |
-| doors (5) | 1 C2, C48 · 2 C15, C17 · 3 C19, C20 · 4 C29, C32, C33 · 5 C6, C7, C9, C10 | - |
+| `POST /api/v1/invitations` statuses (5) | 200 C47 · 400 C4 · 401 C47 · 403 C47 · 409 C47 | - |
+| doors (5) | 1 C2, C48 · 2 C15, C17 · 3 C19, C20 · 4 C29, C32, C33 · 5 C6, C7, C9, C10, C50 | - |
 | testes do v2 substituídos (2) | "rejects a change to the owner" → C6, C7 · "keeps a single owner when two inserts race" → C10 (o índice que ele provava sai na door 1) | - |
 
 - Claims naming a status code, route or response shape: C3, C4, C6–C12, C15, C19, C20, C22–C28, C30–C38 - cada um tem prova que cruza a fronteira HTTP (`app.inject`)
@@ -246,3 +258,5 @@ Cost: um unitário de magic bytes, além das provas na fronteira. Sem ele, a tab
 - **Boundary:** C1–C4, C6–C17, C19–C49 closed at `4d4cb0d` (C5 e C18 removidos a pedido do usuário). Gates verdes (31 arquivos, 303 testes); `pnpm api:generate` sem diff
 - **Abandoned:** `test/migrations.spec.ts` (conversão de dados da migration), dispensado pelo usuário junto com as migrations incrementais
 - **Ambiente do e2e:** rodado com `vite dev` + server em `tsx watch` contra um banco `bens_e2e` separado (o banco de dev ainda tem o histórico antigo de migrations). `org-web.spec.ts` e `branding.spec.ts`: 49 passam. 13 testes de `register`, `signup-gates`, `two-factor` e `terms` falham nesse ambiente porque `/register` não termina de carregar; arquivos e telas que a F1 não tocou
+- **Rodada 1 do Verifier (FAIL):** acrescentados C50 (mutante `AND active`), C51 (`min(1)` e `refine` sem prova), C52 (`withTwoTenants` nas escritas novas); C47 e o `Surface` de convites sem o `422` que a rota nunca teve
+- **C10 (rodada 1):** o teste HTTP era intermitente (`[200, 403]` legítimo). Por decisão do usuário, duas provas: a da API aceita `422` ou `403` no perdedor; a do use case fixa `LAST_ADMIN`. As duas falham sem o `FOR UPDATE`

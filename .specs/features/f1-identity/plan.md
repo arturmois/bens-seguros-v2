@@ -48,7 +48,7 @@ Reusa o onboarding, o `GET`/`PATCH /api/v1/organization`, o `PATCH /api/v1/membe
 | `DELETE /api/v1/organization/logo` | — | `204` sem corpo | `204`, `401`, `403` |
 | `GET /api/v1/organization/logo` | — | os bytes da imagem, `Content-Type` gravado, `ETag`, `Cache-Control: private, no-cache` | `200`, `304`, `401`, `403`, `404` |
 | `PATCH /api/v1/members/:id` | `role?` só `ADMIN`/`MANAGER`/`COMMERCIAL` · `active?` | inalterado | `200`, `400`, `401`, `403`, `404`, `422` |
-| `POST /api/v1/invitations` | `role` só `ADMIN`/`MANAGER`/`COMMERCIAL` | inalterado | `200`, `400`, `401`, `403`, `409`, `422` (inalterados; o `400` passa a cobrir `OWNER`/`VIEWER`) |
+| `POST /api/v1/invitations` | `role` só `ADMIN`/`MANAGER`/`COMMERCIAL` | inalterado | `200`, `400`, `401`, `403`, `409` (inalterados; o `400` passa a cobrir `OWNER`/`VIEWER`; corrigido na rodada 1 do Verifier: a rota nunca teve `422`) |
 
 ## Landing
 

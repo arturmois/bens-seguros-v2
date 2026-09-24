@@ -159,6 +159,20 @@ describe('PATCH /api/v1/organization/branding', () => {
     expect((await stored(host.organizationId)).greeting).toBe('a'.repeat(500))
   })
 
+  it('rejects a blank greeting and an empty body', async () => {
+    const host = await brokerage()
+    await host.client.patch('/api/v1/organization/branding', { greeting: 'Oi' })
+
+    const blank = await host.client.patch('/api/v1/organization/branding', { greeting: '   ' })
+    const empty = await host.client.patch('/api/v1/organization/branding', {})
+
+    expect(blank.statusCode).toBe(400)
+    expect(blank.json().error.code).toBe('VALIDATION_ERROR')
+    expect(empty.statusCode).toBe(400)
+    expect(empty.json().error.code).toBe('VALIDATION_ERROR')
+    expect((await stored(host.organizationId)).greeting).toBe('Oi')
+  })
+
   it('clears a branding field sent as null', async () => {
     const host = await brokerage()
     await host.client.patch('/api/v1/organization/branding', {
@@ -354,6 +368,50 @@ describe('PUT, GET and DELETE /api/v1/organization/logo', () => {
     const response = await client.get('/api/v1/organization/logo')
 
     expect(response.statusCode).toBe(404)
+  })
+
+  it('writes branding and logo only in the active organization', async () => {
+    const client = new TestClient(app)
+    const { userId } = await signedInUser(client, deps)
+    await acceptCurrentTerms(client)
+    const { tenantA, tenantB } = await withTwoTenants(deps.db)
+    const logoA = image(PNG_SIGNATURE)
+    await deps.db.withTenant(tenantA, (tx) =>
+      tx.organization.update({
+        where: { id: tenantA.organizationId },
+        data: {
+          brandColor: '#aaaaaa',
+          greeting: 'Organização A',
+          logo: logoA,
+          logoMimeType: 'image/png',
+          logoUpdatedAt: new Date(),
+        },
+      }),
+    )
+    await deps.db.withTenant(tenantB, (tx) => tx.member.create({ data: { userId, role: 'ADMIN' } }))
+    await deps.db.session.updateMany({
+      where: { userId },
+      data: { activeOrganizationId: tenantB.organizationId },
+    })
+    const beforeA = await stored(tenantA.organizationId)
+
+    const branding = await client.patch('/api/v1/organization/branding', {
+      brandColor: '#bbbbbb',
+      greeting: 'Organização B',
+    })
+    const upload = await client.put('/api/v1/organization/logo', {
+      image: image(JPEG_SIGNATURE).toString('base64'),
+    })
+    const removed = await client.delete('/api/v1/organization/logo')
+
+    expect([branding.statusCode, upload.statusCode, removed.statusCode]).toEqual([200, 200, 204])
+    expect(await stored(tenantB.organizationId)).toMatchObject({
+      brandColor: '#bbbbbb',
+      greeting: 'Organização B',
+      logo: null,
+    })
+    expect(await stored(tenantA.organizationId)).toEqual(beforeA)
+    expect(await audits(tenantA.organizationId)).toEqual([])
   })
 
   it('removes the logo', async () => {

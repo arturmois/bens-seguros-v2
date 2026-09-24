@@ -299,6 +299,21 @@ describe('PATCH /api/v1/members/:id', () => {
     expect((await memberOf(host.organizationId, manager.member.id)).active).toBe(false)
   })
 
+  it('counts only active admins when guarding the last one', async () => {
+    const host = await brokerage()
+    await addMember(host.organizationId, 'ADMIN', false)
+    const before = await auditsOf(host.organizationId, host.memberId)
+
+    const response = await host.client.patch(`/api/v1/members/${host.memberId}`, {
+      role: 'COMMERCIAL',
+    })
+
+    expect(response.statusCode).toBe(422)
+    expect(response.json().error.code).toBe('LAST_ADMIN')
+    expect((await memberOf(host.organizationId, host.memberId)).role).toBe('ADMIN')
+    expect(await auditsOf(host.organizationId, host.memberId)).toEqual(before)
+  })
+
   it('keeps one admin when two demotions race', async () => {
     for (let round = 0; round < 5; round++) {
       const host = await brokerage()
@@ -310,12 +325,52 @@ describe('PATCH /api/v1/members/:id', () => {
         ),
       )
 
-      expect(results.map((result) => result.statusCode).sort(), `round ${round}`).toEqual([
-        200, 422,
-      ])
-      expect(results.find((result) => result.statusCode === 422)?.json().error.code).toBe(
-        'LAST_ADMIN',
+      // The loser gets 422 LAST_ADMIN, or 403 when the self-demotion committed before its
+      // permission check ran: both keep the organization with one active ADMIN.
+      const codes = results.map((result) => result.statusCode)
+      expect(
+        codes.filter((code) => code === 200),
+        `round ${round}`,
+      ).toHaveLength(1)
+      const loser = results.find((result) => result.statusCode !== 200)
+      expect([422, 403], `round ${round}`).toContain(loser?.statusCode)
+      expect(loser?.json().error.code).toBe(loser?.statusCode === 422 ? 'LAST_ADMIN' : 'FORBIDDEN')
+      const admins = await deps.db.withTenant({ organizationId: host.organizationId }, (tx) =>
+        tx.member.count({ where: { role: 'ADMIN', active: true } }),
       )
+      expect(admins, `round ${round}`).toBe(1)
+    }
+  })
+
+  it('lets exactly one of two racing demotions through the use case', async () => {
+    for (let round = 0; round < 5; round++) {
+      const host = await brokerage()
+      const admin = await colleague(host.organizationId, 'ADMIN')
+      const ctx = {
+        requestId: 'test',
+        userId: host.userId,
+        sessionId: randomUUID(),
+        isSuperAdmin: false,
+        organizationId: host.organizationId,
+        role: 'ADMIN' as const,
+        permissions: permissionsFor('ADMIN'),
+      }
+
+      const results = await Promise.allSettled(
+        [host.memberId, admin.memberId].map((id) =>
+          updateMember({ db: deps.db }, ctx, id, { role: 'COMMERCIAL' }),
+        ),
+      )
+
+      expect(
+        results.filter((result) => result.status === 'fulfilled'),
+        `round ${round}`,
+      ).toHaveLength(1)
+      const rejected = results.find((result) => result.status === 'rejected')
+      expect(rejected?.status === 'rejected' && rejected.reason, `round ${round}`).toMatchObject({
+        status: 422,
+        code: 'LAST_ADMIN',
+      })
       const admins = await deps.db.withTenant({ organizationId: host.organizationId }, (tx) =>
         tx.member.count({ where: { role: 'ADMIN', active: true } }),
       )

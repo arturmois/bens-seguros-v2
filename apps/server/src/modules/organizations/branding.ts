@@ -68,6 +68,7 @@ export async function uploadLogo(deps: Deps, ctx: RequestContext, image: string,
     await tx.organization.update({
       where: { id: ctx.organizationId },
       data: { logo: bytes, logoMimeType: type, logoUpdatedAt: now },
+      select: { id: true },
     })
     // The bytes never go to the trail: only whether a logo existed before and after.
     await record(tx, ctx, {
@@ -89,6 +90,7 @@ export async function removeLogo(deps: Deps, ctx: RequestContext) {
     await tx.organization.update({
       where: { id: ctx.organizationId },
       data: { logo: null, logoMimeType: null, logoUpdatedAt: null },
+      select: { id: true },
     })
     await record(tx, ctx, {
       action: 'organization.update',
