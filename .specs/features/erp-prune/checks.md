@@ -184,3 +184,4 @@ to existing tests. Nothing else may change.
 - **Progress:** S1 (C1-C8) green; C9 (staging smoke) runs after S3
 - **Progress:** S2 (C10-C24) green
 - **Settled mid-build:** in this shell `rg` is a function over Claude Code's bundled ripgrep, and the `rtk` hook rewrites it into a missing binary, so every `rg` proof "exits 1" even on a match. The `rg` proofs run as `ARGV0=rg ~/.local/bin/claude <same args>` (a known match exits 0 there, a miss exits 1). Same arguments, same claim.
+- **Progress:** S3 (C25-C27) green

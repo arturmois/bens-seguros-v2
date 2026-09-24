@@ -19,7 +19,7 @@ MVP SaaS multi-tenant para corretoras de seguros: captura de leads + atendimento
 
 - Node `>=24` (ver `.nvmrc`)
 - pnpm `12.x` (`packageManager` no `package.json`)
-- Docker (Postgres, MinIO, Mailpit via `docker compose`)
+- Docker (Postgres e Mailpit via `docker compose`)
 
 ## Setup
 

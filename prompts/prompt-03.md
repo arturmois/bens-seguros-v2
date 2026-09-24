@@ -1,3 +1,5 @@
+> **Arquivado em 2026-09-23 (ADR-011):** prompt de fase do ERP, cancelado pelo pivot para o MVP. Não use como instrução; as fases atuais estão em `docs/roadmap.md`.
+
 Vamos implementar a Fase 3 (Authentication) do Bens Seguros v2.
 
 Antes de tudo, leia CLAUDE.md, docs/architecture.md (§6 Autenticação, §7 Isolamento de tenant, §8 API), a seção "Fase 3" de docs/roadmap.md,

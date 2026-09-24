@@ -1,3 +1,5 @@
+> **Arquivado em 2026-09-23 (ADR-011):** prompt de fase do ERP, cancelado pelo pivot para o MVP. Não use como instrução; as fases atuais estão em `docs/roadmap.md`.
+
 Vamos implementar a Fase 4 (Tenancy & Organizations) do Bens Seguros v2.
 
 Antes de tudo, leia CLAUDE.md, docs/architecture.md (§3 organizações, §6 Autenticação passo 2–5 e 7, §7 Autorização, §8 API, §9 rotas `(onboarding)` e `settings`), a seção "Fase 4" de docs/roadmap.md, os ADRs 003 (sem plugin `organization`), 004 (RLS), 005 (RBAC), 007 e 010 (carteira), e a seção "Auth / Organizations" de docs/migration.md.

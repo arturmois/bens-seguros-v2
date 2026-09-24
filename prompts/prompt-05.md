@@ -1,3 +1,5 @@
+> **Arquivado em 2026-09-23 (ADR-011):** prompt de fase do ERP, cancelado pelo pivot para o MVP. Não use como instrução; as fases atuais estão em `docs/roadmap.md`.
+
 Vamos implementar a Fase 5 (Billing) do Bens Seguros v2.
 
 Antes de tudo, leia CLAUDE.md, docs/architecture.md (§3 fronteiras do `billing`, §5 jobs e crons, §7 Entitlements do plano e Isolamento de tenant, §8 API e prefixo `/api/webhooks/*`, §9 rotas `(onboarding)/select-plan`, `settings/billing`, `(public)/pricing`), a seção "Fase 5" de docs/roadmap.md (e o "Resultado" do Checkpoint H2 logo acima dela), os ADRs 004 (RLS), 005 (RBAC) e 006 (jobs), e a seção "Billing" de docs/migration.md.

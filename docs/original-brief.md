@@ -1,3 +1,5 @@
+> **Arquivado em 2026-09-23 (ADR-011):** brief do rebuild do ERP, substituído por `docs/handoff.md` (requisitos do MVP). Não use como instrução.
+
 # Rebuild do Bens Seguros — Arquitetura Simplificada
 
 ## Contexto

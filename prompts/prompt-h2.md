@@ -1,3 +1,5 @@
+> **Arquivado em 2026-09-23 (ADR-011):** prompt de fase do ERP, cancelado pelo pivot para o MVP. Não use como instrução; as fases atuais estão em `docs/roadmap.md`.
+
 Vamos rodar o Checkpoint H2 (reavaliação do harness depois da Fase 4) do Bens Seguros v2.
 
 Antes de tudo, leia a seção "Checkpoint H2" e a "Checkpoint H1" de docs/roadmap.md, o CLAUDE.md e o `.specs/STATE.md` (AD-001 a AD-010).

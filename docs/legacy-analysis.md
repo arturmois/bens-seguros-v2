@@ -1,3 +1,5 @@
+> **Arquivado em 2026-09-23 (ADR-011):** análise feita para o rebuild do ERP. Continua valendo só como referência de comportamento do legado (etapas do Kanban, tools do bot, reconexão do Baileys); arquitetura e escopo do MVP estão em `docs/architecture.md` e `docs/roadmap.md`.
+
 # Análise do sistema legado (Fases 1 e 2)
 
 Fonte: `github.com/arturmois/bens-seguros`, commit `7166ab4`. Tratado como **implementação de referência**: vale como fonte de requisitos e regras de negócio, não como fonte de arquitetura.

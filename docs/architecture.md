@@ -79,9 +79,7 @@ bens-seguros-v2/
 │   │   │   │   ├── queue.ts         # [existe] interface mínima sobre o pg-boss
 │   │   │   │   ├── realtime.ts      # [existe] Socket.IO (auth por cookie, rooms)
 │   │   │   │   ├── email.ts         # [existe] SMTP + render de React Email
-│   │   │   │   ├── events.ts        # [F2] notify(tx, …) + LISTEN app_events
-│   │   │   │   ├── storage.ts       # [existe, sai na F0] (ADR-011)
-│   │   │   │   └── pdf.ts           # [existe, sai na F0] (ADR-011)
+│   │   │   │   └── events.ts        # [F2] notify(tx, …) + LISTEN app_events
 │   │   │   ├── emails/              # [existe] templates React Email
 │   │   │   ├── shared/              # [existe] config, errors, logger, request-context, permissions, scope, crypto, money, pagination, id
 │   │   │   ├── app.ts               # [existe] buildApp(deps)
@@ -95,7 +93,7 @@ bens-seguros-v2/
 │       ├── src/{routes, features, components, api (Orval, gerado), lib, hooks}
 │       └── e2e/                     # [existe] Playwright
 ├── docs/
-├── docker-compose.yml               # dev: postgres, mailpit (+ minio até a F0)
+├── docker-compose.yml               # dev: postgres, mailpit
 ├── docker-compose.prod.yml          # caddy, server, postgres, migrate (+ whatsapp [F9])
 ├── Caddyfile  .github/workflows/ci.yml  CLAUDE.md
 ```
@@ -434,7 +432,7 @@ apps/web/src/routes/
 ## 11. Deploy e observabilidade (ADR-008)
 
 ```text
-Local   docker compose up -d → postgres, mailpit (+ minio até a F0)
+Local   docker compose up -d → postgres, mailpit
         pnpm dev             → server (tsx watch :3001) + web (vite :3000, proxy /api e /socket.io)
 Build   apps/server/Dockerfile → uma imagem, dois entrypoints (server.js [existe], whatsapp.js [F9])
         apps/web → vite build → estáticos na imagem do Caddy

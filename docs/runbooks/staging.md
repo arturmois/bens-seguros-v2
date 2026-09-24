@@ -20,7 +20,7 @@ repositório.
    - `SITE_ADDRESS=staging.<domínio>` e `APP_URL=https://staging.<domínio>`;
    - `POSTGRES_PASSWORD`, `APP_DB_PASSWORD`: `openssl rand -hex 24` (caracteres seguros em URL);
    - `BETTER_AUTH_SECRET`: `openssl rand -base64 32`;
-   - `S3_*` do bucket R2 do staging; `SMTP_URL` e `EMAIL_FROM` do Resend.
+   - `SMTP_URL` e `EMAIL_FROM` do Resend.
 3. `chmod 600 .env`. O arquivo nunca vai para o git (`.gitignore`).
 
 ## Subir a pilha
