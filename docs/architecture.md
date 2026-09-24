@@ -88,7 +88,7 @@ bens-seguros-v2/
 │   │   │   ├── server.ts            # [existe] entrypoint `api`
 │   │   │   └── whatsapp.ts          # [F9] entrypoint `whatsapp` (ADR-012)
 │   │   ├── test/                    # [existe] app de teste, factories, withTwoTenants, schema e arquitetura
-│   │   └── scripts/export-openapi.ts
+│   │   └── scripts/export-openapi.ts # [existe] openapi.json sem subir o server (base do `pnpm api:generate`)
 │   └── web/
 │       ├── src/{routes, features, components, api (Orval, gerado), lib, hooks}
 │       └── e2e/                     # [existe] Playwright
