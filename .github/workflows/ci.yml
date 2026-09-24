@@ -105,6 +105,10 @@ jobs:
       MIGRATION_DATABASE_URL: postgresql://bens:bens@localhost:5432/bens
       SMTP_URL: smtp://localhost:1025
       EMAIL_FROM: Bens Seguros <nao-responda@bensseguros.local>
+      # Production self-serve sign-up requires Turnstile: Cloudflare's always-pass test keys.
+      SIGNUP_MODE: self_serve
+      TURNSTILE_SITE_KEY: 1x00000000000000000000AA
+      TURNSTILE_SECRET_KEY: 1x0000000000000000000000000000000AA
 
     steps:
       - uses: actions/checkout@v7

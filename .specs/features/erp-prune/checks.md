@@ -42,7 +42,7 @@ Proof: `rg -n -i "minio" docker-compose.yml` exits 1
 Proof: `rg -n -i "minio|S3_" .github/workflows/ci.yml` exits 1
 
 **C9** - `scripts/staging-smoke.mjs all` termina com exit code `0` e a lista de módulos carregados na imagem não inclui `infrastructure/pdf.js` nem `infrastructure/storage.js` (AC 6)
-Proof: `node scripts/staging-smoke.mjs all` exits 0
+Proof: `node scripts/staging-smoke.mjs up && node scripts/staging-smoke.mjs all` exits 0 (corrected after round 1: `all` does not start the stack; claim unchanged)
 Proof: `rg -n "infrastructure/(pdf|storage)" scripts/staging-smoke.mjs` exits 1
 
 ### S2 - a API de membros não expõe comissão · 12 files · 153 KB · ~38k
@@ -194,3 +194,4 @@ to existing tests. Nothing else may change.
 - **Progress:** S4 C28-C30 green (29 files, 272 tests; only the 2 listed tests left, 2 new ones entered)
 - **Blocked:** C9 red - the `server` container exits with `TURNSTILE_SECRET_KEY`/`TURNSTILE_SITE_KEY: Required when NODE_ENV is production and SIGNUP_MODE is self_serve`. Pre-existing since `152bf11` (signup-gates): `docker-compose.prod.yml` never passed `SIGNUP_MODE`/`TURNSTILE_*` to the server, at `<base>` included. Not caused by this feature; awaiting the user's call.
 - **Progress (round 2):** C31 green (landing copy); AC 17 added with the user after round 1
+- **Progress (round 2):** C9 green after `staging-signup-env` (smoke `up && all` exits 0, 84 e2e passed)

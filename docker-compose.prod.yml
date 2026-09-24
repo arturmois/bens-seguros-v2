@@ -54,6 +54,10 @@ services:
       DATABASE_URL: postgresql://bens_app:${APP_DB_PASSWORD}@postgres:5432/${POSTGRES_DB}
       SMTP_URL: ${SMTP_URL:?}
       EMAIL_FROM: ${EMAIL_FROM:?}
+      # Production self-serve sign-up requires both Turnstile keys; the server exits without them.
+      SIGNUP_MODE: ${SIGNUP_MODE:-self_serve}
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:?}
+      TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:?}
     healthcheck:
       test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:3001/api/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
       interval: 10s

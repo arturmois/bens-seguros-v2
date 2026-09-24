@@ -29,6 +29,13 @@ const COMPOSE = [
   ENV_FILE,
 ]
 const MAILPIT = process.env.E2E_MAILPIT_URL ?? 'http://localhost:8025'
+// Cloudflare's always-pass Turnstile test keys; they accept the token XXXX.DUMMY.TOKEN.XXXX
+// (https://developers.cloudflare.com/turnstile/troubleshooting/testing/).
+const TURNSTILE_TEST_ENV = [
+  'SIGNUP_MODE=self_serve',
+  'TURNSTILE_SITE_KEY=1x00000000000000000000AA',
+  'TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA',
+]
 const PASSWORD = 'senha-segura-123'
 
 function localEnv() {
@@ -51,9 +58,18 @@ function localEnv() {
         'SMTP_URL=smtp://host.docker.internal:1025',
         'EMAIL_FROM="Bens Seguros <nao-responda@bensseguros.local>"',
         'LOG_LEVEL=warn',
+        ...TURNSTILE_TEST_ENV,
         '',
       ].join('\n'),
     )
+  }
+  // A file generated before sign-up needed Turnstile keeps its secrets and gains the keys.
+  const current = readFileSync(ENV_FILE, 'utf8')
+  const missing = TURNSTILE_TEST_ENV.filter(
+    (line) => !new RegExp(`^${line.split('=')[0]}=`, 'm').test(current),
+  )
+  if (missing.length > 0) {
+    writeFileSync(ENV_FILE, `${current.replace(/\n?$/, '\n')}${missing.join('\n')}\n`)
   }
   return Object.fromEntries(
     readFileSync(ENV_FILE, 'utf8')
@@ -141,11 +157,11 @@ async function emailLink(to) {
 async function signedIn() {
   clearRateLimits()
   const email = `staging-${randomUUID()}@example.com`
-  const signUp = await post('/api/auth/sign-up/email', {
-    name: 'Maria Souza',
-    email,
-    password: PASSWORD,
-  })
+  const signUp = await post(
+    '/api/auth/sign-up/email',
+    { name: 'Maria Souza', email, password: PASSWORD },
+    { 'x-captcha-response': 'XXXX.DUMMY.TOKEN.XXXX' },
+  )
   if (signUp.status !== 200) throw new Error(`sign-up: ${signUp.status}`)
   const verify = await fetch(await emailLink(email), { redirect: 'manual' })
   if (verify.status !== 302) throw new Error(`verify-email: ${verify.status}`)
@@ -444,7 +460,7 @@ const steps = {
       'referrer-policy': 'strict-origin-when-cross-origin',
       'x-frame-options': 'DENY',
       'content-security-policy':
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+        "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-src https://challenges.cloudflare.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
     }
     for (const [name, value] of Object.entries(expected)) {
       assert(response.headers.get(name) === value, `${name}: ${response.headers.get(name)}`)

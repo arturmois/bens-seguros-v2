@@ -2,7 +2,7 @@
 
 Staging é o mesmo `docker-compose.prod.yml` da produção, numa VPS, com outro `SITE_ADDRESS`
 (ADR-008). Nada aqui roda sozinho: cada passo é executado por quem tem acesso à VPS, com o ok do
-responsável pelo projeto. A validação local da mesma pilha é `node scripts/staging-smoke.mjs all`.
+responsável pelo projeto. A validação local da mesma pilha é `node scripts/staging-smoke.mjs up` seguido de `node scripts/staging-smoke.mjs all` (o `all` não sobe a pilha).
 
 Pré-requisitos na VPS: Docker Engine com o plugin Compose, as portas 80 e 443 livres e acesso ao
 repositório.
@@ -20,7 +20,8 @@ repositório.
    - `SITE_ADDRESS=staging.<domínio>` e `APP_URL=https://staging.<domínio>`;
    - `POSTGRES_PASSWORD`, `APP_DB_PASSWORD`: `openssl rand -hex 24` (caracteres seguros em URL);
    - `BETTER_AUTH_SECRET`: `openssl rand -base64 32`;
-   - `SMTP_URL` e `EMAIL_FROM` do Resend.
+   - `SMTP_URL` e `EMAIL_FROM` do Resend;
+   - `TURNSTILE_SECRET_KEY` e `TURNSTILE_SITE_KEY` do site no Cloudflare Turnstile (o compose não sobe sem elas).
 3. `chmod 600 .env`. O arquivo nunca vai para o git (`.gitignore`).
 
 ## Subir a pilha

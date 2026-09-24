@@ -80,6 +80,8 @@ export async function emailLink(to: string, subject: string) {
 export async function signUp(api: APIRequestContext, email = uniqueEmail(), name = NAME) {
   const response = await api.post('/api/auth/sign-up/email', {
     data: { name, email, password: PASSWORD, callbackURL: '/login' },
+    // Cloudflare's always-pass test secret accepts this token; ignored when Turnstile is off.
+    headers: { 'x-captcha-response': 'XXXX.DUMMY.TOKEN.XXXX' },
   })
   expect(response.status()).toBe(200)
   return { email, password: PASSWORD, name }
