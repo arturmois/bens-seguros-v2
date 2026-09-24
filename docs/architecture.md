@@ -67,9 +67,9 @@ bens-seguros-v2/
 │   │   │   │   ├── organizations/   # [existe] org, membros, convites, carteira, onboarding, branding; status [F10]
 │   │   │   │   ├── audit/           # [existe] trilha sem PII
 │   │   │   │   ├── billing/         # [existe, sai na F10] só o trial do onboarding (Plan/Subscription)
-│   │   │   │   ├── contacts/        # [F2] contato por telefone, lead, dono, fila de leads, consentimento
-│   │   │   │   ├── conversations/   # [F2] conversa, mensagem, estado × responsável, handoff
-│   │   │   │   ├── channels/        # [F2] canais, status de conexão, adapters Web Chat [F3] e WhatsApp [F9]
+│   │   │   │   ├── contacts/        # [existe] contato por telefone E.164, dono; fila de leads [F5], consentimento [F3]
+│   │   │   │   ├── conversations/   # [existe] conversa, mensagem, estado × responsável; handoff [F3/F5]
+│   │   │   │   ├── channels/        # [existe] canal Web Chat padrão; conexão e adapters Web Chat [F3] e WhatsApp [F9]
 │   │   │   │   ├── ai/              # [F4] provider, job ai.reply, tools, AiRun, limites
 │   │   │   │   ├── sales/           # [F6] oportunidade, etapas do Kanban [F7]
 │   │   │   │   ├── followups/       # [F8] próximo contato, pendências
@@ -118,7 +118,7 @@ Arquivos que só aparecem quando o problema existe:
   `tx` de `db.withTenant` e aplica `scopeFor(ctx)` quando há carteira.
 - `<entidade>.jobs.ts`: workers e crons do módulo.
 - Regra rica ganha **só** o arquivo que pede, como função pura: `conversations/conversation-state.ts`
-  [F2], `sales/opportunity-stages.ts` [F7].
+  [existe], `sales/opportunity-stages.ts` [F7].
 - Uma integração usada por um só módulo mora no módulo: `ai/provider.ts` [F4] (único arquivo que
   importa o SDK do provider), `channels/whatsapp/baileys.ts` [F9].
 - Um arquivo por use case só quando `<entidade>.ts` passar de ~300 linhas.
@@ -152,12 +152,12 @@ export async function claimLead(deps: Deps, ctx: RequestContext, id: string) {
 | Módulo | Responsabilidade | Tabelas |
 | --- | --- | --- |
 | `auth` [existe] | Better Auth em `/api/auth/*` (e-mail/senha, verificação, reset, 2FA, rate limit persistido); sessão → contexto; `GET /me`; organização inicial da sessão (AD-010); termos do usuário do painel; Turnstile, e-mail temporário, `SIGNUP_MODE` | User, Session, Account, Verification, TwoFactor, TermsAcceptance, RateLimit |
-| `organizations` [existe] | Org, membros, convites, quota de usuários, carteira, onboarding (ADMIN + `publicChatKey`), troca da org ativa, papéis do MVP com "≥ 1 ADMIN ativo", branding (nome, logo, cor, saudação). [F2] canal Web Chat padrão no onboarding. [F10] `status`, `trialEndsAt`, `maxUsers` | Organization, Member, Invitation |
+| `organizations` [existe] | Org, membros, convites, quota de usuários, carteira, onboarding (ADMIN + `publicChatKey` + os passos que o `app.ts` injeta, como o canal Web Chat padrão, AD-017), troca da org ativa, papéis do MVP com "≥ 1 ADMIN ativo", branding (nome, logo, cor, saudação). [F10] `status`, `trialEndsAt`, `maxUsers` | Organization, Member, Invitation |
 | `audit` [existe] | `record()` sem PII; ator usuário, `AI` ou `SYSTEM` (AD-013) | AuditLog |
 | `billing` [existe, sai na F10] | Só `startTrial` do onboarding | Plan, Subscription |
-| `contacts` [F2] | Contato por telefone E.164 (único por org), dados do lead, `leadStatus`, dono (`ownerId`), fila de leads, atribuição, consentimento | Contact, ConsentRecord |
-| `conversations` [F2] | Conversa, mensagens, `status` × `handler`, `seq`, handoff, encerrar/reabrir, `receiveInbound`/`sendMessage` | Conversation, Message |
-| `channels` [F2] | Cadastro de canais (`WEB_CHAT`, `WHATSAPP`), status de conexão, adapters de entrada/entrega | Channel, WhatsAppAuthState [F9] |
+| `contacts` [existe] | Contato por telefone E.164 (único por org), dono (`ownerId`) e a transferência de carteira; dados do lead, `leadStatus`, fila de leads, atribuição [F5/F6], consentimento [F3] | Contact, ConsentRecord [F3] |
+| `conversations` [existe] | Conversa, mensagens, `status` × `handler`, `seq`, reabrir, `receiveInbound`/`sendMessage` (AD-015); handoff e encerrar [F3/F5] | Conversation, Message |
+| `channels` [existe] | Canal Web Chat padrão de cada organização; canais `WHATSAPP`, status de conexão e adapters de entrada/entrega [F3/F9] | Channel, WhatsAppAuthState [F9] |
 | `ai` [F4] | Orquestração (`ai.reply`), contexto, tools, adapter do provider, limites | AiRun |
 | `sales` [F6] | Oportunidade (= proposta), etapas do Kanban [F7], ganho/perda | Opportunity |
 | `followups` [F8] | Próximo contato, pendências por consulta | FollowUp |
@@ -187,8 +187,9 @@ ai NÃO importa use cases de escrita de sales (ADR-015)
 - **Efeitos colaterais:** na mesma transação → chamada direta; repetíveis → job via
   `queue.enqueue(tx, …)`; aviso de realtime → `events.notify(tx, …)` [F2]. Não há event bus.
 - **Enforcement:** `test/architecture.spec.ts` falha em import profundo entre módulos, em import de
-  `pg-boss` fora do `queue.ts`, em `app.tenant_id` fora do `database.ts` e em `id` num schema de
-  entrada.
+  `pg-boss` fora do `queue.ts`, em `app.tenant_id` fora do `database.ts`, em `id` num schema de
+  entrada, em ciclo de imports entre módulos, nas arestas proibidas acima e em escrita numa tabela
+  de outro módulo (AD-017).
 
 ---
 
@@ -201,12 +202,12 @@ Organization [existe]  name, slug, publicChatKey, branding(logo bytea, cor, saud
                        [F4] aiEnabled, aiMonthlyTokenLimit · [F10] status, trialEndsAt, maxUsers
 ├─ Member [existe]      role ADMIN | MANAGER | COMMERCIAL
 ├─ Invitation, AuditLog [existe]
-├─ Channel [F2]         kind: WEB_CHAT | WHATSAPP, name, phoneE164?, connectionStatus, aiEnabled
+├─ Channel [existe]     kind: WEB_CHAT (WHATSAPP [F9]), name · [F9] phoneE164?, connectionStatus · [F4] aiEnabled
 │    └─ WhatsAppAuthState [F9]  key, valueEncrypted
-├─ Contact [F2]         phoneE164, name?, email?, leadStatus, ownerId?, interest?, notes?   @@unique(org, phoneE164)
+├─ Contact [existe]     phoneE164, ownerId? · [F4/F6] name?, email?, leadStatus, interest?, notes?   @@unique(org, phoneE164)
 │    ├─ ConsentRecord [F3]  conversationId, channelId, noticeVersion, acceptedAt
-│    ├─ Conversation [F2]   channelId, status, handler, assigneeId?, lastSeq, lastMessageAt, closedAt?
-│    │    └─ Message [F2]   seq, direction, author: CONTACT|AI|HUMAN|SYSTEM, authorUserId?, kind, text?,
+│    ├─ Conversation [existe] channelId, status, handler, assigneeId?, lastSeq, lastMessageAt, closedAt?
+│    │    └─ Message [existe] seq, direction, author: CONTACT|AI|HUMAN|SYSTEM, authorUserId?, kind, text?,
 │    │                      deliveryStatus: PENDING|SENT|FAILED, externalId?, failureReason?
 │    ├─ Opportunity [F6]    stage, title, estimatedValueCents?, ownerId, lostReason?, wonAt?, lostAt?
 │    └─ FollowUp [F8]       opportunityId?, dueAt, note, assigneeId, doneAt?
@@ -317,7 +318,7 @@ em todo desfecho; limite mensal por org.
 ```text
 1. Cadastro   POST /api/auth/sign-up/email (Turnstile + e-mail temporário + SIGNUP_MODE) → verificação → sign-in
 2. Onboarding POST /api/v1/onboarding → Organization (+ publicChatKey) + Member ADMIN + trial →
-              Session.activeOrganizationId → termos · [F2] canal Web Chat padrão
+              Session.activeOrganizationId → termos + canal Web Chat padrão
 3. Login      cookie httpOnly, Secure, SameSite=Lax, host-only; sessão em banco (3 dias, rotação 12 h)
 4. Request    cookie → sessão → Member ativo em activeOrganizationId (requireTenant) → RequestContext
 5. Troca org  POST /api/v1/me/active-organization → valida Member → atualiza a sessão (AD-010)
@@ -345,8 +346,8 @@ server.**
   (o boot falha sem ela em `/api/v1`); snapshot da matriz. Papéis: `ADMIN, MANAGER, COMMERCIAL` [existe], com "≥ 1 ADMIN ativo"
   garantido pelo use case (lock das linhas de ADMIN ativo, `422 LAST_ADMIN`).
 - Carteira: COMMERCIAL vê a própria carteira **e a fila**; a carteira alheia → 404. MANAGER e ADMIN
-  veem tudo. Aplicada por `scopeFor(ctx)` no repository [existe, hoje por `salespersonId`; revisada
-  para `ownerId` + fila na primeira tabela com dono].
+  veem tudo. Aplicada por `scopeFor(ctx)` no repository [existe]: filtro por entidade, `ownerId` + fila
+  (AD-014).
 - Encerrar conversa: COMMERCIAL só as próprias; MANAGER e ADMIN qualquer uma.
 - Organização suspensa ou trial expirado: escrita → 402, leitura liberada [F10, ADR-017].
 

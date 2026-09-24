@@ -23,14 +23,14 @@ flowchart TD
       SETUP --> CH["channels (door 1): createDefaultChannel(tx)"]
     end
     subgraph entrada
-      IN["receiveInbound(deps, input) — conversations (door 3)"] --> PH["shared/phone.ts (door 6): E.164, BR padrão"]
+      IN["receiveInbound(deps, tenant, input) — conversations (door 3)"] --> PH["shared/phone.ts (door 6): E.164, BR padrão"]
       IN --> CT["contacts (door 2): findOrCreateContact(tx, phoneE164)"]
       IN --> ST["conversation-state.ts (door 5): transições puras"]
       IN --> SEQ["lock da conversa + INSERT … ON CONFLICT DO NOTHING (door 4)"]
       IN --> AU["audit (exists): conversation.reopen, SYSTEM"]
     end
     subgraph saída
-      OUT["sendMessage(deps, actor, input) — conversations (door 3)"] --> ST
+      OUT["sendMessage(deps, tenant, input) — conversations (door 3)"] --> ST
       OUT --> SEQ2["UPDATE condicional + INSERT (door 4)"]
     end
     subgraph carteira
@@ -42,7 +42,7 @@ flowchart TD
 
 1. Onboarding: `organizations` (exists) chama os passos de setup que o `app.ts` lhe entrega; o único é `createDefaultChannel(tx)` do `channels` (door 1, door 9), na mesma transação que cria a organização.
 2. Migration: backfill do canal Web Chat de cada organização existente (door 7).
-3. Entrada: o adapter de canal (F3/F9) chama `receiveInbound` do `conversations` com `{ channelId, externalId, fromPhone, kind, text?, sentAt }`. O use case normaliza o telefone (`shared/phone.ts`), acha ou cria o contato (`contacts/index.ts`), acha, reabre ou cria a conversa, trava a linha da conversa e insere a mensagem com `seq = lastSeq + 1` e `ON CONFLICT DO NOTHING` no único parcial de `externalId`. Só quando a mensagem entrou: `status` e `handler` pelas funções puras, `lastSeq` e `lastMessageAt`, e a auditoria `conversation.reopen` (autor `SYSTEM`) se reabriu.
+3. Entrada: o adapter de canal (F3/F9) chama `receiveInbound` do `conversations` com `{ channelId, externalId, fromPhone, kind, text?, sentAt }`. O use case normaliza o telefone (`shared/phone.ts`), acha ou cria o contato (`contacts/index.ts`), acha, reabre ou cria a conversa, trava a linha da conversa e insere a mensagem com `seq = lastSeq + 1` e `ON CONFLICT DO NOTHING` no único parcial de `externalId`; se não entrou (duplicado), a transação inteira é desfeita (door 10) e o use case devolve a mensagem guardada. Só quando a mensagem entrou: `status` e `handler` pelas funções puras, `lastSeq` e `lastMessageAt`, e a auditoria `conversation.reopen` (autor `SYSTEM`) se reabriu.
 4. Saída: `sendMessage` aplica a transição de saída com `UPDATE` condicional (`status <> 'CLOSED'` e a guarda do autor), que também reserva o `seq`; 0 linhas → 404 ou 409. Insere `Message` `OUTBOUND` com `deliveryStatus` `SENT` (Web Chat: entrega na própria transação, ADR-013).
 5. Carteira: `scopeFor(ctx)` devolve o filtro por entidade (door 8); a transferência roda os `portfolioMoves` que o `app.ts` lhe entrega, e o único é `moveContactOwner` do `contacts` (door 9).
 
@@ -98,8 +98,9 @@ One-way constraints:
 | 7. Backfill que passa pelo RLS | na migration, um único `DO $$ … $$` (atômico): `ALTER TABLE "Organization" NO FORCE ROW LEVEL SECURITY`; para cada organização, `set_config('app.tenant_id', id::text, true)` e `INSERT INTO "Channel" … ON CONFLICT DO NOTHING`; `ALTER TABLE "Organization" FORCE ROW LEVEL SECURITY`; `set_config('app.tenant_id', '', true)`. O `INSERT` passa pelo `WITH CHECK` da política do `Channel`, sem exceção nela. Só este arquivo toca em `app.tenant_id` fora do `database.ts` (a regra do `architecture.spec` vale para `src/`) | `INSERT … SELECT FROM "Organization"` direto: hoje funciona porque o dono (`POSTGRES_USER`) é superuser e ignora o RLS, mas com um dono não-superuser o `FORCE` esconderia todas as organizações e o backfill criaria zero canais sem erro; criação preguiçosa no primeiro uso: espalha uma escrita por caminhos de leitura, precisa de trava própria e não prova que toda organização existente tem canal |
 | 8. Carteira por entidade (revisa a AD-009) | `scopeFor(ctx)` devolve `{ contact: Prisma.ContactWhereInput, conversation: Prisma.ConversationWhereInput }`. COMMERCIAL: contato `ownerId = eu OR ownerId IS NULL`; conversa `assigneeId = eu OR handler = QUEUE OR contact.ownerId = eu OR contact.ownerId IS NULL` (decisão do usuário, 2026-09-24). ADMIN e MANAGER: `{}` nos dois. `shared/scope.ts` importa só os tipos de `generated/prisma` | filtro só `assigneeId = eu OR QUEUE`: esconderia do COMMERCIAL a conversa em `AI` de um lead sem dono, que o §19 deixa ele assumir; `scopeFor` genérico por nome de campo: as duas entidades não têm o mesmo campo de dono |
 | 9. Composição sem ciclo | `organizationRoutes({ …, setupOrganization: [createDefaultChannel] })` e `memberRoutes({ …, portfolioMoves: [moveContactOwner] })`, montados no `app.ts`; `organizations` exporta os tipos `OrganizationSetup = (tx) => Promise<void>` e `PortfolioMove` e não importa `channels` nem `contacts`. O `architecture.spec` passa a falhar em ciclo entre módulos | `organizations` importar `channels` e `contacts`: fecha um ciclo assim que o `channels` (F3) ou o `contacts` (F5) tiverem rotas, que importam `requireTenant` do `organizations` |
+| 10. Duplicado desfaz a transação (acrescentado no build) | `receiveInbound` lança um erro interno quando o `INSERT … ON CONFLICT DO NOTHING` não devolve linha; o `withTenant` desfaz contato novo, reabertura e auditoria, e o use case relê a mensagem guardada (`created: false`). O `seq` vem da linha travada (`lastSeq + 1` calculado depois do `FOR UPDATE`, `INSERT … VALUES`), o que equivale ao `INSERT … SELECT` da door 4 | devolver o `seq` com um `UPDATE lastSeq - 1`: corrige um efeito em vez de não produzi-lo, e a reabertura de uma conversa encerrada por um duplicado ficaria gravada |
 
-- `receiveInbound` e `sendMessage` são o contrato dos canais (ADR-013): a assinatura é door 3/4 e vai para a AD nova.
+- `receiveInbound` e `sendMessage` são o contrato dos canais (ADR-013): a assinatura é door 3/4 e está na AD-015. `canSend` ficou `canSend(conversation, sender)`, com `sender = { author, userId? }`.
 - Nada mais nesta mudança é difícil de reverter.
 
 ## Criteria
@@ -159,7 +160,7 @@ Toda organização tem exatamente um canal Web Chat.
 
 27. WHEN uma mensagem do cliente chega numa conversa `CLOSED` THEN the system SHALL reabri-la na mesma linha (`status` `OPEN`, `closedAt` nulo), manter todas as mensagens anteriores e gravar a nova com `seq` = `lastSeq` anterior + 1
 28. WHEN a conversa reaberta estava com `handler` `HUMAN` e um `assigneeId` THEN the system SHALL deixá-la com `handler` `QUEUE` e `assigneeId` nulo, nunca com o humano anterior
-29. WHEN uma conversa é reaberta THEN the system SHALL registrar `conversation.reopen` com autor `SYSTEM` e `changes` só com `status`, `handler` e `assigneeId` (antes e depois), sem texto nem telefone
+29. WHEN uma conversa é reaberta THEN the system SHALL registrar `conversation.reopen` com autor `SYSTEM` e `changes` só com `status` e `handler` (antes e depois) e, quando havia responsável, `previousAssigneeId`, sem texto nem telefone (ajustado no build por decisão do usuário, 2026-09-24: a auditoria recusa `null`)
 30. WHEN 5 mensagens chegam em paralelo numa conversa `CLOSED` THEN the system SHALL reabrir a mesma conversa uma única vez (um registro `conversation.reopen`), manter uma só conversa não encerrada para o contato e o canal, e gravar as 5 mensagens com `seq` contíguo
 31. WHILE a IA não existe (F4), the system SHALL decidir o `handler` da conversa nova e da reaberta por `reopenHandler({ aiAvailable: false })`, que devolve `QUEUE`
 

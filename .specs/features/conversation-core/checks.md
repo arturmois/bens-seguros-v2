@@ -14,7 +14,7 @@ Provas rodam em `apps/server` (`pnpm exec vitest run <arquivo> -t "<nome>"`). "E
 **C1** - `POST /api/v1/onboarding` cria exatamente um `Channel` na nova organização, com `kind` `WEB_CHAT` e `name` `Web Chat` (door 1, door 9, AC 1)
 Proof: `src/modules/organizations/onboarding.spec.ts -t "creates the default web chat channel"`
 
-**C2** - Se a transação do onboarding falha depois do passo do canal (o `record` de auditoria lança), nenhuma `Organization` nem `Channel` fica gravado (mesma transação) (door 9, AC 1)
+**C2** - Se a transação do onboarding falha depois do passo do canal (um segundo passo de setup, depois de `createDefaultChannel`, lança), nenhuma `Organization` nem `Channel` fica gravado (mesma transação) (door 9, AC 1; meio da falha ajustado no build: o `record` não tem ponto de falha sem mock)
 Proof: `src/modules/organizations/onboarding.spec.ts -t "rolls the default channel back with the organization"`
 
 **C3** - Num schema construído pelas migrations anteriores, com três organizações semeadas e o dono das tabelas trocado por um papel **não-superuser** (`SET ROLE` para um papel `NOSUPERUSER NOBYPASSRLS` dono do schema, de modo que o `FORCE` vale para ele), aplicar a migration da F2 deixa exatamente um `Channel` `WEB_CHAT` `Web Chat` por organização (3 linhas, 3 `organizationId` distintos) (door 7, AC 2)
@@ -107,7 +107,7 @@ Proof: `src/modules/conversations/inbound.spec.ts -t "reopens a closed conversat
 **C30** - A conversa `CLOSED` com `handler` `HUMAN` e `assigneeId` do comercial X é reaberta com `handler` `QUEUE` e `assigneeId` nulo (door 5, AC 28)
 Proof: `src/modules/conversations/inbound.spec.ts -t "reopens a closed conversation and keeps its history"`
 
-**C31** - A reabertura grava uma linha `conversation.reopen` com `actorType` `SYSTEM`, `actorUserId` nulo, `entityId` da conversa e `changes` exatamente `{ status: ['CLOSED', 'OPEN'], handler: ['HUMAN', 'QUEUE'], assigneeId: [X, null] }`, sem as chaves `text` e `phoneE164`; uma entrada numa conversa aberta não grava auditoria (door 5, AC 29)
+**C31** - A reabertura grava uma linha `conversation.reopen` com `actorType` `SYSTEM`, `actorUserId` nulo, `entityId` da conversa e `changes` exatamente `{ status: ['CLOSED', 'OPEN'], handler: ['HUMAN', 'QUEUE'], previousAssigneeId: X }`, sem as chaves `text` e `phoneE164`; reaberta de `QUEUE` (sem responsável), `changes` é exatamente `{ status: ['CLOSED', 'OPEN'], handler: ['QUEUE', 'QUEUE'] }`; uma entrada numa conversa aberta não grava auditoria (door 5, AC 29; formato de `assigneeId` trocado por `previousAssigneeId` por decisão do usuário, 2026-09-24: o `audit.record` recusa `null`)
 Proof: `src/modules/conversations/inbound.spec.ts -t "records the reopen as a system action"`
 Proof: `src/modules/conversations/inbound.spec.ts -t "appends the next seq to the open conversation"`
 
@@ -250,3 +250,5 @@ The repo answers both questions, so no new rows: CLAUDE.md fixes "regra pura: te
 ## Handoff
 
 - S1 15k + S2 10k + S3 12k + S4 8k + S5 8k + S6 4k + S7 12k + S8 15k ≈ 84k tokens (≈ 335 KB entre `schema.prisma`, a migration nova, `schema.spec.ts` 30 KB, `architecture.spec.ts` 11 KB, os módulos novos `channels`/`contacts`/`conversations` e seus specs, `onboarding`, `member`, `scope`, `phone`, `app.ts`), under the 150k budget - one builder
+
+- **Settled mid-build:** C2 - a falha depois do passo do canal é um segundo passo de setup que lança (o `record` não tem ponto de falha sem mock); C31 - `previousAssigneeId: X` no lugar de `assigneeId: [X, null]` (decisão do usuário, 2026-09-24), porque o `audit.record` recusa `null`
