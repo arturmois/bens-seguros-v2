@@ -68,6 +68,8 @@ F5 ─▶ F6 Leads/Comercial ─▶ F7 Kanban ─▶ F8 Follow-up ─▶ F9 What
 
 ## Marco — Staging publicado (antes da F3)
 
+> **Concluído em 2026-09-24:** `https://staging.bensseg.com`, deploy automático verde; cadastro, confirmação por e-mail e login feitos no navegador.
+
 - **Objetivo:** a pilha do `docker-compose.prod.yml` numa VPS, pelo tutorial `docs/runbooks/deploy.md`. O deploy automático (staging a cada push verde em `main`, produção por tag) já existe: feature `.specs/features/cd-vps/`.
 - **Dependências:** F0; VPS e DNS (ação do responsável pelo projeto).
 - **Critério:** `https://staging.<domínio>` responde; `/api/health` ok; login e onboarding funcionam.
