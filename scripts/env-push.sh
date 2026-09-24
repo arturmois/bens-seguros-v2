@@ -36,11 +36,17 @@ sha256() {
   if command -v sha256sum >/dev/null; then sha256sum | cut -d' ' -f1; else shasum -a 256 | cut -d' ' -f1; fi
 }
 
-# ask <prompt> [default]: the prompt goes to stderr, the answer to stdout.
+# ask <prompt> [default]: the prompt goes to stderr, the answer to stdout. ASK_SILENT=1 hides the
+# typing (secrets).
 ask() {
   local answer
   printf '%s: ' "$1" >&2
-  IFS= read -r answer || true
+  if [ "${ASK_SILENT:-}" = 1 ]; then
+    IFS= read -rs answer || true
+    printf '\n' >&2
+  else
+    IFS= read -r answer || true
+  fi
   answer=${answer:-${2:-}}
   [ -n "$answer" ] || die "resposta vazia: $1"
   printf '%s' "$answer"
@@ -51,10 +57,10 @@ ask() {
 if [ ! -f "$file" ]; then
   say "$file não existe; gerando (as senhas são criadas aqui)"
   domain=$(ask "Domínio do $environment (ex.: staging.seudominio.com.br)")
-  resend_key=$(ask "Chave de API do Resend (re_...)")
+  resend_key=$(ASK_SILENT=1 ask "Chave de API do Resend (re_...)")
   sender=$(ask "Remetente dos e-mails" "nao-responda@${domain#*.}")
   turnstile_site=$(ask "Turnstile: site key")
-  turnstile_secret=$(ask "Turnstile: secret key")
+  turnstile_secret=$(ASK_SILENT=1 ask "Turnstile: secret key")
   postgres_password=$(openssl rand -hex 24)
   app_db_password=$(openssl rand -hex 24)
   auth_secret=$(openssl rand -base64 32)

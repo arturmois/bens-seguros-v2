@@ -3,7 +3,7 @@
 Profile: standard
 Plan: `.specs/features/env-push/plan.md`
 
-34 checks in 5 slices · 3 one-way doors · 0 open
+35 checks in 6 slices · 3 one-way doors · 0 open
 
 Every command runs from the repo root. Proof tool, new in this feature:
 
@@ -137,11 +137,19 @@ Proof: `node scripts/env-push-smoke.mjs runbook` exits 0
 **C34** - `.specs/STATE.md` has an `active` row `AD-012` that names `.env.<ambiente>` and `scripts/env-push.sh` and says the GitHub holds no application secret (door 3)
 Proof: `grep -E '^\| AD-012 \|.*\.env\.<ambiente>.*scripts/env-push\.sh.*GitHub.*\| active \|' .specs/STATE.md` exits 0
 
+### S6 - achados da verificação, rodada 1 · 2 files · ~25 KB · ~6k
+
+Acrescentado depois do FAIL da rodada 1 (`verification.md`, mutante P1). Nenhum check anterior foi alterado.
+
+**C35** - With a valid `.env.staging` present, `bash -c 'scripts/env-push.sh staging; cat'` fed five junk lines exits `0`, its stdout ends with the five lines (the script consumed none of stdin), and stderr holds no `Domínio` prompt (AC 4)
+Proof: `node scripts/env-push-smoke.mjs existing` exits 0
+
 ## Coverage
 
 | Set (size) | Member -> proof | Unproven |
 | --- | --- | --- |
 | keys of `.env.prod.example` (14) | C6, table-driven over all 14; C1 key-set equality | - |
+| stdin with an existing file (2) | not rewritten C4 · not consumed C35 | - |
 | generated values (3) | `POSTGRES_PASSWORD` C2 · `APP_DB_PASSWORD` C2 · `BETTER_AUTH_SECRET` C2 | - |
 | answers read (5) | domain C3 · Resend key C3 · sender C3 · Turnstile site C3 · Turnstile secret C3 | - |
 | usage errors (4) | no arg C5 · unknown env C5 · extra arg C5 · unknown flag C5 | - |
@@ -191,3 +199,4 @@ proven only by the first push that should have been refused.
 
 - S1-S5 ≈ 30k (script ~7 KB, smoke ~18 KB, runbook ~25 KB, `staging-smoke.mjs` ~22 KB read, plan/checks ~25 KB), under the 150k budget - one builder
 - Mechanism: one builder (under budget, no ask)
+- **Round 1 fix (after `verification.md` FAIL):** C35 added for P1 (stdin not consumed when the file exists); the secret prompts (Resend key, Turnstile secret) no longer echo (`read -s`), as the Landing row 2 promised. Known text slips left as they are, since the proofs read the list from the file: `.env.prod.example` has 15 keys, not 14 (C1, C6, Coverage); an unreachable ssh exits through `|| state=$?` and the `*)` branch, not `set -e` (Swept).

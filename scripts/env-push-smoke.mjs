@@ -161,8 +161,8 @@ function writeRemote(text) {
   writeFileSync(REMOTE_ENV, text, { mode: 0o600 })
 }
 
-function run(args, { input = '', env = {} } = {}) {
-  const result = spawnSync(join(REPO, 'scripts/env-push.sh'), args, {
+function run(args, { input = '', env = {}, command = join(REPO, 'scripts/env-push.sh') } = {}) {
+  const result = spawnSync(command, args, {
     cwd: SCRATCH,
     input,
     encoding: 'utf8',
@@ -269,7 +269,7 @@ const steps = {
     }
   },
 
-  // C4
+  // C4, C35
   existing() {
     fresh()
     const text = envText()
@@ -278,6 +278,16 @@ const steps = {
     assert(result.code === 0, `sends the existing file (${result.stderr.trim()})`)
     assert(read(LOCAL) === text, '.env.staging is byte-identical')
     assert(read(REMOTE_ENV) === text, 'the remote .env is the existing file')
+
+    // C35: nothing of stdin is consumed - a `cat` after the script in the same shell gets it all.
+    const junk = 'junk-1\njunk-2\njunk-3\njunk-4\njunk-5\n'
+    const shared = run(['-c', `${join(REPO, 'scripts/env-push.sh')} staging; cat`], {
+      input: junk,
+      command: 'bash',
+    })
+    assert(shared.code === 0, `script then cat: exits 0 (${shared.stderr.trim()})`)
+    assert(shared.stdout.endsWith(junk), 'the five stdin lines reach the cat after the script')
+    assert(!shared.stderr.includes('Domínio'), 'no prompt is printed')
   },
 
   // C5
