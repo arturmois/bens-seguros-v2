@@ -14,4 +14,5 @@ export const GetMe200PermissionsItem = {
   'invitation:create': 'invitation:create',
   'member:update': 'member:update',
   'portfolio:transfer': 'portfolio:transfer',
+  'conversation:read': 'conversation:read',
 } as const;

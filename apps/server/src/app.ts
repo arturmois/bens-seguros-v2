@@ -15,6 +15,7 @@ import { createRealtime, type Realtime } from './infrastructure/realtime.ts'
 import { authRoutes, headersOf, resolveSession } from './modules/auth/index.ts'
 import { createDefaultChannel } from './modules/channels/index.ts'
 import { moveContactOwner } from './modules/contacts/index.ts'
+import { conversationRoutes } from './modules/conversations/index.ts'
 import {
   assertRouteDeclaresPermission,
   brandingRoutes,
@@ -118,6 +119,7 @@ export function buildApp(deps: Deps) {
   app.register(brandingRoutes(deps))
   app.register(invitationRoutes(deps))
   app.register(memberRoutes({ ...deps, portfolioMoves: [moveContactOwner] }))
+  app.register(conversationRoutes(deps))
 
   return app
 }
