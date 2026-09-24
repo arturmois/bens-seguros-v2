@@ -96,6 +96,8 @@ jobs:
   deploy-staging:
     needs: build
     uses: ./.github/workflows/deploy-environment.yml
+    # The called job reads its environment's secrets only if the caller passes them on.
+    secrets: inherit
     permissions:
       contents: read
       packages: read
@@ -171,6 +173,7 @@ jobs:
   deploy-production:
     needs: promote
     uses: ./.github/workflows/deploy-environment.yml
+    secrets: inherit
     permissions:
       contents: read
       packages: read
@@ -226,6 +229,7 @@ jobs:
   redeploy:
     needs: resolve
     uses: ./.github/workflows/deploy-environment.yml
+    secrets: inherit
     permissions:
       contents: read
       packages: read
