@@ -234,6 +234,36 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: verification.md round 1 I1 - CLAUDE.md:15 (withoutTenant claimed for identity tables) (harness)
 - last seen: 2026-09-23T16:07:31Z
 
+### L-038 - A claim listing several terms needs one presence proof per term; proving one term let a mutant delete the other two.
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
+- features: erp-prune
+- evidence: checks C31 round 2 (checks)
+- last seen: 2026-09-24T01:53:02Z
+
+### L-039 - When a phase criterion says 'no living reference to X', sweep the whole tree for X before writing checks, not a hand-picked file list.
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
+- features: erp-prune
+- evidence: roadmap F0 criterion / round 1 (checks)
+- last seen: 2026-09-24T01:53:03Z
+
+### L-040 - The staging smoke proof is 'up' then 'all'; 'all' alone never starts the stack.
+- signal: `gate_fail` · recurrence: 1 feature(s) · scope: `staging` · harmful: 0
+- features: erp-prune
+- evidence: C9 / scripts/staging-smoke.mjs ORDER (staging)
+- last seen: 2026-09-24T01:53:03Z
+
+### L-041 - A new required config variable must be wired in docker-compose.prod.yml, the staging smoke env and the CI e2e env in the same change.
+- signal: `spec_deviation` · recurrence: 1 feature(s) · scope: `config` · harmful: 0
+- features: staging-signup-env
+- evidence: 152bf11 signup-gates (config)
+- last seen: 2026-09-24T01:53:03Z
+
+### L-042 - Sanity-check every search-based proof with a known-positive match first; in this shell plain rg exits 1 even on a match.
+- signal: `gate_fail` · recurrence: 1 feature(s) · scope: `tooling` · harmful: 0
+- features: erp-prune
+- evidence: rg proofs, round 1 build (tooling)
+- last seen: 2026-09-24T01:53:03Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

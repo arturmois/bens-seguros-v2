@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 38,
+  "next_id": 43,
   "lessons": [
     {
       "id": "L-001",
@@ -674,6 +674,96 @@
       ],
       "created": "2026-09-23T16:07:31Z",
       "last_seen": "2026-09-23T16:07:31Z"
+    },
+    {
+      "id": "L-038",
+      "key": "surviving_mutant::a claim listing several terms needs one presence proof per term proving one term let a mutant delete the other two",
+      "text": "A claim listing several terms needs one presence proof per term; proving one term let a mutant delete the other two.",
+      "signal": "surviving_mutant",
+      "scope": "checks",
+      "status": "candidate",
+      "features": [
+        "erp-prune"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "checks C31 round 2 (checks)"
+      ],
+      "created": "2026-09-24T01:53:02Z",
+      "last_seen": "2026-09-24T01:53:02Z"
+    },
+    {
+      "id": "L-039",
+      "key": "ac_gap::when a phase criterion says no living reference to x sweep the whole tree for x before writing checks not a hand picked file list",
+      "text": "When a phase criterion says 'no living reference to X', sweep the whole tree for X before writing checks, not a hand-picked file list.",
+      "signal": "ac_gap",
+      "scope": "checks",
+      "status": "candidate",
+      "features": [
+        "erp-prune"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "roadmap F0 criterion / round 1 (checks)"
+      ],
+      "created": "2026-09-24T01:53:03Z",
+      "last_seen": "2026-09-24T01:53:03Z"
+    },
+    {
+      "id": "L-040",
+      "key": "gate_fail::the staging smoke proof is up then all all alone never starts the stack",
+      "text": "The staging smoke proof is 'up' then 'all'; 'all' alone never starts the stack.",
+      "signal": "gate_fail",
+      "scope": "staging",
+      "status": "candidate",
+      "features": [
+        "erp-prune"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "C9 / scripts/staging-smoke.mjs ORDER (staging)"
+      ],
+      "created": "2026-09-24T01:53:03Z",
+      "last_seen": "2026-09-24T01:53:03Z"
+    },
+    {
+      "id": "L-041",
+      "key": "spec_deviation::a new required config variable must be wired in docker compose prod yml the staging smoke env and the ci e2e env in the same change",
+      "text": "A new required config variable must be wired in docker-compose.prod.yml, the staging smoke env and the CI e2e env in the same change.",
+      "signal": "spec_deviation",
+      "scope": "config",
+      "status": "candidate",
+      "features": [
+        "staging-signup-env"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "152bf11 signup-gates (config)"
+      ],
+      "created": "2026-09-24T01:53:03Z",
+      "last_seen": "2026-09-24T01:53:03Z"
+    },
+    {
+      "id": "L-042",
+      "key": "gate_fail::sanity check every search based proof with a known positive match first in this shell plain rg exits 1 even on a match",
+      "text": "Sanity-check every search-based proof with a known-positive match first; in this shell plain rg exits 1 even on a match.",
+      "signal": "gate_fail",
+      "scope": "tooling",
+      "status": "candidate",
+      "features": [
+        "erp-prune"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "rg proofs, round 1 build (tooling)"
+      ],
+      "created": "2026-09-24T01:53:03Z",
+      "last_seen": "2026-09-24T01:53:03Z"
     }
   ]
 }
