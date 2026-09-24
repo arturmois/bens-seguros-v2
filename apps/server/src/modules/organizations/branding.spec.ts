@@ -173,6 +173,26 @@ describe('PATCH /api/v1/organization/branding', () => {
     expect((await stored(host.organizationId)).greeting).toBe('Oi')
   })
 
+  it('rejects unknown fields in the branding and logo bodies', async () => {
+    const host = await brokerage()
+    await host.client.patch('/api/v1/organization/branding', { greeting: 'Oi' })
+
+    const branding = await host.client.patch('/api/v1/organization/branding', {
+      greeting: 'Outra',
+      extra: true,
+    })
+    const upload = await host.client.put('/api/v1/organization/logo', {
+      image: image(PNG_SIGNATURE).toString('base64'),
+      logoMimeType: 'image/svg+xml',
+    })
+
+    for (const response of [branding, upload]) {
+      expect(response.statusCode).toBe(400)
+      expect(response.json().error.code).toBe('VALIDATION_ERROR')
+    }
+    expect(await stored(host.organizationId)).toMatchObject({ greeting: 'Oi', logo: null })
+  })
+
   it('clears a branding field sent as null', async () => {
     const host = await brokerage()
     await host.client.patch('/api/v1/organization/branding', {

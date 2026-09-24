@@ -5,7 +5,7 @@ Plan: `.specs/features/f1-identity/plan.md`
 
 Provas do server rodam em `apps/server` (`pnpm exec vitest run <arquivo> -t "<nome>"`); as do web, em `apps/web` (`pnpm exec playwright test <arquivo> -g "<nome>"`).
 
-50 checks in 4 slices · 5 one-way doors · 0 open
+51 checks in 4 slices · 5 one-way doors · 0 open
 
 ## Checks
 
@@ -170,6 +170,9 @@ Proof: `src/modules/organizations/branding.spec.ts -t "rejects a blank greeting 
 **C52** - Um ADMIN da organização B que chama `PATCH …/branding`, `PUT …/logo` e `DELETE …/logo` altera só a organização B; cor, saudação, logo e trilha da organização A ficam iguais (`withTwoTenants`) (AC 14, AC 18, AC 21)
 Proof: `src/modules/organizations/branding.spec.ts -t "writes branding and logo only in the active organization"`
 
+**C53** - `PATCH …/branding` com um campo desconhecido e `PUT …/logo` com um campo desconhecido respondem `400 VALIDATION_ERROR`, e nada é gravado (schemas `.strict()`, CLAUDE.md) (AC 15, AC 19)
+Proof: `src/modules/organizations/branding.spec.ts -t "rejects unknown fields in the branding and logo bodies"`
+
 **C46** - Com o docker compose no ar, o gate do repositório passa depois do último commit, e o `pnpm api:generate` não deixa diff em `apps/web/src/api`
 Proof: `pnpm lint && pnpm typecheck && pnpm test && pnpm build`
 Proof: `bash -c 'pnpm api:generate >/dev/null && git diff --exit-code apps/web/src/api apps/server/openapi.json'`
@@ -196,8 +199,9 @@ Proof: `src/modules/organizations/invitation.spec.ts -t "rejects a second pendin
 | tipos de logo (8) | PNG C29, C30 · JPEG C29, C30 · WebP C29, C30 · SVG C29, C33 · GIF C29 · texto C29, C33 · RIFF sem WEBP C29 · vazio C29 | - |
 | limites do logo (2 bordas) | 204800 C32 · 204801 C32 | - |
 | limites da saudação (2 bordas) | 500 C26 · 501 C26 | - |
-| saudação e corpo inválidos (2) | só espaços C51 · `{}` C51 |
-| isolamento das escritas novas (3) | branding C52 · PUT logo C52 · DELETE logo C52 |
+| saudação e corpo inválidos (2) | só espaços C51 · `{}` C51 | - |
+| isolamento das escritas novas (3) | branding C52 · PUT logo C52 · DELETE logo C52 | - |
+| corpos `.strict()` novos (2) | `PATCH …/branding` C53 · `PUT …/logo` C53 | - |
 | formas inválidas de cor (5) | `1a2b3c` C25 · `#1a2b3` C25 · `#1a2b3cd` C25 · `#gggggg` C25 · `red` C25 | - |
 | escritas de branding × papel sem permissão (6) | branding×MANAGER C28 · branding×COMMERCIAL C28 · PUT logo×MANAGER C28 · PUT logo×COMMERCIAL C28 · DELETE logo×MANAGER C28 · DELETE logo×COMMERCIAL C28 | - |
 | estados da tela `/settings/organization` (5) | sem logo C39 · com logo C39 · erro do upload C40 · sucesso do salvar C41 · só leitura C42 | - |
@@ -260,3 +264,4 @@ Cost: um unitário de magic bytes, além das provas na fronteira. Sem ele, a tab
 - **Ambiente do e2e:** rodado com `vite dev` + server em `tsx watch` contra um banco `bens_e2e` separado (o banco de dev ainda tem o histórico antigo de migrations). `org-web.spec.ts` e `branding.spec.ts`: 49 passam. 13 testes de `register`, `signup-gates`, `two-factor` e `terms` falham nesse ambiente porque `/register` não termina de carregar; arquivos e telas que a F1 não tocou
 - **Rodada 1 do Verifier (FAIL):** acrescentados C50 (mutante `AND active`), C51 (`min(1)` e `refine` sem prova), C52 (`withTwoTenants` nas escritas novas); C47 e o `Surface` de convites sem o `422` que a rota nunca teve
 - **C10 (rodada 1):** o teste HTTP era intermitente (`[200, 403]` legítimo). Por decisão do usuário, duas provas: a da API aceita `422` ou `403` no perdedor; a do use case fixa `LAST_ADMIN`. As duas falham sem o `FOR UPDATE`
+- **Rodada 2 do Verifier (FAIL):** C53 prova o `.strict()` dos dois corpos novos (mutantes sobreviventes); duas linhas da Coverage ganharam a coluna `Unproven`
