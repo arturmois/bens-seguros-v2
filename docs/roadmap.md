@@ -37,7 +37,7 @@ F5 ─▶ F6 Leads/Comercial ─▶ F7 Kanban ─▶ F8 Follow-up ─▶ F9 What
 - **Critério:** Track A sem BROKEN.
 - **Resultado (2026-09-24):** rodado com Q1 = `docs/architecture.md` + `docs/roadmap.md` e Q2 = `A only`. Os relatórios ficam fora do git, em `.harness-eval/runs/2026-09-24-h3/`.
   - Track A: 19 BROKEN no script, todos falso positivo, das mesmas famílias do H2 (diretório checado como arquivo, exemplos genéricos das skills vendoradas, comando de outra stack, `scripts/export-openapi.ts` relativo a `apps/server`, `db:migrate` fora do `package.json` da raiz). Checagem manual: todo helper, caminho e comando do `CLAUDE.md` existe; todo [existe] do `architecture.md` existe e nenhum [Fx] nasceu antes da fase; nenhum doc vivo cita o que a F0 removeu (só a própria F0 e o Apêndice).
-  - **Aplicado:** `scripts/export-openapi.ts`, único arquivo sem marcação na árvore do `architecture.md`, ganhou `[existe]`. Fora do harness: o container órfão do MinIO saiu do ambiente local (`docker compose up -d --remove-orphans`).
+  - **Aplicado:** `scripts/export-openapi.ts`, único arquivo de `apps/server` sem marcação na árvore do `architecture.md`, ganhou `[existe]`. Fora do harness: o container órfão do MinIO saiu do ambiente local (`docker compose up -d --remove-orphans`).
   - **Mantido:** os exemplos genéricos das skills vendoradas (o dono é o upstream, `skills-lock.json`); o Apêndice, que ainda cita MinIO e o `migration.md` (os `plan.md` das Fases 1–4 citam essas seções); `scripts/export-openapi.ts` sem o prefixo `apps/server/` no texto do `architecture.md` e do Apêndice (o contexto é o server).
 
 ## F1 — Identity / Tenant / RBAC
