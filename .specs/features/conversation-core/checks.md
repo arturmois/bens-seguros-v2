@@ -5,7 +5,7 @@ Plan: `.specs/features/conversation-core/plan.md`
 
 Provas rodam em `apps/server` (`pnpm exec vitest run <arquivo> -t "<nome>"`). "Em paralelo" significa chamadas disparadas juntas com `Promise.all`/`Promise.allSettled` sobre o pool real do Prisma (conexões distintas), nunca um laço sequencial.
 
-58 checks in 8 slices · 9 one-way doors · 0 open
+59 checks in 8 slices · 10 one-way doors · 0 open
 
 ## Checks
 
@@ -77,6 +77,9 @@ Proof: `src/modules/conversations/inbound.spec.ts -t "ignores a repeated externa
 
 **C21** - 10 entradas com o mesmo `externalId` em paralelo gravam exatamente 1 mensagem e exatamente 1 resultado `created: true`; todos os 10 devolvem o mesmo `messageId` (door 4, AC 19)
 Proof: `src/modules/conversations/inbound.spec.ts -t "stores one message for concurrent duplicates"`
+
+**C59** - Com a mensagem `externalId` `wa-2` já gravada a partir de um telefone, repetir a entrada `wa-2` a partir de outro telefone devolve `{ created: false }` com o `conversationId` e o `messageId` originais e deixa exatamente 1 contato, 1 conversa e 1 mensagem no tenant: o contato e a conversa do telefone novo são desfeitos com a transação (door 10; acrescentado na rodada 2 da verificação, 2026-09-24: a door 10 nasceu no build e não tinha check)
+Proof: `src/modules/conversations/inbound.spec.ts -t "rolls back a repeated external id from a new phone"`
 
 **C22** - 50 entradas com `externalId` distintos em paralelo na mesma conversa gravam 50 mensagens com `seq` ordenado igual a `[1..50]` e `lastSeq` 50 (door 4, AC 20)
 Proof: `src/modules/conversations/inbound.spec.ts -t "numbers fifty concurrent messages without gaps"`
@@ -207,7 +210,7 @@ Proof: `test/schema.spec.ts -t "keeps a message consistent with its direction, a
 
 | Set (size) | Member -> proof | Unproven |
 | --- | --- | --- |
-| Landing doors (9) | door 1 C1, C6 · door 2 C14, C15 · door 3 C29, C51, C56 · door 4 C20, C21, C22, C58 · door 5 C42, C43, C44, C45, C46 · door 6 C8, C9, C10 · door 7 C3, C4, C5 · door 8 C47, C48 · door 9 C1, C49, C53 | - |
+| Landing doors (10) | door 1 C1, C6 · door 2 C14, C15 · door 3 C29, C51, C56 · door 4 C20, C21, C22, C58 · door 5 C42, C43, C44, C45, C46 · door 6 C8, C9, C10 · door 7 C3, C4, C5 · door 8 C47, C48 · door 9 C1, C49, C53 · door 10 C20, C21, C59 | - |
 | Relations constraints (18) | um WEB_CHAT C6 · telefone único C12 · telefone E.164 C14 · dono é membro C15 · uma conversa aberta C56 · assignee ⇔ HUMAN C51 · closedAt ⇔ CLOSED C51 · assignee é membro C51 · seq único C56 · externalId único C56 · canal da mensagem = da conversa C58 · INBOUND ⇔ CONTACT C58 · INBOUND ⇔ sem deliveryStatus C58 · authorUserId ⇔ HUMAN C58 · TEXT ⇔ texto C58 · RLS nas 4 tabelas C57 · FKs compostas C57 · FK para tabela sem RLS sem cascade C57 | - |
 | unique indexes of ADR-013 + canal (5) | `Message (org, conversation, seq)` C55 · `Message_channel_externalId` C55 · `Conversation_one_open` C55 · `Contact (org, phoneE164)` C55 · `Channel_one_web_chat` C55 | - |
 | `receiveInbound` outcomes (10) | telefone novo C17 · conversa aberta C18 · WAITING → OPEN C19 · CLOSED → reabre C29 · duplicado C20 · telefone inválido C11 · texto inválido C26 · canal fora do tenant C27 · UNSUPPORTED C25 · sem externalId C28 | - |

@@ -25,7 +25,8 @@ describe('portfolio scope', () => {
       seedConversation(deps.db, tenant, data, { ownerId })
     // Seeded in an order unrelated to the expected sets.
     const aiOfB = await seed({ handler: 'AI' }, b.userId)
-    const humanOfA = await seed({ handler: 'HUMAN', assigneeId: a.userId }, null)
+    // Contact of B: only the assignee rule makes it visible to A.
+    const humanOfA = await seed({ handler: 'HUMAN', assigneeId: a.userId }, b.userId)
     const humanOfBContactOfB = await seed({ handler: 'HUMAN', assigneeId: b.userId }, b.userId)
     const queueContactOfB = await seed({ handler: 'QUEUE' }, b.userId)
     const humanOfBContactOfA = await seed({ handler: 'HUMAN', assigneeId: b.userId }, a.userId)
@@ -53,7 +54,7 @@ describe('portfolio scope', () => {
       new Set([humanOfA.id, queueContactOfB.id, aiOwnerless.id, humanOfBContactOfA.id]),
     )
     expect(new Set(commercial.contactOwners)).toEqual(new Set([a.userId, null]))
-    expect(commercial.contactOwners).toHaveLength(3)
+    expect(commercial.contactOwners).toHaveLength(2)
 
     const manager = await visible({ ...a, role: 'MANAGER', permissions: permissionsFor('MANAGER') })
     expect(manager.conversations).toEqual(

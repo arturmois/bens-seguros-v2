@@ -184,6 +184,20 @@ describe('receiveInbound', () => {
     expect(await messagesOf(deps.db, tenant, original.conversationId)).toHaveLength(2)
   })
 
+  it('rolls back a repeated external id from a new phone', async () => {
+    const tenant = await freshTenant()
+    const original = await inbound(deps.db, tenant, { externalId: 'wa-2' })
+
+    const repeated = await inbound(deps.db, tenant, { externalId: 'wa-2' })
+
+    expect(repeated).toEqual({
+      conversationId: original.conversationId,
+      messageId: original.messageId,
+      created: false,
+    })
+    expect(await rowsOf(tenant)).toEqual({ contacts: 1, conversations: 1, messages: 1 })
+  })
+
   it('stores one message for concurrent duplicates', async () => {
     const tenant = await freshTenant()
     const phone = randomPhone()
