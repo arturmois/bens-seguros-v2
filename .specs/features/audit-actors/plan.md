@@ -26,7 +26,7 @@ Reusa o `audit.record` e o denylist que já existem; só o autor muda de forma.
 | domain | termo novo: **ator** da auditoria - `USER` (um usuário, com `actorUserId`), `AI` ou `SYSTEM` (sem usuário). Vive no `audit` |
 | domain | `actorUserId` deixa de ser sempre preenchido. Quem ramifica nele hoje: ninguém lê `AuditLog` fora dos testes (`audit.spec.ts`, `branding.spec.ts`, `member.spec.ts`, `invitation.spec.ts`, `organization.spec.ts`, `onboarding.spec.ts`); nenhuma rota expõe a trilha |
 | stored data | backfill na migration: toda linha existente ganha `actorType = 'USER'` (todas têm `actorUserId`) |
-| callers | os 7 chamadores atuais de `record` passam um contexto com `userId` e continuam iguais |
+| callers | as 10 chamadas atuais de `record` (7 ações) passam um contexto com `userId` e continuam iguais |
 
 ## Relations
 
