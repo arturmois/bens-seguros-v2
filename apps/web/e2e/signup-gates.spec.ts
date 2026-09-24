@@ -39,6 +39,49 @@ test.describe('signup gates', () => {
     ).toBeVisible()
   })
 
+  // C1 (feature `turnstile-center`): the stub draws a 300 px box, the size of the real widget.
+  test('centers the turnstile widget', async ({ page }) => {
+    // Layout only: no session, so the page does not depend on the server being up.
+    await page.route('**/api/v1/me', (route) =>
+      route.fulfill({ status: 401, json: { code: 'UNAUTHENTICATED' } }),
+    )
+    await page.route('**/api/public/signup-config', (route) =>
+      route.fulfill({
+        json: { signupMode: 'self_serve', turnstileSiteKey: '1x00000000000000000000AA' },
+      }),
+    )
+    await page.route('**/turnstile/v0/api.js**', (route) =>
+      route.fulfill({
+        contentType: 'application/javascript',
+        body: `
+          window.turnstile = {
+            render(container) {
+              const box = document.createElement('div')
+              box.dataset.turnstile = 'box'
+              box.style.width = '300px'
+              box.style.height = '65px'
+              container.appendChild(box)
+              return 'widget-e2e'
+            },
+            reset() {},
+            remove() {},
+            getResponse() { return undefined },
+            isExpired() { return false },
+          }
+          window.onloadTurnstileCallback?.()
+        `,
+      }),
+    )
+    await page.goto('/register')
+    const box = await page.locator('[data-turnstile="box"]').boundingBox()
+    const form = await page.locator('form').boundingBox()
+    expect(box).not.toBeNull()
+    expect(form).not.toBeNull()
+    if (!box || !form) return
+    expect(form.width).toBeGreaterThan(box.width + 20)
+    expect(Math.abs(box.x + box.width / 2 - (form.x + form.width / 2))).toBeLessThanOrEqual(1)
+  })
+
   test('requires the turnstile token', async ({ page }) => {
     await page.route('**/api/public/signup-config', (route) =>
       route.fulfill({

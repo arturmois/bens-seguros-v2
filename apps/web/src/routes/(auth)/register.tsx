@@ -124,6 +124,7 @@ function RegisterForm({ siteKey }: { siteKey: string | null }) {
           <Turnstile
             ref={turnstile}
             siteKey={siteKey}
+            className="flex justify-center"
             options={{ language: 'pt-br' }}
             onSuccess={setToken}
             onExpire={() => setToken(undefined)}
