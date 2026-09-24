@@ -65,8 +65,8 @@ pelo seu hostname.
 
 1. No painel da Hostinger (hPanel), vá em **VPS** e contrate ou selecione o plano.
 2. Escolha o datacenter mais próximo dos seus usuários.
-3. Em **Sistema operacional**, escolha **Ubuntu 24.04 LTS** (o template limpo). Existe um
-   template "Ubuntu 24.04 with Docker"; se usá-lo, pule a instalação do Docker mais abaixo, mas
+3. Em **Sistema operacional**, escolha **Ubuntu 24.04 LTS** ou **26.04 LTS** (o template limpo;
+   o repositório oficial do Docker atende os dois). Existe um template "Ubuntu 24.04 with Docker"; se usá-lo, pule a instalação do Docker mais abaixo, mas
    confira que `docker compose version` funciona (o plugin, com espaço, e não o antigo
    `docker-compose`).
 4. Defina uma senha forte de root e, se o assistente oferecer, adicione sua chave SSH pessoal.
@@ -89,19 +89,21 @@ ssh root@203.0.113.10
 
 ## Proteger a VPS
 
-Ainda como root, atualize o sistema e crie um usuário administrador para você:
+Ainda como root, atualize o sistema e crie um usuário administrador para você, `ops` (não use `admin`: o Ubuntu já tem um grupo com esse nome e o `adduser` falha):
 
 ```bash
 apt update && apt full-upgrade -y
 timedatectl set-timezone America/Sao_Paulo
-adduser admin
-usermod -aG sudo admin
-rsync --archive --chown=admin:admin ~/.ssh /home/admin
+adduser ops
+usermod -aG sudo ops
+rsync --archive --chown=ops:ops ~/.ssh /home/ops
+[ -f /var/run/reboot-required ] && echo "PRECISA REBOOT" || echo "sem reboot"
 ```
 
-**Abra outro terminal e confirme que `ssh admin@203.0.113.10` funciona e que `sudo -v` aceita a
-senha antes de continuar.** O próximo passo desliga o login de root e por senha; se o acesso do
-`admin` não estiver funcionando, você perde o acesso SSH (sobra o terminal do navegador no hPanel).
+**Abra outro terminal e confirme que `ssh -t ops@203.0.113.10 'sudo -v && echo SUDO_OK'` mostra
+`SUDO_OK` antes de continuar.** Se apareceu `PRECISA REBOOT`, rode `reboot` na sessão de root depois
+dessa confirmação e espere um minuto. O próximo passo desliga o login de root e por senha; se o acesso do
+`ops` não estiver funcionando, você perde o acesso SSH (sobra o terminal do navegador no hPanel).
 
 Desligue o login por senha e o de root:
 
@@ -199,7 +201,7 @@ sudo install -d -o deploy -g deploy -m 750 /opt/bens-seguros
 
 **Atenção:** quem está no grupo `docker` tem, na prática, poder de root na máquina. Por isso a
 chave desse usuário fica só no GitHub, com as restrições da seção "Chave SSH do deploy", e você
-continua entrando como `admin`.
+continua entrando como `ops`.
 
 A pasta `/opt/bens-seguros` é o `DEPLOY_PATH`. Depois do primeiro deploy ela contém:
 
@@ -224,7 +226,7 @@ portas 80 e 443 estão abertas nos dois firewalls. Faça o DNS antes do primeiro
 
 ## .env
 
-Os segredos da aplicação ficam só na VPS. Entre como `admin`, vire o usuário `deploy` e crie o
+Os segredos da aplicação ficam só na VPS. Entre como `ops`, vire o usuário `deploy` e crie o
 arquivo a partir do modelo `.env.prod.example` do repositório:
 
 ```bash
@@ -269,7 +271,7 @@ Uma chave por ambiente, criada **na sua máquina**, sem senha (o GitHub precisa 
 ssh-keygen -t ed25519 -N "" -C "github-actions-staging" -f ~/.ssh/bens-deploy-staging
 ```
 
-Instale a chave pública na VPS (como `admin`), com a opção `restrict`, que proíbe port
+Instale a chave pública na VPS (como `ops`), com a opção `restrict`, que proíbe port
 forwarding, agent forwarding e terminal interativo (o deploy continua podendo rodar comandos e
 copiar arquivos):
 
@@ -277,7 +279,7 @@ copiar arquivos):
 # na sua máquina: copie a linha que aparecer
 cat ~/.ssh/bens-deploy-staging.pub
 
-# na VPS, como admin: troque <CHAVE PÚBLICA> pela linha copiada
+# na VPS, como ops: troque <CHAVE PÚBLICA> pela linha copiada
 sudo install -d -o deploy -g deploy -m 700 /home/deploy/.ssh
 echo 'restrict <CHAVE PÚBLICA>' | sudo tee /home/deploy/.ssh/authorized_keys
 sudo chown deploy:deploy /home/deploy/.ssh/authorized_keys
@@ -298,7 +300,7 @@ ssh-keyscan -t ed25519 203.0.113.10 > known_hosts-staging
 ssh-keygen -lf known_hosts-staging
 ```
 
-Na VPS (sessão `admin` ou o terminal do navegador no hPanel), compare com:
+Na VPS (sessão `ops` ou o terminal do navegador no hPanel), compare com:
 
 ```bash
 ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
