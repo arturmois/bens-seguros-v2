@@ -1,13 +1,11 @@
 # Runbook: deploy na VPS (staging e produção)
 
-Tutorial completo para pôr o Bens Seguros no ar numa VPS da Hostinger com deploy automático pelo
-GitHub (ADR-008). Faça tudo uma vez para o **staging**; a produção repete os mesmos passos numa
-segunda VPS, com outros valores.
+Põe o Bens Seguros no ar numa VPS da Hostinger, com deploy automático pelo GitHub (ADR-008). Faça
+tudo uma vez para o **staging**; a produção repete os passos numa segunda VPS, trocando `staging`
+por `production` e os valores.
 
-Nada aqui roda sozinho: cada comando é executado por quem tem acesso à VPS e ao GitHub. A
-validação local da mesma pilha é `node scripts/staging-smoke.mjs up` seguido de
-`node scripts/staging-smoke.mjs all`; a do script de deploy é `node scripts/deploy-smoke.mjs up`
-seguido de `node scripts/deploy-smoke.mjs all`.
+Validação local da mesma pilha: `node scripts/staging-smoke.mjs up` e depois `… all`; do script
+de deploy: `node scripts/deploy-smoke.mjs up` e depois `… all`.
 
 ## Visão geral
 
@@ -22,96 +20,49 @@ flowchart LR
     M --> E
 ```
 
-Três caminhos, todos em `.github/workflows/deploy.yml`:
+- **Staging:** todo push em `main` com CI verde publica as imagens `sha-<SHA>` e instala.
+- **Produção:** uma tag `vX.Y.Z` num commit de `main` dá às mesmas imagens a tag da versão e
+  instala depois da sua aprovação.
+- **Redeploy e rollback:** Actions → Deploy → Run workflow, com qualquer tag que já existe.
 
-1. **Staging automático.** Todo push em `main` que passa no CI (lint, typecheck, testes, build e
-   e2e) gera três imagens no GHCR (o registro de imagens do GitHub) com a tag `sha-<SHA do commit>`
-   e instala essa versão no staging.
-2. **Produção por tag.** Uma tag `vX.Y.Z` num commit de `main` dá às **mesmas** imagens a tag da
-   versão, sem recompilar, e instala na produção depois da sua aprovação no GitHub.
-3. **Redeploy e rollback.** Em Actions → Deploy → Run workflow você escolhe o ambiente e qualquer
-   tag que já existe.
-
-Em cada ambiente, o GitHub entra na VPS por SSH, copia três arquivos para a pasta de deploy e roda
-`scripts/deploy-remote.sh`. O script baixa as imagens, aplica as migrations e sobe a pilha do
-`docker-compose.prod.yml`. Se a imagem não existe ou a migration falha, ele para antes de trocar o
-`server`, e a versão anterior continua no ar. No fim, o GitHub pede `/api/health` de fora da VPS.
-
-Onde fica cada coisa:
+O GitHub entra na VPS como `deploy`, copia três arquivos e roda `scripts/deploy-remote.sh`, que
+baixa as imagens, aplica as migrations e sobe o `docker-compose.prod.yml`. Se o pull ou a
+migration falha, a versão anterior continua no ar.
 
 | O quê | Onde |
 | --- | --- |
-| Código, workflows, compose | este repositório |
-| Imagens `server`, `migrate` e `web` | GHCR, em `ghcr.io/arturmois/bens-seguros-v2/...` |
 | Acesso SSH a cada VPS | environments `staging` e `production` do GitHub |
-| Segredos da aplicação (senhas, chaves) | só no `.env` da VPS, nunca no GitHub |
+| Segredos da aplicação | `.env` da VPS e a sua cópia `.env.staging` (nunca no GitHub) |
 | Versão instalada | `deploy.env` na pasta de deploy da VPS |
 
 ## Pré-requisitos
 
 - Uma VPS KVM da Hostinger por ambiente, com pelo menos 2 GB de RAM.
-- Um domínio em que você edita o DNS, por exemplo `staging.seudominio.com.br` para o staging e
-  `app.seudominio.com.br` para a produção.
-- Uma conta no Resend com o domínio de envio verificado (é o SMTP dos e-mails de cadastro e
-  convite).
-- Um widget do Cloudflare Turnstile (o captcha do cadastro) com o hostname de cada ambiente.
-- Acesso de administrador ao repositório `arturmois/bens-seguros-v2` no GitHub.
-- Na sua máquina: `ssh`, `ssh-keygen` e `git`.
-
-## Como ler os comandos
-
-Cada bloco de comando diz **onde** rodar. São quatro lugares:
-
-| Onde | Como chegar | Prompt |
-| --- | --- | --- |
-| 💻 sua máquina | o terminal do seu computador, na pasta que quiser | o do seu terminal |
-| 🖥️ VPS, como `root` | `ssh root@203.0.113.10` (só até a seção "Proteger a VPS" desligar o login de root) | `root@srv…:~#` |
-| 🖥️ VPS, como `ops` | `ssh ops@203.0.113.10` (seu usuário administrador, criado em "Proteger a VPS") | `ops@srv…:~$` |
-| 🖥️ VPS, como `deploy` | já dentro como `ops`: `sudo -iu deploy`; para voltar a ser `ops`: `exit` | `deploy@srv…:~$` |
-
-Os comandos usam **valores de exemplo**. Troque sempre:
-
-- `203.0.113.10` pelo IP da sua VPS (hPanel → VPS → visão geral);
-- `staging.seudominio.com.br` pelo nome real do seu staging (ex.: `staging.bensseguros.com.br`);
-- `seudominio.com.br` pelo seu domínio.
-
-Um comando com o valor de exemplo não dá erro óbvio: o `dig`, por exemplo, só devolve vazio.
+- Um domínio com DNS editável (ex.: `staging.seudominio.com.br`).
+- Resend com o domínio de envio verificado, e a chave de API.
+- Um widget do Cloudflare Turnstile com o hostname do ambiente (site key e secret key).
+- Admin no repositório `arturmois/bens-seguros-v2`; na sua máquina, `ssh`, `openssl` e este
+  repositório clonado.
 
 ## Criar a VPS na Hostinger
 
-1. No painel da Hostinger (hPanel), vá em **VPS** e contrate ou selecione o plano.
-2. Escolha o datacenter mais próximo dos seus usuários.
-3. Em **Sistema operacional**, escolha **Ubuntu 24.04 LTS** ou **26.04 LTS** (o template limpo;
-   o repositório oficial do Docker atende os dois). Existe um template "Ubuntu 24.04 with Docker"; se usá-lo, pule a instalação do Docker mais abaixo, mas
-   confira que `docker compose version` funciona (o plugin, com espaço, e não o antigo
-   `docker-compose`).
-4. Defina uma senha forte de root e, se o assistente oferecer, adicione sua chave SSH pessoal.
-   Para adicionar depois: VPS → **Gerenciar** → **Configurações** → **Chaves SSH** →
-   **Adicionar chave SSH**.
-5. Anote o IPv4 (e o IPv6, se houver) que aparece na visão geral da VPS.
+hPanel → **VPS**: sistema **Ubuntu 24.04 LTS** ou **26.04 LTS** (template limpo), senha de root
+forte e a sua chave SSH pessoal (VPS → Gerenciar → Configurações → Chaves SSH). Anote o IPv4.
 
-Se ainda não tem uma chave SSH pessoal, crie e cole o conteúdo do `.pub` no hPanel.
+Sem chave pessoal ainda:
 
-**Onde:** 💻 sua máquina.
+**💻 sua máquina**
 
 ```bash
 ssh-keygen -t ed25519 -C "seu-nome@sua-maquina"
 cat ~/.ssh/id_ed25519.pub
 ```
 
-Primeiro acesso.
-
-**Onde:** 💻 sua máquina.
-
-```bash
-ssh root@203.0.113.10
-```
+Nos comandos, troque `203.0.113.10` pelo IP da VPS e `staging.seudominio.com.br` pelo seu nome.
 
 ## Proteger a VPS
 
-Ainda como root, atualize o sistema e crie um usuário administrador para você, `ops` (não use `admin`: o Ubuntu já tem um grupo com esse nome e o `adduser` falha).
-
-**Onde:** 🖥️ VPS, como `root` (prompt `root@srv…:~#`).
+**🖥️ VPS, como root** (`ssh root@203.0.113.10`)
 
 ```bash
 apt update && apt full-upgrade -y
@@ -119,85 +70,56 @@ timedatectl set-timezone America/Sao_Paulo
 adduser ops
 usermod -aG sudo ops
 rsync --archive --chown=ops:ops ~/.ssh /home/ops
-[ -f /var/run/reboot-required ] && echo "PRECISA REBOOT" || echo "sem reboot"
 ```
 
-**Abra outro terminal e confirme que `ssh -t ops@203.0.113.10 'sudo -v && echo SUDO_OK'` mostra
-`SUDO_OK` antes de continuar.** Se apareceu `PRECISA REBOOT`, rode `reboot` na sessão de root depois
-dessa confirmação e espere um minuto. O próximo passo desliga o login de root e por senha; se o acesso do
-`ops` não estiver funcionando, você perde o acesso SSH (sobra o terminal do navegador no hPanel).
+Antes de seguir, confirme que o `ops` entra **pela chave** (o próximo passo desliga senha e root):
 
-Desligue o login por senha e o de root. A partir daqui, tudo na VPS é como `ops`: saia da sessão
-de root (`exit`) e entre com `ssh ops@203.0.113.10`.
-
-**Onde:** 🖥️ VPS, como `ops` (prompt `ops@srv…:~$`).
+**💻 sua máquina**
 
 ```bash
-sudo tee /etc/ssh/sshd_config.d/99-hardening.conf <<'EOF'
+ssh -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no -t ops@203.0.113.10 'sudo -v && echo SUDO_OK'
+```
+
+Sem `SUDO_OK`, pare. Se `/var/run/reboot-required` existe, rode `reboot` como root agora.
+
+Daqui em diante, tudo na VPS é como `ops` (`ssh ops@203.0.113.10`).
+
+**🖥️ VPS, como ops**
+
+```bash
+sudo tee /etc/ssh/sshd_config.d/01-hardening.conf <<'EOF'
 PermitRootLogin no
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 EOF
 sudo sshd -t && sudo systemctl restart ssh
+sudo sshd -T | grep -Ei '^(permitrootlogin|passwordauthentication|kbdinteractiveauthentication)'
 ```
 
-Firewall do painel (primeira camada). Em VPS → **Segurança** → **Firewall** → **Adicionar
-firewall**, crie um chamado `bens` e adicione regras **accept** para:
+As três linhas precisam dizer `no`. O nome `01-` importa: o `sshd` usa o primeiro valor que lê, e
+a imagem traz um `50-cloud-init.conf` com `PasswordAuthentication yes`.
 
-- TCP `22` (SSH), com origem **qualquer**: o GitHub Actions conecta de IPs que mudam;
-- TCP `80` (HTTP, usado pelo Let's Encrypt e pelo redirect para HTTPS);
-- TCP `443` (HTTPS);
-- UDP `443` (HTTP/3).
+Firewall do painel: VPS → **Segurança** → **Firewall**, regras **accept** para TCP `22` (origem
+qualquer: o GitHub muda de IP), TCP `80`, TCP `443` e UDP `443`. Ative.
 
-Ative o firewall. Ele bloqueia tudo o que não tem regra de accept, e a mudança vale em até dois
-minutos.
-
-Firewall da própria VPS (segunda camada).
-
-**Onde:** 🖥️ VPS, como `ops` (prompt `ops@srv…:~$`).
+**🖥️ VPS, como ops**
 
 ```bash
-sudo ufw allow OpenSSH
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw allow 443/udp
-sudo ufw enable
-```
-
-Portas publicadas por containers passam por fora do `ufw` (limitação do Docker). Por isso o
-`docker-compose.prod.yml` só publica as portas do Caddy; o `server` e o Postgres não têm porta no
-host. Não acrescente `ports:` a eles.
-
-Atualizações de segurança automáticas.
-
-**Onde:** 🖥️ VPS, como `ops` (prompt `ops@srv…:~$`).
-
-```bash
-sudo apt install -y unattended-upgrades
+sudo ufw allow OpenSSH && sudo ufw allow 80/tcp && sudo ufw allow 443/tcp && sudo ufw allow 443/udp
+sudo ufw --force enable
 sudo dpkg-reconfigure -plow unattended-upgrades
-```
-
-Opcional: `sudo apt install -y fail2ban` bloqueia IPs que erram o login SSH repetidamente (a
-configuração padrão já protege o `sshd`).
-
-Com 2 GB de RAM ou menos, crie um swap para um pico de memória não derrubar o server.
-
-**Onde:** 🖥️ VPS, como `ops` (prompt `ops@srv…:~$`).
-
-```bash
-sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
-sudo mkswap /swapfile && sudo swapon /swapfile
+sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ```
 
+O swap é para VPS de 2 GB; rode uma vez só. Portas de container passam por fora do `ufw`: não
+acrescente `ports:` ao `server` nem ao `postgres` no compose.
+
 ## Instalar o Docker
 
-Repositório oficial do Docker (documentação: docs.docker.com, "Install Docker Engine on Ubuntu").
-
-**Onde:** 🖥️ VPS, como `ops` (prompt `ops@srv…:~$`).
+**🖥️ VPS, como ops**
 
 ```bash
-sudo apt update
 sudo apt install -y ca-certificates curl
 sudo install -m 0755 -d /etc/apt/keyrings
 sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
@@ -212,23 +134,12 @@ Signed-By: /etc/apt/keyrings/docker.asc
 EOF
 sudo apt update
 sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-sudo systemctl enable --now docker
-```
-
-Confira.
-
-**Onde:** 🖥️ VPS, como `ops` (prompt `ops@srv…:~$`).
-
-```bash
-sudo docker run --rm hello-world
-docker compose version
+sudo docker run --rm hello-world && docker compose version
 ```
 
 ## Usuário de deploy
 
-O GitHub entra na VPS como um usuário próprio, `deploy`, que só serve para isso.
-
-**Onde:** 🖥️ VPS, como `ops` (prompt `ops@srv…:~$`).
+**🖥️ VPS, como ops**
 
 ```bash
 sudo adduser --disabled-password --gecos "" deploy
@@ -236,255 +147,155 @@ sudo usermod -aG docker deploy
 sudo install -d -o deploy -g deploy -m 750 /opt/bens-seguros
 ```
 
-**Atenção:** quem está no grupo `docker` tem, na prática, poder de root na máquina. Por isso a
-chave desse usuário fica só no GitHub, com as restrições da seção "Chave SSH do deploy", e você
-continua entrando como `ops`.
-
-A pasta `/opt/bens-seguros` é o `DEPLOY_PATH`. Depois do primeiro deploy ela contém:
-
-- `docker-compose.prod.yml`, `deploy-remote.sh` e `docker/postgres/init/01-app-role.sh`, copiados
-  pelo GitHub a cada deploy;
-- `.env`, escrito por você na próxima seção;
-- `deploy.env` (a versão instalada) e `deploy.env.previous` (a anterior), escritos pelo script.
+Quem está no grupo `docker` tem poder de root: a chave do `deploy` fica só no GitHub e na sua
+máquina, e você continua entrando como `ops`. `/opt/bens-seguros` é o `DEPLOY_PATH`.
 
 ## DNS
 
-1. No editor de zona DNS do seu domínio (na Hostinger: **Domínios** → seu domínio → **DNS /
-   Nameservers**), crie um registro `A` de `staging` apontando para o IPv4 da VPS. Se a VPS tem
-   IPv6, crie também o `AAAA`.
-2. Espere o nome resolver para a VPS. **Onde:** 💻 sua máquina (com o nome real, não o de
-   exemplo). O resultado esperado é o IP da VPS; vazio quer dizer que o registro ainda não
-   propagou (espere alguns minutos) ou que o nome está errado.
+Crie um registro `A` de `staging` para o IPv4 da VPS (e `AAAA` se houver IPv6). Espere resolver:
 
-   ```bash
-   dig +short staging.seudominio.com.br
-   ```
-
-O Caddy só consegue o certificado HTTPS do Let's Encrypt quando o nome já aponta para a VPS e as
-portas 80 e 443 estão abertas nos dois firewalls. Faça o DNS antes do primeiro deploy.
-
-## .env
-
-Os segredos da aplicação ficam só na VPS. Entre como `ops`, vire o usuário `deploy` e crie o
-arquivo a partir do modelo `.env.prod.example` do repositório.
-
-**Onde:** 🖥️ VPS, começando como `ops`; o primeiro comando troca para `deploy`, e o resto roda como
-`deploy`.
+**💻 sua máquina**
 
 ```bash
-sudo -iu deploy
-cd /opt/bens-seguros
-curl -fsSL https://raw.githubusercontent.com/arturmois/bens-seguros-v2/main/.env.prod.example -o .env
-chmod 600 .env
-nano .env
+dig +short staging.seudominio.com.br    # precisa mostrar o IP da VPS
 ```
 
-Preencha todos os valores:
-
-| Variável | Valor |
-| --- | --- |
-| `SITE_ADDRESS` | `staging.seudominio.com.br` (sem `https://`) |
-| `APP_URL` | `https://staging.seudominio.com.br` |
-| `HTTP_PORT`, `HTTPS_PORT` | `80` e `443` |
-| `POSTGRES_USER`, `POSTGRES_DB` | `bens` |
-| `POSTGRES_PASSWORD`, `APP_DB_PASSWORD` | cada um com `openssl rand -hex 24` (caracteres seguros em URL) |
-| `BETTER_AUTH_SECRET` | `openssl rand -base64 32` |
-| `SMTP_URL` | `smtps://resend:<RESEND_API_KEY>@smtp.resend.com:465` |
-| `EMAIL_FROM` | `"Bens Seguros <nao-responda@seudominio.com.br>"`, com o domínio verificado no Resend |
-| `SIGNUP_MODE` | `self_serve` |
-| `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | as do widget do Turnstile com esse hostname (o server não sobe sem elas) |
-| `LOG_LEVEL` | `info` |
-
-Regras:
-
-- **Permissão 600 é obrigatória.** O script de deploy se recusa a rodar com o `.env` legível por
-  outros usuários.
-- Cada ambiente tem os próprios valores; nunca reutilize senhas entre staging e produção.
-- `APP_DB_PASSWORD` só é aplicada no primeiro boot do volume do Postgres. Para trocar depois, veja
-  "Operação do dia a dia".
-- Guarde uma cópia dos valores num gerenciador de senhas: se a VPS for perdida, você precisa
-  deles para recriar o ambiente.
+O Caddy só obtém o certificado HTTPS com o DNS certo e as portas 80/443 abertas.
 
 ## Chave SSH do deploy
 
-Uma chave por ambiente, sem senha (o GitHub precisa usá-la sozinho).
+Uma chave por ambiente, sem senha, e a host key da VPS.
 
-**Onde:** 💻 sua máquina.
+**💻 sua máquina**
 
 ```bash
 ssh-keygen -t ed25519 -N "" -C "github-actions-staging" -f ~/.ssh/bens-deploy-staging
-```
-
-Instale a chave pública na VPS (como `ops`), com a opção `restrict`, que proíbe port
-forwarding, agent forwarding e terminal interativo (o deploy continua podendo rodar comandos e
-copiar arquivos). Primeiro, copie a linha que este comando mostrar.
-
-**Onde:** 💻 sua máquina.
-
-```bash
+ssh-keyscan -t ed25519 203.0.113.10 > ~/.ssh/bens-known_hosts-staging
+ssh-keygen -lf ~/.ssh/bens-known_hosts-staging
 cat ~/.ssh/bens-deploy-staging.pub
 ```
 
-Depois, troque `<CHAVE PÚBLICA>` pela linha copiada (mantenha as aspas simples).
-
-**Onde:** 🖥️ VPS, como `ops` (prompt `ops@srv…:~$`).
-
-```bash
-sudo install -d -o deploy -g deploy -m 700 /home/deploy/.ssh
-echo 'restrict <CHAVE PÚBLICA>' | sudo tee /home/deploy/.ssh/authorized_keys
-sudo chown deploy:deploy /home/deploy/.ssh/authorized_keys
-sudo chmod 600 /home/deploy/.ssh/authorized_keys
-```
-
-Teste.
-
-**Onde:** 💻 sua máquina.
-
-```bash
-ssh -i ~/.ssh/bens-deploy-staging deploy@203.0.113.10 'docker compose version'
-```
-
-Agora a **impressão digital do servidor** (host key). O GitHub só aceita conectar numa VPS cuja
-chave ele já conhece; isso impede que alguém se passe pelo seu servidor.
-
-**Onde:** 💻 sua máquina.
-
-```bash
-ssh-keyscan -t ed25519 203.0.113.10 > known_hosts-staging
-ssh-keygen -lf known_hosts-staging
-```
-
-Compare com a impressão digital vista de dentro da VPS.
-
-**Onde:** 🖥️ VPS, como `ops` (ou o terminal do navegador no hPanel).
+**🖥️ VPS, como ops** (troque `<CHAVE PÚBLICA>` pela linha do `.pub`, mantendo as aspas)
 
 ```bash
 ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+sudo install -d -o deploy -g deploy -m 700 /home/deploy/.ssh
+echo 'restrict <CHAVE PÚBLICA>' | sudo tee /home/deploy/.ssh/authorized_keys
+sudo chown deploy:deploy /home/deploy/.ssh/authorized_keys && sudo chmod 600 /home/deploy/.ssh/authorized_keys
 ```
 
-As duas impressões (`SHA256:...`) precisam ser idênticas. Se forem diferentes, pare: você não está
-falando com a sua VPS.
+A impressão digital (`SHA256:…`) da VPS precisa ser igual à do `ssh-keyscan`; se não for, pare.
+O `restrict` proíbe terminal e redirecionamentos, mas deixa rodar comandos e copiar arquivos.
+
+**💻 sua máquina**
+
+```bash
+ssh -i ~/.ssh/bens-deploy-staging -o UserKnownHostsFile=~/.ssh/bens-known_hosts-staging deploy@203.0.113.10 'docker compose version'
+```
+
+## .env
+
+Um comando, da raiz do repositório na sua máquina. Na primeira vez ele pergunta o domínio, a
+chave do Resend, o remetente e as duas chaves do Turnstile, gera as senhas e grava
+`.env.staging` (ignorado pelo git); depois valida e envia para `/opt/bens-seguros/.env`.
+
+**💻 sua máquina**
+
+```bash
+scripts/env-push.sh staging
+```
+
+- Guarde uma cópia do `.env.staging` num gerenciador de senhas.
+- Para mudar um valor depois: edite o `.env.staging` e rode `scripts/env-push.sh staging --apply`.
+- O comando recusa mudar `POSTGRES_USER`, `POSTGRES_DB`, `POSTGRES_PASSWORD` ou `APP_DB_PASSWORD`
+  de uma VPS que já tem banco: elas só valem no primeiro boot do volume.
+- VPS que já tem `.env`: copie-o uma vez para `.env.staging` (`ssh ops@… sudo cat /opt/bens-seguros/.env`).
 
 ## Configurar o GitHub
 
-### Environment `staging`
+Settings → **Environments** → **New environment** → `staging`.
 
-No repositório: **Settings** → **Environments** → **New environment** → `staging`.
-
-Em **Environment secrets**, crie:
+**Environment secrets:**
 
 | Secret | Valor |
 | --- | --- |
-| `SSH_HOST` | o IP da VPS (`203.0.113.10`) |
+| `SSH_HOST` | o IP da VPS |
 | `SSH_USER` | `deploy` |
-| `SSH_PRIVATE_KEY` | o conteúdo inteiro de `~/.ssh/bens-deploy-staging`, incluindo as linhas `BEGIN` e `END` |
-| `SSH_KNOWN_HOSTS` | o conteúdo do arquivo `known_hosts-staging` |
+| `SSH_PRIVATE_KEY` | o conteúdo de `~/.ssh/bens-deploy-staging`, com as linhas `BEGIN` e `END` |
+| `SSH_KNOWN_HOSTS` | o conteúdo de `~/.ssh/bens-known_hosts-staging` |
 
-Em **Environment variables**, crie:
+**Environment variables** (variables, não secrets: o workflow lê `vars.*`):
 
 | Variable | Valor |
 | --- | --- |
 | `DEPLOY_PATH` | `/opt/bens-seguros` |
 | `SITE_URL` | `https://staging.seudominio.com.br` |
 
-Em **Deployment branches and tags**, escolha **Selected branches and tags** e adicione a branch
-`main`.
+**Deployment branches and tags:** Selected → branch `main`.
 
-Depois de colar a chave privada no GitHub, apague a cópia local ou guarde-a num gerenciador de
-senhas.
+Com o `gh`, da sua máquina:
 
-### Environment `production`
+```bash
+gh secret set SSH_HOST --env staging --body 203.0.113.10
+gh secret set SSH_USER --env staging --body deploy
+gh secret set SSH_PRIVATE_KEY --env staging < ~/.ssh/bens-deploy-staging
+gh secret set SSH_KNOWN_HOSTS --env staging < ~/.ssh/bens-known_hosts-staging
+gh variable set DEPLOY_PATH --env staging --body /opt/bens-seguros
+gh variable set SITE_URL --env staging --body https://staging.seudominio.com.br
+```
 
-Mesmo procedimento, com a VPS, a chave (`bens-deploy-production`), o `known_hosts` e o domínio da
-produção. Além disso:
+Environment `production`: o mesmo com os valores da produção, mais **Required reviewers** (quem
+aprova releases) e, em Deployment branches and tags, a tag `v*` e a branch `main`.
 
-- **Required reviewers:** adicione você (e quem mais puder aprovar uma release). O deploy de
-  produção fica esperando até alguém aprovar.
-- **Deployment branches and tags:** **Selected branches and tags**, com a regra de tag `v*` (para
-  as releases) e a branch `main` (para o rollback manual, que roda a partir de `main`).
+Opcionais:
 
-Enquanto a VPS de produção não existe, pode deixar esse environment sem secrets. Uma tag `v*`
-nesse período falha no passo "Preflight" com a mensagem de qual secret falta, sem efeito nenhum.
-
-### Repositório
-
-- **Proteja a `main`:** Settings → Rules → Rulesets → New branch ruleset, alvo `main`, com
-  **Require status checks to pass** marcando o job `ci`. Assim nada entra em `main` sem CI verde.
-- **Proteja as tags de release (opcional):** um tag ruleset para `v*` restringindo quem cria.
-- **Permissões do workflow:** não precisa mudar nada. O `.github/workflows/deploy.yml` declara o mínimo de que
-  precisa em cada job (`packages: write` só para publicar imagens).
-- **Imagens:** depois do primeiro build, as três imagens aparecem em **Packages** no seu perfil.
-  O deploy baixa com o token temporário do próprio job; se aparecer `denied` no pull, abra o
-  pacote → **Package settings** → **Manage Actions access** e dê acesso **Read** ao repositório
-  `bens-seguros-v2`.
+- Ruleset em `main` com **Require status checks** (`ci`): a partir daí nada entra em `main` sem
+  CI verde, e toda mudança passa a chegar por pull request (push direto é recusado).
+- Se o pull na VPS der `denied`: Packages → o pacote → Package settings → Manage Actions access →
+  **Read** para `bens-seguros-v2`.
 
 ## Primeiro deploy
 
-Checklist: DNS resolvendo, portas liberadas nos dois firewalls, `.env` preenchido com permissão
-600, chave do deploy testada, environment `staging` com os quatro secrets e as duas variables.
+Faça um push em `main` (ou re-rode o último **CI** de `main`). Com o CI verde, **Actions** →
+**Deploy** roda `build` e `deploy-staging`, que só termina verde se
+`https://staging.seudominio.com.br/api/health` responder `200`. No primeiro deploy o Caddy ainda
+pede o certificado; se o health check vencer, rode o job de novo.
 
-1. Faça um push em `main` (ou, sem nada para enviar, abra o último run do **CI** em `main` e
-   clique em **Re-run all jobs**).
-2. Quando o CI termina verde, o workflow **Deploy** começa sozinho. Acompanhe em **Actions** →
-   **Deploy**: `build` publica as imagens e `deploy-staging` instala.
-3. No primeiro boot do volume, o Postgres roda `docker/postgres/init/01-app-role.sh` e cria o role
-   `bens_app`; o `migrate` aplica as migrations como dono das tabelas.
-4. O job termina verde só se `https://staging.seudominio.com.br/api/health` responder `200`.
-
-Verifique.
-
-**Onde:** 💻 sua máquina.
+**💻 sua máquina**
 
 ```bash
 curl https://staging.seudominio.com.br/api/health      # {"status":"ok"}
 curl -I http://staging.seudominio.com.br/              # 308 para https://
 ```
 
-No navegador: criar conta, confirmar pelo e-mail, entrar e sair.
-
-**Onde:** 🖥️ VPS, como `deploy` (prompt `deploy@srv…:~$`).
+**🖥️ VPS, como deploy** (`sudo -iu deploy`)
 
 ```bash
-cd /opt/bens-seguros
-cat deploy.env
-docker compose -f docker-compose.prod.yml --env-file .env --env-file deploy.env ps
+cd /opt/bens-seguros && cat deploy.env
+docker compose -f docker-compose.prod.yml --env-file .env --env-file deploy.env ps -a
 ```
 
-`migrate` deve aparecer com `exited (0)`, `server` e `postgres` com `healthy`, `caddy` como
-`running`.
-
-O e2e contra o staging, de uma máquina com o repositório:
-`E2E_BASE_URL=https://staging.seudominio.com.br pnpm e2e`. Ele exige acesso ao Postgres
-(`E2E_DATABASE_URL`) e à caixa de e-mail de teste; sem isso, fique na verificação manual acima.
+`migrate` em `exited (0)`, `server` e `postgres` `healthy`, `caddy` `running`. No navegador:
+criar conta, confirmar pelo e-mail, entrar e sair.
 
 ## Produção por tag
 
-Pré-requisito: a VPS de produção e o environment `production` configurados como nas seções
-anteriores, com os valores da produção.
+Num commit de `main` já testado no staging:
 
-1. Escolha um commit de `main` que já está no staging e foi testado ali.
-2. Crie e envie a tag (versão no formato `vMAJOR.MINOR.PATCH`). **Onde:** 💻 sua máquina, na
-   pasta do repositório.
+**💻 sua máquina**
 
-   ```bash
-   git switch main && git pull
-   git tag -a v0.1.0 -m "v0.1.0"
-   git push origin v0.1.0
-   ```
+```bash
+git switch main && git pull
+git tag -a v0.1.0 -m "v0.1.0"
+git push origin v0.1.0
+```
 
-3. Em **Actions** → **Deploy**, o job `promote` confere que o commit está em `main` e que as
-   imagens `sha-<SHA>` dele existem, e dá a elas a tag `v0.1.0`, com o mesmo conteúdo que o
-   staging recebeu.
-4. `deploy-production` fica em **Waiting**. Clique em **Review deployments** → marque
-   `production` → **Approve and deploy**.
+O job `promote` confere o commit e as imagens `sha-<SHA>` e dá a elas a tag `v0.1.0`;
+`deploy-production` espera em **Review deployments** → **Approve and deploy**. `PATCH` para
+correção, `MINOR` para funcionalidade, `MAJOR` para mudança que quebra.
 
-Números de versão: aumente o `PATCH` para correções, o `MINOR` para funcionalidades novas e o
-`MAJOR` para mudanças que quebram algo para quem usa.
-
-Se o `promote` falhar com `Imagens sha-<SHA> não encontradas: o CI deste commit passou em main?`,
-a tag está num commit que não passou pelo CI em `main`. Apague a tag e crie no commit certo.
-
-**Onde:** 💻 sua máquina, na pasta do repositório.
+`Imagens sha-<SHA> não encontradas` = a tag está num commit sem CI verde em `main`. Apague e
+refaça no commit certo:
 
 ```bash
 git push --delete origin v0.1.0 && git tag -d v0.1.0
@@ -492,62 +303,44 @@ git push --delete origin v0.1.0 && git tag -d v0.1.0
 
 ## Rollback
 
-Em **Actions** → **Deploy** → **Run workflow**:
+Actions → Deploy → **Run workflow**: `main`, o ambiente e a tag anterior (`vX.Y.Z` ou
+`sha-<SHA de 40 caracteres>`; a última está em `deploy.env.previous`). Na produção, espera
+aprovação.
 
-- **Use workflow from:** `main`;
-- **Ambiente:** `staging` ou `production`;
-- **Tag da imagem:** a versão anterior, `vX.Y.Z` ou `sha-<SHA de 40 caracteres>`.
+**A migration não volta.** O rollback troca as imagens, mas o banco fica no schema novo. Só é
+seguro se as migrations desfeitas só acrescentaram; senão, a saída é restaurar o backup (F11). Até
+lá, escreva migrations que só acrescentam e remova o antigo numa release seguinte.
 
-A tag anterior de um ambiente está em `deploy.env.previous` na VPS; a lista completa fica em
-**Packages** e em `git tag`. Na produção, o rollback também espera a aprovação.
-
-**Atenção: a migration não volta.** O rollback troca as imagens, mas o banco continua com o schema
-mais novo. Ele só é seguro quando as migrations da versão desfeita são compatíveis com a versão
-anterior (só acrescentam tabelas e colunas opcionais). Se uma migration apagou ou renomeou algo,
-a versão anterior pode quebrar, e a saída é restaurar o backup do banco, que só existe a partir da
-F11 (ver "Pendências"). Até lá, escreva migrations que só acrescentam: primeiro a versão nova
-passa a usar a estrutura nova; a remoção da antiga vem numa release seguinte.
-
-Sem o GitHub (emergência), na VPS como `deploy`, com um token pessoal clássico do GitHub que tenha
-só o escopo `read:packages`.
-
-**Onde:** 🖥️ VPS, como `deploy` (prompt `deploy@srv…:~$`).
+Sem o GitHub, como `deploy` na VPS, com um token clássico só com `read:packages`:
 
 ```bash
 cd /opt/bens-seguros
-read -rs TOKEN   # cole o token e tecle Enter
+read -rs TOKEN
 printf '%s' "$TOKEN" | IMAGE_REGISTRY=ghcr.io/arturmois/bens-seguros-v2 REGISTRY_USER=<seu-usuario> ./deploy-remote.sh v0.1.0
 unset TOKEN
 ```
 
 ## Operação do dia a dia
 
-Um atalho para o compose com os dois arquivos de variáveis.
-
-**Onde:** 🖥️ VPS, como `deploy` (prompt `deploy@srv…:~$`).
+**🖥️ VPS, como deploy** — um atalho, uma vez:
 
 ```bash
-echo "alias dc='docker compose -f /opt/bens-seguros/docker-compose.prod.yml --env-file /opt/bens-seguros/.env --env-file /opt/bens-seguros/deploy.env'" >> ~/.bashrc
-source ~/.bashrc
+echo "alias dc='docker compose -f /opt/bens-seguros/docker-compose.prod.yml --env-file /opt/bens-seguros/.env --env-file /opt/bens-seguros/deploy.env'" >> ~/.bashrc && source ~/.bashrc
 ```
-
-Todos os comandos da tabela rodam na 🖥️ VPS, como `deploy`.
 
 | Tarefa | Comando |
 | --- | --- |
-| Ver a versão instalada | `cat /opt/bens-seguros/deploy.env` |
-| Estado dos containers | `dc ps` |
-| Logs do server | `dc logs -f --tail 200 server` |
-| Logs do Caddy (certificado, proxy) | `dc logs -f --tail 200 caddy` |
+| Versão instalada | `cat /opt/bens-seguros/deploy.env` |
+| Containers | `dc ps -a` |
+| Logs | `dc logs -f --tail 200 server` (ou `caddy`) |
 | Reiniciar o server | `dc restart server` |
-| Aplicar uma mudança no `.env` | `dc up -d --wait` (recria só o que mudou) |
+| Mudar o `.env` | na sua máquina: `scripts/env-push.sh staging --apply` |
 | Abrir o banco | `dc exec postgres psql -U bens -d bens` |
 | Limpar imagens antigas | `docker image prune -a --filter until=336h` |
 
-Trocar `APP_DB_PASSWORD` num banco que já existe: edite o `.env` e rode o script de role à mão,
-depois recrie o server.
-
-**Onde:** 🖥️ VPS, como `deploy` (prompt `deploy@srv…:~$`).
+Trocar `APP_DB_PASSWORD` de um banco que já existe: edite o `.env` na VPS (como `deploy`), rode o
+comando abaixo e copie o novo valor para o seu `.env.staging`. O `postgres` também é recriado
+(queda de segundos, dados preservados).
 
 ```bash
 cd /opt/bens-seguros
@@ -556,38 +349,32 @@ dc exec -e APP_DB_PASSWORD="$(grep ^APP_DB_PASSWORD= .env | cut -d= -f2)" \
 dc up -d --wait server
 ```
 
-Trocar a chave do deploy: gere uma nova (seção "Chave SSH do deploy"), substitua a linha no
-`authorized_keys` e o secret `SSH_PRIVATE_KEY` do environment.
+Trocar a chave do deploy: gere outra ("Chave SSH do deploy") e troque o `authorized_keys` e o
+secret `SSH_PRIVATE_KEY`.
 
-Reinícios da VPS são seguros: o Docker sobe com a máquina e os serviços têm
-`restart: unless-stopped`.
-
-Recriar o staging do zero: `dc down --volumes` apaga **todos** os dados do staging, inclusive os
-certificados do Caddy. Não repita isso várias vezes seguidas, porque o Let's Encrypt limita
-quantos certificados um mesmo nome pode emitir por semana. Nunca rode na produção.
+`dc down --volumes` apaga **todos** os dados, inclusive os certificados (o Let's Encrypt limita
+emissões por semana). Nunca na produção.
 
 ## Problemas comuns
 
-| Sintoma | Causa provável e solução |
+| Sintoma | Solução |
 | --- | --- |
-| O Deploy não começa depois do push | O CI falhou, ou o push não foi em `main`. O Deploy só roda depois de CI verde num push em `main` deste repositório |
-| Preflight: `SSH_HOST não está configurado no environment ...` | Falta o secret ou a variable citada no environment daquele ambiente |
-| Preflight: `SITE_URL precisa começar com https://` | A variable `SITE_URL` tem `http://` ou está sem esquema; use `https://staging.seudominio.com.br` |
-| `Host key verification failed` | `SSH_KNOWN_HOSTS` errado, ou a VPS foi reinstalada e ganhou outra host key. Refaça o `ssh-keyscan` e confira a impressão digital |
-| `Permission denied (publickey)` | A chave pública não está no `authorized_keys` do `deploy`, as permissões não são 700/600, ou `SSH_USER` está errado |
+| O Deploy não começa | O CI falhou, ou o push não foi em `main` |
+| Preflight: `… não está configurado no environment` | Falta o secret ou a variable citada (`DEPLOY_PATH` e `SITE_URL` são variables) |
+| Preflight: `SITE_URL precisa começar com https://` | Corrija a variable `SITE_URL` |
+| `Host key verification failed` | `SSH_KNOWN_HOSTS` errado ou VPS reinstalada: refaça o `ssh-keyscan` e confira a impressão digital |
+| `Permission denied (publickey)` | Chave fora do `authorized_keys` do `deploy`, permissões diferentes de 700/600, ou `SSH_USER` errado |
 | `deploy: erro: .env precisa de permissão 600` | `chmod 600 /opt/bens-seguros/.env` |
-| `deploy: erro: não foi possível baixar ...` | A tag não existe no GHCR, ou o repositório não tem acesso de leitura ao pacote (ver "Configurar o GitHub", Imagens). Nada foi alterado na VPS |
-| `deploy: erro: migrate falhou` | A migration quebrou. O erro do Prisma está no log do job; a versão anterior continua no ar. Corrija e faça um novo push |
-| O `up` falha esperando o `server` ficar healthy | `dc logs server`: normalmente uma variável faltando ou errada no `.env` |
-| Health check falha no fim do job | DNS não aponta para a VPS, portas 80/443 fechadas num dos firewalls, ou o Caddy não conseguiu o certificado (`dc logs caddy`) |
-| `deploy-production` parado em Waiting | Falta a aprovação em Review deployments |
-| Site com certificado inválido logo após o primeiro deploy | O Caddy ainda está pedindo o certificado; espere um minuto e veja `dc logs caddy` |
+| `deploy: erro: não foi possível baixar …` | Tag inexistente ou pacote sem acesso **Read** do repositório. Nada mudou na VPS |
+| `deploy: erro: migrate falhou` | Erro do Prisma no log do job; a versão anterior continua no ar |
+| O `up` falha esperando o `server` ficar healthy | O site está **fora do ar**: o server antigo já foi trocado. Faça o **Rollback** para a tag de `deploy.env` e veja `dc logs server` (quase sempre uma variável do `.env`) |
+| Health check falha no fim do job | DNS, portas 80/443 num dos firewalls, ou certificado (`dc logs caddy`) |
+| `deploy-production` parado em Waiting | Falta aprovar em Review deployments |
+| `env-push: erro: … difere do .env da VPS` | O `.env.staging` não é a cópia do da VPS; copie de lá (seção `.env`) |
 
 ## Pendências
 
-- **Backup do banco:** `pg_dump` diário para fora da VPS, com retenção de 30 dias e restore
-  testado. É da F11 (roadmap). Até lá os dados do staging são descartáveis, e a produção não deve
-  receber dados reais.
-- **Observabilidade:** Sentry, monitor externo, `/api/ready` e alertas também são da F11. Até lá,
-  o sinal é o health check de cada deploy e os logs (`dc logs`).
+- **Backup do banco:** `pg_dump` diário para fora da VPS, retenção de 30 dias, restore testado
+  (F11). Até lá o staging é descartável e a produção não recebe dados reais.
+- **Observabilidade:** Sentry, monitor externo, `/api/ready` e alertas (F11).
 - **WhatsApp:** o serviço `whatsapp` entra no mesmo compose na F9 (ADR-012).

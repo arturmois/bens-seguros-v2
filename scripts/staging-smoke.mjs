@@ -562,6 +562,7 @@ const steps = {
   },
 
   // C15 (feature `staging`), C34-C35 (feature `cd-vps`): the tutorial replaced the staging runbook.
+  // The deploy key comes before `.env` since `env-push` (C26): the command needs it.
   async runbook() {
     const text = readFileSync('docs/runbooks/deploy.md', 'utf8')
     const headings = [...text.matchAll(/^## (.+)$/gm)].map((match) => match[1])
@@ -573,8 +574,8 @@ const steps = {
       'Instalar o Docker',
       'Usuário de deploy',
       'DNS',
-      '.env',
       'Chave SSH do deploy',
+      '.env',
       'Configurar o GitHub',
       'Primeiro deploy',
       'Produção por tag',
