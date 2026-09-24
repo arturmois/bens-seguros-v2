@@ -27,6 +27,20 @@ function recipient() {
   return `destino-${randomUUID()}@example.com`
 }
 
+function bossSchemaOf(target: Deps) {
+  return `${new URL(target.config.DATABASE_URL).searchParams.get('schema')}_pgboss`
+}
+
+// Test files that ran earlier in this worker schema enqueue e-mails without starting a worker. Their
+// jobs would sit ahead of this test's, and the worker takes one per poll every 2 s, oldest first.
+// Those files have finished (one schema runs its files one after another), so the jobs are nobody's.
+async function clearPendingEmails(target: Deps) {
+  await target.db.$queryRawUnsafe(
+    `DELETE FROM "${bossSchemaOf(target)}".job WHERE name = $1 AND state IN ('created', 'retry')`,
+    SEND_EMAIL,
+  )
+}
+
 let deps: Deps
 
 beforeAll(async () => {
@@ -107,6 +121,7 @@ describe('email.send', () => {
   it('delivers each template through the queue', async () => {
     const queued = await createTestDeps()
     await queued.queue.start()
+    await clearPendingEmails(queued)
     await registerWorkers(queued)
     const cases = [
       { template: 'verify-email' as const, subject: 'Confirme seu e-mail', to: recipient() },
@@ -142,8 +157,9 @@ describe('email.send', () => {
     // Nothing listens on port 1: every SMTP attempt fails.
     const failing = await createTestDeps({ SMTP_URL: 'smtp://127.0.0.1:1' })
     await failing.queue.start()
+    await clearPendingEmails(failing)
     await registerWorkers(failing)
-    const bossSchema = `${new URL(failing.config.DATABASE_URL).searchParams.get('schema')}_pgboss`
+    const bossSchema = bossSchemaOf(failing)
     const to = recipient()
 
     try {
