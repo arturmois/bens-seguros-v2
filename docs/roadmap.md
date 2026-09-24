@@ -45,8 +45,8 @@ F5 ─▶ F6 Leads/Comercial ─▶ F7 Kanban ─▶ F8 Follow-up ─▶ F9 What
 - **Objetivo:** papéis e onboarding do MVP.
 - **Requisitos:** F1, F2, N1 (análise §3); handoff §7, §36–37.
 - **Dependências:** F0.
-- **Mudanças:** papéis `ADMIN | MANAGER | COMMERCIAL` (recria o enum; sai `Member_one_owner`); invariante "≥ 1 ADMIN ativo" (ADR-016); onboarding cria org + ADMIN + trial + canal Web Chat padrão + `publicChatKey`; branding (nome, logo `bytea`, cor, saudação).
-- **Testes:** snapshot da matriz; toda rota com permissão; último ADMIN não pode ser rebaixado, desativado ou removido; onboarding cria o canal; `withTwoTenants` nas rotas novas.
+- **Mudanças:** papéis `ADMIN | MANAGER | COMMERCIAL` (recria o enum; sai `Member_one_owner`); invariante "≥ 1 ADMIN ativo" (ADR-016); onboarding cria org + ADMIN + trial + `publicChatKey`; branding (nome, logo `bytea`, cor, saudação). O canal do Web Chat nasce na F2, com a tabela `Channel` (feature `f1-identity`).
+- **Testes:** snapshot da matriz; toda rota com permissão; último ADMIN não pode ser rebaixado ou desativado (não existe remoção de membro); `withTwoTenants` nas rotas novas.
 - **Critério:** cadastro → org → ADMIN → link do Web Chat visível em settings (ainda sem chat).
 
 ## S1 — Spike: runtime WhatsApp (paralelo a F2/F3, descartável)
@@ -60,7 +60,7 @@ F5 ─▶ F6 Leads/Comercial ─▶ F7 Kanban ─▶ F8 Follow-up ─▶ F9 What
 - **Objetivo:** contato, conversa e mensagem, independentes de canal.
 - **Requisitos:** F3, F6, N2, N3, N4.
 - **Dependências:** F1.
-- **Mudanças:** módulos `contacts`, `conversations`, `channels`; E.164; `receiveInbound`/`sendMessage`; `seq`; dedupe por `externalId`; `conversation-state.ts` (ADR-013, `WAITING` = aguardando o cliente); `infrastructure/events.ts` (`notify(tx)` + `LISTEN` → rooms `org:`, `user:`, `conversation:`); ator não-usuário na auditoria (revisão da AD-008); `scopeFor` por `ownerId` + fila (revisão da AD-009).
+- **Mudanças:** módulos `contacts`, `conversations`, `channels`; tabela `Channel` com o canal Web Chat padrão de cada organização (criado no onboarding e para as organizações existentes); E.164; `receiveInbound`/`sendMessage`; `seq`; dedupe por `externalId`; `conversation-state.ts` (ADR-013, `WAITING` = aguardando o cliente); `infrastructure/events.ts` (`notify(tx)` + `LISTEN` → rooms `org:`, `user:`, `conversation:`); ator não-usuário na auditoria (revisão da AD-008); `scopeFor` por `ownerId` + fila (revisão da AD-009).
 - **Entregáveis:** use cases + API do painel para listar e ler conversas (testes injetam mensagens).
 - **Testes:** todas as transições (unitário); inbound duplicado não duplica; 50 inbounds concorrentes → `seq` contíguo; conversas diferentes em paralelo; conversa fechada reabre e preserva o histórico; evento só após commit (rollback → nenhum evento); `withTwoTenants`, `withTwoSalespeople`.
 - **Critério:** mensagem injetada aparece no socket do painel em < 2 s em teste de integração.

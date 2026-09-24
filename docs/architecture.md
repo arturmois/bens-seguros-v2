@@ -64,7 +64,7 @@ bens-seguros-v2/
 │   │   ├── src/
 │   │   │   ├── modules/
 │   │   │   │   ├── auth/            # [existe] Better Auth, /me, org ativa, termos, gates de cadastro
-│   │   │   │   ├── organizations/   # [existe] org, membros, convites, carteira, onboarding; branding/status [F1, F10]
+│   │   │   │   ├── organizations/   # [existe] org, membros, convites, carteira, onboarding, branding; status [F10]
 │   │   │   │   ├── audit/           # [existe] trilha sem PII
 │   │   │   │   ├── billing/         # [existe, sai na F10] só o trial do onboarding (Plan/Subscription)
 │   │   │   │   ├── contacts/        # [F2] contato por telefone, lead, dono, fila de leads, consentimento
@@ -152,7 +152,7 @@ export async function claimLead(deps: Deps, ctx: RequestContext, id: string) {
 | Módulo | Responsabilidade | Tabelas |
 | --- | --- | --- |
 | `auth` [existe] | Better Auth em `/api/auth/*` (e-mail/senha, verificação, reset, 2FA, rate limit persistido); sessão → contexto; `GET /me`; organização inicial da sessão (AD-010); termos do usuário do painel; Turnstile, e-mail temporário, `SIGNUP_MODE` | User, Session, Account, Verification, TwoFactor, TermsAcceptance, RateLimit |
-| `organizations` [existe] | Org, membros, convites, quota de usuários, carteira, onboarding, troca da org ativa. [F1] papéis do MVP, canal Web Chat no onboarding, branding (nome, logo, cor, saudação). [F10] `status`, `trialEndsAt`, `maxUsers` | Organization, Member, Invitation |
+| `organizations` [existe] | Org, membros, convites, quota de usuários, carteira, onboarding (ADMIN + `publicChatKey`), troca da org ativa, papéis do MVP com "≥ 1 ADMIN ativo", branding (nome, logo, cor, saudação). [F2] canal Web Chat padrão no onboarding. [F10] `status`, `trialEndsAt`, `maxUsers` | Organization, Member, Invitation |
 | `audit` [existe] | `record()` sem PII; ator não-usuário (`AI`/`SYSTEM`) [F2] | AuditLog |
 | `billing` [existe, sai na F10] | Só `startTrial` do onboarding | Plan, Subscription |
 | `contacts` [F2] | Contato por telefone E.164 (único por org), dados do lead, `leadStatus`, dono (`ownerId`), fila de leads, atribuição, consentimento | Contact, ConsentRecord |
@@ -197,9 +197,9 @@ ai NÃO importa use cases de escrita de sales (ADR-015)
 ### Modelo
 
 ```text
-Organization [existe]  name, slug · [F1] publicChatKey, branding(logo bytea, cor, saudação), aiEnabled
-                       [F4] aiMonthlyTokenLimit · [F10] status, trialEndsAt, maxUsers
-├─ Member [existe]      role · [F1] ADMIN | MANAGER | COMMERCIAL
+Organization [existe]  name, slug, publicChatKey, branding(logo bytea, cor, saudação)
+                       [F4] aiEnabled, aiMonthlyTokenLimit · [F10] status, trialEndsAt, maxUsers
+├─ Member [existe]      role ADMIN | MANAGER | COMMERCIAL
 ├─ Invitation, AuditLog [existe]
 ├─ Channel [F2]         kind: WEB_CHAT | WHATSAPP, name, phoneE164?, connectionStatus, aiEnabled
 │    └─ WhatsAppAuthState [F9]  key, valueEncrypted
@@ -271,7 +271,7 @@ pendência é uma consulta (`dueAt <= now AND doneAt IS NULL`).
 
 ### Outros
 
-- **Logo:** `bytea` ≤ 200 KB, tipo confirmado por magic bytes, servido com cache [F1]. Sem storage de
+- **Logo:** `bytea` ≤ 200 KB, tipo confirmado por magic bytes, servido com cache [existe]. Sem storage de
   objetos no MVP (ADR-011).
 - **Encerramento de org:** `CLOSED` bloqueia sem apagar linhas (ADR-017). Anonimização LGPD depois.
 - **Exportação futura:** o modelo relacional por tenant já permite; nada a construir agora.
@@ -316,8 +316,8 @@ em todo desfecho; limite mensal por org.
 
 ```text
 1. Cadastro   POST /api/auth/sign-up/email (Turnstile + e-mail temporário + SIGNUP_MODE) → verificação → sign-in
-2. Onboarding POST /api/v1/onboarding → Organization + Member + trial → Session.activeOrganizationId → termos
-              [F1] Member ADMIN + canal Web Chat + publicChatKey
+2. Onboarding POST /api/v1/onboarding → Organization (+ publicChatKey) + Member ADMIN + trial →
+              Session.activeOrganizationId → termos · [F2] canal Web Chat padrão
 3. Login      cookie httpOnly, Secure, SameSite=Lax, host-only; sessão em banco (3 dias, rotação 12 h)
 4. Request    cookie → sessão → Member ativo em activeOrganizationId (requireTenant) → RequestContext
 5. Troca org  POST /api/v1/me/active-organization → valida Member → atualiza a sessão (AD-010)
@@ -342,8 +342,8 @@ server.**
 ### RBAC e carteira (ADR-005, ADR-016)
 
 - `shared/permissions.ts`: `ROLE_PERMISSIONS` estático; toda rota declara `requirePermission(...)`
-  (o boot falha sem ela em `/api/v1`); snapshot da matriz. Papéis hoje: `OWNER, ADMIN, MANAGER,
-  COMMERCIAL, VIEWER`; **[F1]** `ADMIN, MANAGER, COMMERCIAL` com "≥ 1 ADMIN ativo".
+  (o boot falha sem ela em `/api/v1`); snapshot da matriz. Papéis: `ADMIN, MANAGER, COMMERCIAL` [existe], com "≥ 1 ADMIN ativo"
+  garantido pelo use case (lock das linhas de ADMIN ativo, `422 LAST_ADMIN`).
 - Carteira: COMMERCIAL vê a própria carteira **e a fila**; a carteira alheia → 404. MANAGER e ADMIN
   veem tudo. Aplicada por `scopeFor(ctx)` no repository [existe, hoje por `salespersonId`; revisada
   para `ownerId` + fila na primeira tabela com dono].
@@ -414,7 +414,7 @@ apps/web/src/routes/
 │   ├── contacts     [F6] leads com filtros (status, dono, fila)
 │   ├── pipeline     [F7] Kanban (`dnd-kit`)
 │   ├── followups    [F8] hoje / atrasados
-│   └── settings/    organization, members, security [existe] · branding, channels [F1, F9]
+│   └── settings/    organization (com link do Web Chat e branding), members, security [existe] · channels [F9]
 └── c.$slug.tsx      [F3] Web Chat público (token de visitante, sem sessão do painel)
 ```
 

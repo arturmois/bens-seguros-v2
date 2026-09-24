@@ -519,7 +519,7 @@ F5 ─▶ F6 Leads/Comercial ─▶ F7 Kanban ─▶ F8 Follow-up ─▶ F9 What
 - **Objetivo:** papéis e onboarding do MVP.
 - **Requisitos:** F1, F2, N1.
 - **Dependências:** F0.
-- **Mudanças:** papéis `ADMIN | MANAGER | COMMERCIAL`; invariante "≥ 1 ADMIN ativo" (substitui OWNER único); onboarding cria org + ADMIN + trial + **canal Web Chat padrão** + `publicChatKey`; branding (nome, logo, cor, saudação); `Organization.status`.
+- **Mudanças:** papéis `ADMIN | MANAGER | COMMERCIAL`; invariante "≥ 1 ADMIN ativo" (substitui OWNER único); onboarding cria org + ADMIN + trial + `publicChatKey` (o **canal Web Chat padrão** ficou para a F2, com a tabela `Channel`); branding (nome, logo, cor, saudação); `Organization.status`.
 - **Entregáveis:** telas de onboarding e settings/branding; matriz de permissões nova.
 - **Testes:** snapshot da matriz role × permissão; toda rota com permissão; último ADMIN não pode ser rebaixado/removido; onboarding cria canal; cross-tenant em todas as rotas novas.
 - **Critério:** cadastro → org → ADMIN → link do Web Chat visível em settings (ainda sem chat).
