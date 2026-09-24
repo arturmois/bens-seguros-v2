@@ -1,0 +1,106 @@
+# Installs one image tag on the VPS of one environment (ADR-008); called only by deploy.yml.
+# The environment (staging or production) holds only the access to its VPS; the application
+# secrets live in DEPLOY_PATH/.env on the VPS. Setup: docs/runbooks/deploy.md.
+name: Deploy environment
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
+      image_tag:
+        type: string
+        required: true
+      ref:
+        type: string
+        required: true
+
+permissions: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Production's required reviewers are set on the environment, in the repository settings.
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ vars.SITE_URL }}
+    concurrency:
+      group: deploy-${{ inputs.environment }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    env:
+      IMAGE_REGISTRY: ghcr.io/arturmois/bens-seguros-v2
+      IMAGE_TAG: ${{ inputs.image_tag }}
+      DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+
+    steps:
+      - name: Preflight
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: |
+          missing=0
+          for name in SSH_HOST SSH_USER SSH_PRIVATE_KEY SSH_KNOWN_HOSTS DEPLOY_PATH SITE_URL; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name não está configurado no environment $DEPLOY_ENVIRONMENT (docs/runbooks/deploy.md)."
+              missing=1
+            fi
+          done
+          if [ -n "$DEPLOY_PATH" ] && [[ ! "$DEPLOY_PATH" =~ ^/[A-Za-z0-9._/-]+$ ]]; then
+            echo "::error::DEPLOY_PATH precisa ser um caminho absoluto sem espaços (ex.: /opt/bens-seguros)."
+            missing=1
+          fi
+          exit "$missing"
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: SSH key and host key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/deploy_known_hosts
+
+      # The host key is pinned: an unknown or changed key fails before any remote command. The
+      # registry token goes on stdin, never on a command line.
+      - name: Copy the files and install the tag
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: |
+          ssh_opts=(-i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/deploy_known_hosts")
+          target="$SSH_USER@$SSH_HOST"
+          # The remote commands are built on the runner on purpose (the tag and the path are checked).
+          # shellcheck disable=SC2029
+          ssh "${ssh_opts[@]}" "$target" "mkdir -p '$DEPLOY_PATH/docker/postgres/init'"
+          scp "${ssh_opts[@]}" -p docker-compose.prod.yml scripts/deploy-remote.sh "$target:$DEPLOY_PATH/"
+          scp "${ssh_opts[@]}" -p docker/postgres/init/01-app-role.sh "$target:$DEPLOY_PATH/docker/postgres/init/"
+          # shellcheck disable=SC2029
+          printf '%s' "$REGISTRY_TOKEN" | ssh "${ssh_opts[@]}" "$target" \
+            "cd '$DEPLOY_PATH' && IMAGE_REGISTRY='$IMAGE_REGISTRY' REGISTRY_USER='$REGISTRY_USER' ./deploy-remote.sh '$IMAGE_TAG'"
+
+      # From outside the VPS, through DNS, TLS and Caddy, like a user.
+      - name: Health check
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: |
+          curl --fail --silent --show-error --max-time 10 \
+            --retry 30 --retry-delay 2 --retry-all-errors --retry-max-time 60 \
+            "${SITE_URL%/}/api/health"

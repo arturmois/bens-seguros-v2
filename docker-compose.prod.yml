@@ -1,7 +1,8 @@
 # Production and staging (ADR-008): one host, same origin. Caddy serves the SPA and proxies /api and
 # /socket.io to the server; only Caddy is reachable from outside.
 #   docker compose -f docker-compose.prod.yml --env-file .env up -d --build
-# Variables: .env.prod.example. Runbook: docs/runbooks/staging.md.
+# On the VPS the images come from GHCR instead (IMAGE_REGISTRY and IMAGE_TAG in deploy.env, written
+# by scripts/deploy-remote.sh). Variables: .env.prod.example. Runbook: docs/runbooks/deploy.md.
 name: bens-seguros-prod
 
 services:
@@ -25,6 +26,7 @@ services:
 
   # One-shot: applies the migrations as the table owner, then exits. The server waits for it.
   migrate:
+    image: ${IMAGE_REGISTRY:-bens-seguros}/migrate:${IMAGE_TAG:-local}
     build:
       context: .
       dockerfile: apps/server/Dockerfile
@@ -37,6 +39,7 @@ services:
         condition: service_healthy
 
   server:
+    image: ${IMAGE_REGISTRY:-bens-seguros}/server:${IMAGE_TAG:-local}
     build:
       context: .
       dockerfile: apps/server/Dockerfile
@@ -68,6 +71,7 @@ services:
         condition: service_completed_successfully
 
   caddy:
+    image: ${IMAGE_REGISTRY:-bens-seguros}/web:${IMAGE_TAG:-local}
     build:
       context: .
       dockerfile: apps/web/Dockerfile

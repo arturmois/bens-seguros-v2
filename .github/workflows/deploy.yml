@@ -1,0 +1,235 @@
+# Continuous deployment (ADR-008). Three ways in, one way to a VPS (deploy-environment.yml):
+#   push on main with CI green -> the images are built once, tagged sha-<SHA> -> staging
+#   tag vX.Y.Z on a commit of main -> the same images get the version tag -> production (approval)
+#   Run workflow (manual) -> any existing tag to either environment: redeploy or rollback
+# Setup of the VPS and of the GitHub environments: docs/runbooks/deploy.md.
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Ambiente
+        type: choice
+        options: [staging, production]
+        required: true
+      image_tag:
+        description: Tag da imagem (sha-<SHA de 40 caracteres> ou vX.Y.Z)
+        type: string
+        required: true
+
+permissions: {}
+
+env:
+  IMAGE_REGISTRY: ghcr.io/arturmois/bens-seguros-v2
+
+jobs:
+  # Only a push on main of this repository whose CI (ci + e2e) passed; never a PR or a fork.
+  build:
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # `context: .` builds the checked-out head_sha; the action's default (a git context) would
+      # build github.sha, which for workflow_run is the latest commit of main.
+      - name: Server image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/server/Dockerfile
+          target: runtime
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE_REGISTRY }}/server:sha-${{ github.event.workflow_run.head_sha }}
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,scope=server,mode=max
+
+      - name: Migrate image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/server/Dockerfile
+          target: migrate
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE_REGISTRY }}/migrate:sha-${{ github.event.workflow_run.head_sha }}
+          cache-from: type=gha,scope=server
+
+      - name: Web image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE_REGISTRY }}/web:sha-${{ github.event.workflow_run.head_sha }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+
+  deploy-staging:
+    needs: build
+    uses: ./.github/workflows/deploy-environment.yml
+    permissions:
+      contents: read
+      packages: read
+    with:
+      environment: staging
+      image_tag: sha-${{ github.event.workflow_run.head_sha }}
+      ref: ${{ github.event.workflow_run.head_sha }}
+
+  # A release promotes the images CI already built for that commit: same digest, no rebuild.
+  promote:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Release tag format
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::A tag $RELEASE_TAG não segue o formato vMAJOR.MINOR.PATCH."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Tag commit is on main
+        id: commit
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          sha=$(git rev-parse "$RELEASE_TAG^{commit}")
+          if ! git merge-base --is-ancestor "$sha" origin/main; then
+            echo "::error::O commit $sha da tag $RELEASE_TAG não está em main."
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Images exist
+        env:
+          SOURCE_TAG: sha-${{ steps.commit.outputs.sha }}
+        run: |
+          for image in migrate server web; do
+            if ! docker buildx imagetools inspect "$IMAGE_REGISTRY/$image:$SOURCE_TAG" > /dev/null; then
+              echo "::error::Imagens $SOURCE_TAG não encontradas: o CI deste commit passou em main?"
+              exit 1
+            fi
+          done
+
+      - name: Retag
+        env:
+          SOURCE_TAG: sha-${{ steps.commit.outputs.sha }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          for image in migrate server web; do
+            docker buildx imagetools create --prefer-index=false \
+              --tag "$IMAGE_REGISTRY/$image:$RELEASE_TAG" "$IMAGE_REGISTRY/$image:$SOURCE_TAG"
+          done
+
+  deploy-production:
+    needs: promote
+    uses: ./.github/workflows/deploy-environment.yml
+    permissions:
+      contents: read
+      packages: read
+    with:
+      environment: production
+      image_tag: ${{ github.ref_name }}
+      ref: ${{ github.ref_name }}
+
+  # Manual redeploy or rollback: the tag is checked before anything reaches a VPS.
+  resolve:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      packages: read
+    outputs:
+      ref: ${{ steps.tag.outputs.ref }}
+
+    steps:
+      - name: Image tag format
+        id: tag
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          if [[ "$IMAGE_TAG" =~ ^sha-([0-9a-f]{40})$ ]]; then
+            echo "ref=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+          elif [[ "$IMAGE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "ref=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::A tag $IMAGE_TAG não é sha-<SHA de 40 caracteres> nem vX.Y.Z."
+            exit 1
+          fi
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image tag exists
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          for image in migrate server web; do
+            if ! docker buildx imagetools inspect "$IMAGE_REGISTRY/$image:$IMAGE_TAG" > /dev/null; then
+              echo "::error::A imagem $IMAGE_REGISTRY/$image:$IMAGE_TAG não existe."
+              exit 1
+            fi
+          done
+
+  redeploy:
+    needs: resolve
+    uses: ./.github/workflows/deploy-environment.yml
+    permissions:
+      contents: read
+      packages: read
+    with:
+      environment: ${{ inputs.environment }}
+      image_tag: ${{ inputs.image_tag }}
+      ref: ${{ needs.resolve.outputs.ref }}
