@@ -243,3 +243,6 @@ Cost: um unitário de magic bytes, além das provas na fronteira. Sem ele, a tab
 - **Settled mid-build:** a pedido do usuário, todas as migrations viraram uma só (`20260924120000_init`), gerada do `schema.prisma` + SQL manual (RLS, políticas, índice parcial, seed). Catálogo comparado com a cadeia antiga + F1 via `pg_dump -s`: só muda a ordem de colunas. Novo C48
 - **Settled mid-build:** `bodyLimit` de 400 KB na rota do logo, com `413` acrescentado ao `Surface` (additive) e provado por C49
 - **Settled mid-build:** C23 - `audit.record` recusa `null` (AD-008), então campo vazio entra na trilha como `''`
+- **Boundary:** C1–C4, C6–C17, C19–C49 closed at `4d4cb0d` (C5 e C18 removidos a pedido do usuário). Gates verdes (31 arquivos, 303 testes); `pnpm api:generate` sem diff
+- **Abandoned:** `test/migrations.spec.ts` (conversão de dados da migration), dispensado pelo usuário junto com as migrations incrementais
+- **Ambiente do e2e:** rodado com `vite dev` + server em `tsx watch` contra um banco `bens_e2e` separado (o banco de dev ainda tem o histórico antigo de migrations). `org-web.spec.ts` e `branding.spec.ts`: 49 passam. 13 testes de `register`, `signup-gates`, `two-factor` e `terms` falham nesse ambiente porque `/register` não termina de carregar; arquivos e telas que a F1 não tocou
