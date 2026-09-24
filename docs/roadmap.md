@@ -48,6 +48,7 @@ F5 ─▶ F6 Leads/Comercial ─▶ F7 Kanban ─▶ F8 Follow-up ─▶ F9 What
 - **Mudanças:** papéis `ADMIN | MANAGER | COMMERCIAL` (recria o enum; sai `Member_one_owner`); invariante "≥ 1 ADMIN ativo" (ADR-016); onboarding cria org + ADMIN + trial + `publicChatKey`; branding (nome, logo `bytea`, cor, saudação). O canal do Web Chat nasce na F2, com a tabela `Channel` (feature `f1-identity`).
 - **Testes:** snapshot da matriz; toda rota com permissão; último ADMIN não pode ser rebaixado ou desativado (não existe remoção de membro); `withTwoTenants` nas rotas novas.
 - **Critério:** cadastro → org → ADMIN → link do Web Chat visível em settings (ainda sem chat).
+- **Resultado (2026-09-24):** `f1-identity` PASS na rodada 3 (`c2df916`). O histórico de migrations virou uma só (`20260924120000_init`), já que não há produção.
 
 ## S1 — Spike: runtime WhatsApp (paralelo a F2/F3, descartável)
 

@@ -264,6 +264,42 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: rg proofs, round 1 build (tooling)
 - last seen: 2026-09-24T01:53:03Z
 
+### L-043 - Give every new request body a proof that sends an unknown field and expects 400, so removing .strict() fails a test
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `routes` · harmful: 0
+- features: f1-identity
+- evidence: apps/server/src/modules/organizations/branding.schema.ts:15,:25 - .strict() mutants survived (round 2, 0027cb6) (routes)
+- last seen: 2026-09-24T13:00:35Z
+
+### L-044 - When a guard counts only active rows, seed an inactive row the count must ignore, so dropping the active filter fails a test
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `guards` · harmful: 0
+- features: f1-identity
+- evidence: apps/server/src/modules/organizations/member.ts:77 - AND active mutant survived (round 1, e89952f) (guards)
+- last seen: 2026-09-24T13:00:35Z
+
+### L-045 - Give each refinement of an input schema its own rejected-input proof
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `routes` · harmful: 0
+- features: f1-identity
+- evidence: apps/server/src/modules/organizations/branding.schema.ts:8,:16 - .min(1) and empty-body refine survived (round 1, e89952f) (routes)
+- last seen: 2026-09-24T13:00:36Z
+
+### L-046 - Give every new tenant-scoped write route a withTwoTenants proof that the other tenant's rows and audit stay unchanged
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `tenancy` · harmful: 0
+- features: f1-identity
+- evidence: branding PATCH, PUT logo, DELETE logo had no withTwoTenants test (round 1, e89952f; fixed by C52) (tenancy)
+- last seen: 2026-09-24T13:00:36Z
+
+### L-047 - A race proof must accept every legitimate loser outcome and assert the invariant, not one fixed status
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `concurrency` · harmful: 0
+- features: f1-identity
+- evidence: C10 member.spec.ts race proof flaky on a legitimate 403 loser (round 1, e89952f) (concurrency)
+- last seen: 2026-09-24T13:00:36Z
+
+### L-048 - Derive each route's status list in the plan from the route handler, not from memory
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `specs` · harmful: 0
+- features: f1-identity
+- evidence: C47 and plan.md:51 claimed a 422 that invitation.ts:56-120 never returns (round 1, e89952f) (specs)
+- last seen: 2026-09-24T13:00:36Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

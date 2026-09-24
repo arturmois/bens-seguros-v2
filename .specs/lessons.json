@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 43,
+  "next_id": 49,
   "lessons": [
     {
       "id": "L-001",
@@ -764,6 +764,114 @@
       ],
       "created": "2026-09-24T01:53:03Z",
       "last_seen": "2026-09-24T01:53:03Z"
+    },
+    {
+      "id": "L-043",
+      "key": "surviving_mutant::give every new request body a proof that sends an unknown field and expects 400 so removing strict fails a test",
+      "text": "Give every new request body a proof that sends an unknown field and expects 400, so removing .strict() fails a test",
+      "signal": "surviving_mutant",
+      "scope": "routes",
+      "status": "candidate",
+      "features": [
+        "f1-identity"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "apps/server/src/modules/organizations/branding.schema.ts:15,:25 - .strict() mutants survived (round 2, 0027cb6) (routes)"
+      ],
+      "created": "2026-09-24T13:00:35Z",
+      "last_seen": "2026-09-24T13:00:35Z"
+    },
+    {
+      "id": "L-044",
+      "key": "surviving_mutant::when a guard counts only active rows seed an inactive row the count must ignore so dropping the active filter fails a test",
+      "text": "When a guard counts only active rows, seed an inactive row the count must ignore, so dropping the active filter fails a test",
+      "signal": "surviving_mutant",
+      "scope": "guards",
+      "status": "candidate",
+      "features": [
+        "f1-identity"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "apps/server/src/modules/organizations/member.ts:77 - AND active mutant survived (round 1, e89952f) (guards)"
+      ],
+      "created": "2026-09-24T13:00:35Z",
+      "last_seen": "2026-09-24T13:00:35Z"
+    },
+    {
+      "id": "L-045",
+      "key": "surviving_mutant::give each refinement of an input schema its own rejected input proof",
+      "text": "Give each refinement of an input schema its own rejected-input proof",
+      "signal": "surviving_mutant",
+      "scope": "routes",
+      "status": "candidate",
+      "features": [
+        "f1-identity"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "apps/server/src/modules/organizations/branding.schema.ts:8,:16 - .min(1) and empty-body refine survived (round 1, e89952f) (routes)"
+      ],
+      "created": "2026-09-24T13:00:36Z",
+      "last_seen": "2026-09-24T13:00:36Z"
+    },
+    {
+      "id": "L-046",
+      "key": "ac_gap::give every new tenant scoped write route a withtwotenants proof that the other tenant s rows and audit stay unchanged",
+      "text": "Give every new tenant-scoped write route a withTwoTenants proof that the other tenant's rows and audit stay unchanged",
+      "signal": "ac_gap",
+      "scope": "tenancy",
+      "status": "candidate",
+      "features": [
+        "f1-identity"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "branding PATCH, PUT logo, DELETE logo had no withTwoTenants test (round 1, e89952f; fixed by C52) (tenancy)"
+      ],
+      "created": "2026-09-24T13:00:36Z",
+      "last_seen": "2026-09-24T13:00:36Z"
+    },
+    {
+      "id": "L-047",
+      "key": "ac_gap::a race proof must accept every legitimate loser outcome and assert the invariant not one fixed status",
+      "text": "A race proof must accept every legitimate loser outcome and assert the invariant, not one fixed status",
+      "signal": "ac_gap",
+      "scope": "concurrency",
+      "status": "candidate",
+      "features": [
+        "f1-identity"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "C10 member.spec.ts race proof flaky on a legitimate 403 loser (round 1, e89952f) (concurrency)"
+      ],
+      "created": "2026-09-24T13:00:36Z",
+      "last_seen": "2026-09-24T13:00:36Z"
+    },
+    {
+      "id": "L-048",
+      "key": "spec_precision_gap::derive each route s status list in the plan from the route handler not from memory",
+      "text": "Derive each route's status list in the plan from the route handler, not from memory",
+      "signal": "spec_precision_gap",
+      "scope": "specs",
+      "status": "candidate",
+      "features": [
+        "f1-identity"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "C47 and plan.md:51 claimed a 422 that invitation.ts:56-120 never returns (round 1, e89952f) (specs)"
+      ],
+      "created": "2026-09-24T13:00:36Z",
+      "last_seen": "2026-09-24T13:00:36Z"
     }
   ]
 }

@@ -207,11 +207,11 @@ Proof: `src/modules/organizations/invitation.spec.ts -t "rejects a second pendin
 | estados da tela `/settings/organization` (5) | sem logo C39 · com logo C39 · erro do upload C40 · sucesso do salvar C41 · só leitura C42 | - |
 | `POST /api/v1/onboarding` statuses (3) | 200 C15 · 401 C47 · 422 C47 | - |
 | `GET /api/v1/organization` statuses (3) | 200 C19 · 401 C47 · 403 C47 | - |
-| `PATCH /api/v1/organization/branding` statuses (4) | 200 C22 · 400 C25 · 401 C38 · 403 C28, C38 | - |
+| `PATCH /api/v1/organization/branding` statuses (4) | 200 C22 · 400 C25, C26, C51, C53 · 401 C38 · 403 C28, C38 | - |
 | `PUT /api/v1/organization/logo` statuses (6) | 200 C30 · 400 C34 · 401 C38 · 403 C28, C38 · 413 C49 · 422 C32, C33 | - |
 | `DELETE /api/v1/organization/logo` statuses (3) | 204 C37 · 401 C38 · 403 C28, C38 | - |
 | `GET /api/v1/organization/logo` statuses (5) | 200 C35 · 304 C35 · 401 C38 · 403 C38 · 404 C36 | - |
-| `PATCH /api/v1/members/:id` statuses (6) | 200 C8 · 400 C3 · 401 C12 · 403 C12 · 404 C12 · 422 C6, C7 | - |
+| `PATCH /api/v1/members/:id` statuses (6) | 200 C8 · 400 C3 · 401 C12 · 403 C12 · 404 C12 · 422 C6, C7, C50 | - |
 | `POST /api/v1/invitations` statuses (5) | 200 C47 · 400 C4 · 401 C47 · 403 C47 · 409 C47 | - |
 | doors (5) | 1 C2, C48 · 2 C15, C17 · 3 C19, C20 · 4 C29, C32, C33 · 5 C6, C7, C9, C10, C50 | - |
 | testes do v2 substituídos (2) | "rejects a change to the owner" → C6, C7 · "keeps a single owner when two inserts race" → C10 (o índice que ele provava sai na door 1) | - |
