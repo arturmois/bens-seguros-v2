@@ -29,6 +29,17 @@ Legado (somente referência de comportamento, não de arquitetura: etapas do Kan
   - filtros em search params do router;
   - 4 estados (vazio, carregando, erro, sucesso) em toda listagem.
 
+## Acesso a infraestrutura
+
+O agente tem acesso direto e deve usá-lo em vez de pedir ao usuário para rodar comandos:
+
+- **GitHub:** `gh` autenticado (escopos `repo`, `workflow`): variables e secrets dos environments, workflows, PRs.
+- **VPS do staging** (`187.77.33.152`, Hostinger, `staging.bens360.com.br`), sempre com `-o IdentitiesOnly=yes`:
+  - `deploy` com `~/.ssh/bens-deploy-staging` e `UserKnownHostsFile=~/.ssh/bens-known_hosts-staging`: dono de `/opt/bens-seguros` e do Docker. É o usuário de `scripts/env-push.sh` e da operação do dia a dia (`docs/runbooks/deploy.md`);
+  - `ops` com `~/.ssh/id_ed25519`: shell sem sudo utilizável (a senha não existe);
+  - `root` não aceita chave. Precisa do terminal no navegador do hPanel, que só o usuário abre.
+- O `.env.staging` local é a cópia do `.env` da VPS (gitignored, contém segredos): nunca imprimir valores de segredos.
+
 ## Processo por feature: escolher o nível de spec
 
 Ao receber o prompt de uma feature ou fase, **antes de codar**, declare em 1–2 linhas qual processo usar e por quê. Depois siga-o até o Verifier. **Toda implementação usa um dos dois, sem exceção** (inclusive infraestrutura, tooling e bug fix): o Verifier independente e o histórico em `.specs/` são o motivo.
