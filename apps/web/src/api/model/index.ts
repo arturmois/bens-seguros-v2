@@ -52,3 +52,7 @@ export * from './updateMember200';
 export * from './updateMember200Role';
 export * from './updateMemberBody';
 export * from './updateMemberBodyRole';
+export * from './updateOrganizationBranding200';
+export * from './updateOrganizationBrandingBody';
+export * from './uploadOrganizationLogo200';
+export * from './uploadOrganizationLogoBody';

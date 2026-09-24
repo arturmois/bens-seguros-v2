@@ -29,6 +29,10 @@ export const organizationOutput = z
     id: z.uuid(),
     name: z.string(),
     slug: z.string(),
+    publicChatKey: z.string(),
+    brandColor: z.string().nullable(),
+    greeting: z.string().nullable(),
+    logoUpdatedAt: z.iso.datetime().nullable(),
     role: z.enum(ROLES),
   })
   .strict()

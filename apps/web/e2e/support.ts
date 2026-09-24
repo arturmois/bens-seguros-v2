@@ -3,6 +3,7 @@ import {
   type APIRequestContext,
   test as base,
   expect,
+  type Page,
   request as playwrightRequest,
 } from '@playwright/test'
 import pg from 'pg'
@@ -93,7 +94,13 @@ export async function onboard(api: APIRequestContext, name = 'Corretora') {
     data: { name: `${name} ${randomUUID().slice(0, 8)}` },
   })
   expect(response.ok()).toBeTruthy()
-  return (await response.json()) as { id: string; name: string; slug: string; role: string }
+  return (await response.json()) as {
+    id: string
+    name: string
+    slug: string
+    role: string
+    publicChatKey: string
+  }
 }
 
 // No active organization now, and none remembered for the next sign-in (org-web door 4).
@@ -154,4 +161,73 @@ export async function userWithTwoFactor(api: APIRequestContext) {
   })
   expect(verify.status()).toBe(200)
   return { ...user, secret, backupCodes: backupCodes as string[] }
+}
+
+export async function signIn(page: Page, user: { email: string; password: string }) {
+  await page.goto('/login')
+  await page.getByLabel('E-mail').fill(user.email)
+  await page.getByLabel('Senha').fill(user.password)
+  await page.getByRole('button', { name: 'Entrar' }).click()
+  // The click returns before the session request settles. A later goto would cancel it.
+  await expect(page).not.toHaveURL(/\/login/)
+}
+
+// A new sign-in starts in the last active organization, or the only one (door 4).
+export async function enterApp(page: Page, organizationName: string) {
+  await expect(page).toHaveURL('/dashboard')
+  await expect(page.getByRole('banner').getByText(organizationName)).toBeVisible()
+}
+
+export async function invitationToken(to: string) {
+  let text = ''
+  await expect
+    .poll(async () => {
+      const message = (await inbox(to)).find((item) => item.Subject.startsWith('Convite para '))
+      if (!message) return false
+      const response = await fetch(`${mailpit}/api/v1/message/${message.ID}`)
+      const body = (await response.json()) as { Text: string }
+      text = body.Text
+      return text.includes('accept-invitation?token=')
+    })
+    .toBe(true)
+  const token = text.match(/accept-invitation\?token=([^\s]+)/)?.[1]
+  if (!token) throw new Error(`no invitation token for ${to}`)
+  return token
+}
+
+export function requireBase(baseURL: string | undefined): string {
+  if (!baseURL) throw new Error('baseURL is required')
+  return baseURL
+}
+
+export async function acceptInvite(
+  baseURL: string | undefined,
+  email: string,
+  options: { name?: string; ownBrokerage?: string } = {},
+) {
+  const origin = requireBase(baseURL)
+  const guest = await playwrightRequest.newContext({
+    baseURL: origin,
+    extraHTTPHeaders: { origin: new URL(origin).origin },
+  })
+  await signUp(guest, email, options.name)
+  const verify = await guest.get(await emailLink(email, 'Confirme seu e-mail'), { maxRedirects: 0 })
+  expect(verify.status()).toBe(302)
+  expect(
+    (
+      await guest.post('/api/v1/me/terms-acceptance', {
+        data: { termsVersion: '1.0', privacyVersion: '1.0' },
+      })
+    ).ok(),
+  ).toBeTruthy()
+  const own = options.ownBrokerage ? await onboard(guest, options.ownBrokerage) : undefined
+  const token = await invitationToken(email)
+  expect((await guest.post('/api/v1/invitations/accept', { data: { token } })).ok()).toBeTruthy()
+  await guest.dispose()
+  return { email, password: PASSWORD, own }
+}
+
+export async function invite(api: APIRequestContext, email: string, role: string) {
+  const response = await api.post('/api/v1/invitations', { data: { email, role } })
+  expect(response.ok()).toBeTruthy()
 }

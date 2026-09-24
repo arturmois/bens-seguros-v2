@@ -11,5 +11,11 @@ export type GetOrganization200 = {
   id: string;
   name: string;
   slug: string;
+  publicChatKey: string;
+  /** @nullable */
+  brandColor: string | null;
+  /** @nullable */
+  greeting: string | null;
+  logoUpdatedAt: string | null;
   role: GetOrganization200Role;
 };

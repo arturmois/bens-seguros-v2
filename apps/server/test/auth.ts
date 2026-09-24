@@ -39,7 +39,7 @@ export class TestClient {
   }
 
   async request(
-    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+    method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
     url: string,
     options: RequestOptions = {},
   ) {
@@ -71,6 +71,10 @@ export class TestClient {
 
   post(url: string, payload: unknown = {}, options: Omit<RequestOptions, 'payload'> = {}) {
     return this.request('POST', url, { ...options, payload })
+  }
+
+  put(url: string, payload: unknown = {}, options: Omit<RequestOptions, 'payload'> = {}) {
+    return this.request('PUT', url, { ...options, payload })
   }
 
   patch(url: string, payload: unknown = {}, options: Omit<RequestOptions, 'payload'> = {}) {

@@ -9,11 +9,23 @@ export async function getOrganization(deps: { db: Database }, ctx: RequestContex
   const organization = await deps.db.withTenant(ctx, (tx) =>
     tx.organization.findUnique({
       where: { id: ctx.organizationId },
-      select: { id: true, name: true, slug: true },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        publicChatKey: true,
+        brandColor: true,
+        greeting: true,
+        logoUpdatedAt: true,
+      },
     }),
   )
   if (!organization) throw hidden
-  return { ...organization, role: ctx.role }
+  return {
+    ...organization,
+    logoUpdatedAt: organization.logoUpdatedAt?.toISOString() ?? null,
+    role: ctx.role,
+  }
 }
 
 export async function renameOrganization(

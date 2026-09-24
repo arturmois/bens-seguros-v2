@@ -1,3 +1,4 @@
+export { brandingRoutes } from './branding.routes.ts'
 export { invitationRoutes } from './invitation.routes.ts'
 export { memberRoutes } from './member.routes.ts'
 export { findActiveMember } from './membership.ts'

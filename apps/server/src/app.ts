@@ -15,6 +15,7 @@ import { createRealtime, type Realtime } from './infrastructure/realtime.ts'
 import { authRoutes, headersOf, resolveSession } from './modules/auth/index.ts'
 import {
   assertRouteDeclaresPermission,
+  brandingRoutes,
   invitationRoutes,
   loadTenant,
   memberRoutes,
@@ -111,6 +112,7 @@ export function buildApp(deps: Deps) {
   })
   app.register(authRoutes(deps))
   app.register(organizationRoutes(deps))
+  app.register(brandingRoutes(deps))
   app.register(invitationRoutes(deps))
   app.register(memberRoutes(deps))
 

@@ -30,7 +30,11 @@ import type {
   RenameOrganization200,
   RenameOrganizationBody,
   SetActiveOrganization200,
-  SetActiveOrganizationBody
+  SetActiveOrganizationBody,
+  UpdateOrganizationBranding200,
+  UpdateOrganizationBrandingBody,
+  UploadOrganizationLogo200,
+  UploadOrganizationLogoBody
 } from '../../model';
 
 import { http } from '../../../lib/http';
@@ -393,3 +397,326 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       > => {
       return useMutation(getRenameOrganizationMutationOptions(options), queryClient);
     }
+    export const getUpdateOrganizationBrandingUrl = () => {
+
+
+
+
+  return `/api/v1/organization/branding`
+}
+
+export const updateOrganizationBranding = async (updateOrganizationBrandingBody: UpdateOrganizationBrandingBody, options?: Parameters<typeof http>[1]): Promise<UpdateOrganizationBranding200> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return http<UpdateOrganizationBranding200>(getUpdateOrganizationBrandingUrl(),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateOrganizationBrandingBody)
+  }
+);}
+
+
+
+
+
+export const getUpdateOrganizationBrandingMutationKey = () => ['updateOrganizationBranding'] as const;
+
+export const getUpdateOrganizationBrandingMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateOrganizationBranding>>, TError,UpdateOrganizationBrandingMutationVariables, TContext>, request?: SecondParameter<typeof http>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateOrganizationBranding>>, TError,UpdateOrganizationBrandingMutationVariables, TContext> => {
+
+const mutationKey = getUpdateOrganizationBrandingMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateOrganizationBranding>>, UpdateOrganizationBrandingMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateOrganizationBranding(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateOrganizationBrandingMutationResult = NonNullable<Awaited<ReturnType<typeof updateOrganizationBranding>>>
+    export type UpdateOrganizationBrandingMutationBody = UpdateOrganizationBrandingBody
+    export type UpdateOrganizationBrandingMutationError = ErrorType<unknown>
+    export type UpdateOrganizationBrandingMutationVariables = {data: UpdateOrganizationBrandingBody}
+
+    export const useUpdateOrganizationBranding = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateOrganizationBranding>>, TError,UpdateOrganizationBrandingMutationVariables, TContext>, request?: SecondParameter<typeof http>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof updateOrganizationBranding>>,
+        TError,
+        UpdateOrganizationBrandingMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateOrganizationBrandingMutationOptions(options), queryClient);
+    }
+    export const getUploadOrganizationLogoUrl = () => {
+
+
+
+
+  return `/api/v1/organization/logo`
+}
+
+export const uploadOrganizationLogo = async (uploadOrganizationLogoBody: UploadOrganizationLogoBody, options?: Parameters<typeof http>[1]): Promise<UploadOrganizationLogo200> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return http<UploadOrganizationLogo200>(getUploadOrganizationLogoUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(uploadOrganizationLogoBody)
+  }
+);}
+
+
+
+
+
+export const getUploadOrganizationLogoMutationKey = () => ['uploadOrganizationLogo'] as const;
+
+export const getUploadOrganizationLogoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadOrganizationLogo>>, TError,UploadOrganizationLogoMutationVariables, TContext>, request?: SecondParameter<typeof http>}
+): UseMutationOptions<Awaited<ReturnType<typeof uploadOrganizationLogo>>, TError,UploadOrganizationLogoMutationVariables, TContext> => {
+
+const mutationKey = getUploadOrganizationLogoMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof uploadOrganizationLogo>>, UploadOrganizationLogoMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  uploadOrganizationLogo(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UploadOrganizationLogoMutationResult = NonNullable<Awaited<ReturnType<typeof uploadOrganizationLogo>>>
+    export type UploadOrganizationLogoMutationBody = UploadOrganizationLogoBody
+    export type UploadOrganizationLogoMutationError = ErrorType<unknown>
+    export type UploadOrganizationLogoMutationVariables = {data: UploadOrganizationLogoBody}
+
+    export const useUploadOrganizationLogo = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadOrganizationLogo>>, TError,UploadOrganizationLogoMutationVariables, TContext>, request?: SecondParameter<typeof http>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof uploadOrganizationLogo>>,
+        TError,
+        UploadOrganizationLogoMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUploadOrganizationLogoMutationOptions(options), queryClient);
+    }
+    export const getRemoveOrganizationLogoUrl = () => {
+
+
+
+
+  return `/api/v1/organization/logo`
+}
+
+export const removeOrganizationLogo = async ( options?: Parameters<typeof http>[1]): Promise<void> => {
+
+  return http<void>(getRemoveOrganizationLogoUrl(),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getRemoveOrganizationLogoMutationKey = () => ['removeOrganizationLogo'] as const;
+
+export const getRemoveOrganizationLogoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeOrganizationLogo>>, TError,void, TContext>, request?: SecondParameter<typeof http>}
+): UseMutationOptions<Awaited<ReturnType<typeof removeOrganizationLogo>>, TError,void, TContext> => {
+
+const mutationKey = getRemoveOrganizationLogoMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof removeOrganizationLogo>>, void> = () => {
+
+
+          return  removeOrganizationLogo(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RemoveOrganizationLogoMutationResult = NonNullable<Awaited<ReturnType<typeof removeOrganizationLogo>>>
+
+    export type RemoveOrganizationLogoMutationError = ErrorType<unknown>
+
+
+    export const useRemoveOrganizationLogo = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeOrganizationLogo>>, TError,void, TContext>, request?: SecondParameter<typeof http>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof removeOrganizationLogo>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getRemoveOrganizationLogoMutationOptions(options), queryClient);
+    }
+    export const getGetOrganizationLogoUrl = () => {
+
+
+
+
+  return `/api/v1/organization/logo`
+}
+
+export const getOrganizationLogo = async ( options?: Parameters<typeof http>[1]): Promise<void> => {
+
+  return http<void>(getGetOrganizationLogoUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetOrganizationLogoQueryKey = () => {
+    return [
+    `/api/v1/organization/logo`
+    ] as const;
+    }
+
+
+export const getGetOrganizationLogoQueryOptions = <TData = Awaited<ReturnType<typeof getOrganizationLogo>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getOrganizationLogo>>, TError, TData>>, request?: SecondParameter<typeof http>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetOrganizationLogoQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getOrganizationLogo>>> = ({ signal }) => getOrganizationLogo({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getOrganizationLogo>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetOrganizationLogoQueryResult = NonNullable<Awaited<ReturnType<typeof getOrganizationLogo>>>
+export type GetOrganizationLogoQueryError = ErrorType<unknown>
+
+
+export function useGetOrganizationLogo<TData = Awaited<ReturnType<typeof getOrganizationLogo>>, TError = ErrorType<unknown>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getOrganizationLogo>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getOrganizationLogo>>,
+          TError,
+          Awaited<ReturnType<typeof getOrganizationLogo>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof http>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetOrganizationLogo<TData = Awaited<ReturnType<typeof getOrganizationLogo>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getOrganizationLogo>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getOrganizationLogo>>,
+          TError,
+          Awaited<ReturnType<typeof getOrganizationLogo>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof http>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetOrganizationLogo<TData = Awaited<ReturnType<typeof getOrganizationLogo>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getOrganizationLogo>>, TError, TData>>, request?: SecondParameter<typeof http>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function useGetOrganizationLogo<TData = Awaited<ReturnType<typeof getOrganizationLogo>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getOrganizationLogo>>, TError, TData>>, request?: SecondParameter<typeof http>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetOrganizationLogoQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+

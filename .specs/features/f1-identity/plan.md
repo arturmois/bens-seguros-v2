@@ -44,7 +44,7 @@ Reusa o onboarding, o `GET`/`PATCH /api/v1/organization`, o `PATCH /api/v1/membe
 | `POST /api/v1/onboarding` | `name` | `role` passa a ser `'ADMIN'`; ganha `publicChatKey` | `200`, `401`, `422` |
 | `GET /api/v1/organization` | — | ganha `publicChatKey` · `brandColor` · `greeting` · `logoUpdatedAt` | `200`, `401`, `403` |
 | `PATCH /api/v1/organization/branding` | `brandColor?` (`#rrggbb` ou `null`) · `greeting?` (texto ou `null`) | `brandColor` · `greeting` | `200`, `400`, `401`, `403` |
-| `PUT /api/v1/organization/logo` | `image` (base64) | `logoUpdatedAt` | `200`, `400`, `401`, `403`, `422` |
+| `PUT /api/v1/organization/logo` | `image` (base64) | `logoUpdatedAt` | `200`, `400`, `401`, `403`, `413` (corpo acima de 400 KB, `bodyLimit` da rota; acrescentado no build), `422` |
 | `DELETE /api/v1/organization/logo` | — | `204` sem corpo | `204`, `401`, `403` |
 | `GET /api/v1/organization/logo` | — | os bytes da imagem, `Content-Type` gravado, `ETag`, `Cache-Control: private, no-cache` | `200`, `304`, `401`, `403`, `404` |
 | `PATCH /api/v1/members/:id` | `role?` só `ADMIN`/`MANAGER`/`COMMERCIAL` · `active?` | inalterado | `200`, `400`, `401`, `403`, `404`, `422` |

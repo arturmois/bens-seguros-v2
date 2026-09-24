@@ -5,7 +5,7 @@ Plan: `.specs/features/f1-identity/plan.md`
 
 Provas do server rodam em `apps/server` (`pnpm exec vitest run <arquivo> -t "<nome>"`); as do web, em `apps/web` (`pnpm exec playwright test <arquivo> -g "<nome>"`).
 
-46 checks in 4 slices · 5 one-way doors · 0 open
+47 checks in 4 slices · 5 one-way doors · 0 open
 
 ## Checks
 
@@ -81,7 +81,7 @@ Proof: `e2e/org-web.spec.ts -g "shows and copies the web chat link"`
 **C22** - `PATCH /api/v1/organization/branding` de um ADMIN com `{ brandColor: '#1a2b3c', greeting: 'Olá! Como podemos ajudar?' }` responde `200` com os dois valores, e o `GET /api/v1/organization` seguinte os traz (AC 14)
 Proof: `src/modules/organizations/branding.spec.ts -t "saves the brand color and greeting"`
 
-**C23** - Essa mudança registra `organization.update` com `changes` contendo `brandColor: [null, '#1a2b3c']` e `greeting` (AC 14)
+**C23** - Essa mudança registra `organization.update` com `changes` igual a `{ brandColor: ['', '#1a2b3c'], greeting: ['', 'Bem-vindo'] }` (vazio vira `''`: a trilha recusa `null`, AD-008) (AC 14)
 Proof: `src/modules/organizations/branding.spec.ts -t "records organization.update for branding"`
 
 **C24** - `brandColor` `#1A2B3C` é gravado e devolvido como `#1a2b3c` (AC 15)
@@ -157,6 +157,9 @@ Proof: `bash -c '! grep -rnE "OWNER|VIEWER|Member_one_owner" apps/server/src app
 Proof: `bash -c 'cd apps/server/prisma/migrations && test "$(ls -d */ | tr -d /)" = 20260924120000_init && f=20260924120000_init/migration.sql && grep -q "Invitation_pending_email" $f && grep -q "0000000000aa., .trial." $f && for t in Member Organization Subscription Invitation AuditLog; do grep -q "ALTER TABLE \"$t\" FORCE ROW LEVEL SECURITY" $f || exit 1; done'`
 Proof: `test/schema.spec.ts -t "every tenant table is protected by row security"`
 
+**C49** - `PUT /api/v1/organization/logo` com corpo acima de 400 KB responde `413` e nada é gravado; um PNG de 204801 bytes (corpo de ~273 KB) ainda chega ao use case e recebe `422 LOGO_TOO_LARGE` (C32) (door 4)
+Proof: `src/modules/organizations/branding.spec.ts -t "rejects a logo body above the route limit"`
+
 **C46** - Com o docker compose no ar, o gate do repositório passa depois do último commit, e o `pnpm api:generate` não deixa diff em `apps/web/src/api`
 Proof: `pnpm lint && pnpm typecheck && pnpm test && pnpm build`
 Proof: `bash -c 'pnpm api:generate >/dev/null && git diff --exit-code apps/web/src/api apps/server/openapi.json'`
@@ -189,7 +192,7 @@ Proof: `src/modules/organizations/invitation.spec.ts -t "rejects a second pendin
 | `POST /api/v1/onboarding` statuses (3) | 200 C15 · 401 C47 · 422 C47 | - |
 | `GET /api/v1/organization` statuses (3) | 200 C19 · 401 C47 · 403 C47 | - |
 | `PATCH /api/v1/organization/branding` statuses (4) | 200 C22 · 400 C25 · 401 C38 · 403 C28, C38 | - |
-| `PUT /api/v1/organization/logo` statuses (5) | 200 C30 · 400 C34 · 401 C38 · 403 C28, C38 · 422 C32, C33 | - |
+| `PUT /api/v1/organization/logo` statuses (6) | 200 C30 · 400 C34 · 401 C38 · 403 C28, C38 · 413 C49 · 422 C32, C33 | - |
 | `DELETE /api/v1/organization/logo` statuses (3) | 204 C37 · 401 C38 · 403 C28, C38 | - |
 | `GET /api/v1/organization/logo` statuses (5) | 200 C35 · 304 C35 · 401 C38 · 403 C38 · 404 C36 | - |
 | `PATCH /api/v1/members/:id` statuses (6) | 200 C8 · 400 C3 · 401 C12 · 403 C12 · 404 C12 · 422 C6, C7 | - |
@@ -238,3 +241,5 @@ Cost: um unitário de magic bytes, além das provas na fronteira. Sem ele, a tab
 - **Settled mid-build:** C45 restrito a código que não é teste - na forma original ele contradizia C3 e C4, que precisam enviar `OWNER` e `VIEWER` como entrada recusada
 - **Settled mid-build:** C5 e C18 (e `test/migrations.spec.ts`) removidos a pedido do usuário: sem produção, a conversão de dados da migration não precisa de teste. AC 3 e AC 11 passaram a descrever só o estado final do schema (C2, C17)
 - **Settled mid-build:** a pedido do usuário, todas as migrations viraram uma só (`20260924120000_init`), gerada do `schema.prisma` + SQL manual (RLS, políticas, índice parcial, seed). Catálogo comparado com a cadeia antiga + F1 via `pg_dump -s`: só muda a ordem de colunas. Novo C48
+- **Settled mid-build:** `bodyLimit` de 400 KB na rota do logo, com `413` acrescentado ao `Surface` (additive) e provado por C49
+- **Settled mid-build:** C23 - `audit.record` recusa `null` (AD-008), então campo vazio entra na trilha como `''`

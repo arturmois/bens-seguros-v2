@@ -1,88 +1,22 @@
 import { type APIRequestContext, type Page, request as playwrightRequest } from '@playwright/test'
 import {
+  acceptInvite,
   clearActiveOrganization,
   emailLink,
+  enterApp,
   expect,
-  inbox,
+  invitationToken,
+  invite,
   NAME,
   onboard,
   PASSWORD,
+  requireBase,
+  signIn,
   signUp,
   test,
   uniqueEmail,
   verifiedUser,
 } from './support'
-
-const mailpit = process.env.E2E_MAILPIT_URL ?? 'http://localhost:8025'
-
-async function signIn(page: Page, user: { email: string; password: string }) {
-  await page.goto('/login')
-  await page.getByLabel('E-mail').fill(user.email)
-  await page.getByLabel('Senha').fill(user.password)
-  await page.getByRole('button', { name: 'Entrar' }).click()
-  // The click returns before the session request settles. A later goto would cancel it.
-  await expect(page).not.toHaveURL(/\/login/)
-}
-
-// A new sign-in starts in the last active organization, or the only one (door 4).
-async function enterApp(page: Page, organizationName: string) {
-  await expect(page).toHaveURL('/dashboard')
-  await expect(page.getByRole('banner').getByText(organizationName)).toBeVisible()
-}
-
-async function invitationToken(to: string) {
-  let text = ''
-  await expect
-    .poll(async () => {
-      const message = (await inbox(to)).find((item) => item.Subject.startsWith('Convite para '))
-      if (!message) return false
-      const response = await fetch(`${mailpit}/api/v1/message/${message.ID}`)
-      const body = (await response.json()) as { Text: string }
-      text = body.Text
-      return text.includes('accept-invitation?token=')
-    })
-    .toBe(true)
-  const token = text.match(/accept-invitation\?token=([^\s]+)/)?.[1]
-  if (!token) throw new Error(`no invitation token for ${to}`)
-  return token
-}
-
-function requireBase(baseURL: string | undefined): string {
-  if (!baseURL) throw new Error('baseURL is required')
-  return baseURL
-}
-
-async function acceptInvite(
-  baseURL: string | undefined,
-  email: string,
-  options: { name?: string; ownBrokerage?: string } = {},
-) {
-  const origin = requireBase(baseURL)
-  const guest = await playwrightRequest.newContext({
-    baseURL: origin,
-    extraHTTPHeaders: { origin: new URL(origin).origin },
-  })
-  await signUp(guest, email, options.name)
-  const verify = await guest.get(await emailLink(email, 'Confirme seu e-mail'), { maxRedirects: 0 })
-  expect(verify.status()).toBe(302)
-  expect(
-    (
-      await guest.post('/api/v1/me/terms-acceptance', {
-        data: { termsVersion: '1.0', privacyVersion: '1.0' },
-      })
-    ).ok(),
-  ).toBeTruthy()
-  const own = options.ownBrokerage ? await onboard(guest, options.ownBrokerage) : undefined
-  const token = await invitationToken(email)
-  expect((await guest.post('/api/v1/invitations/accept', { data: { token } })).ok()).toBeTruthy()
-  await guest.dispose()
-  return { email, password: PASSWORD, own }
-}
-
-async function invite(api: APIRequestContext, email: string, role: string) {
-  const response = await api.post('/api/v1/invitations', { data: { email, role } })
-  expect(response.ok()).toBeTruthy()
-}
 
 async function memberId(api: APIRequestContext, email: string) {
   const response = await api.get('/api/v1/members')
@@ -342,6 +276,24 @@ test.describe('org web', () => {
     await header.getByRole('button', { name: alfa.name }).click()
     await expect(header.getByText('Organização não encontrada.')).toBeVisible()
     await expect(page).toHaveURL('/settings/organization')
+  })
+
+  test('shows and copies the web chat link', async ({ page, api, baseURL }) => {
+    const admin = await verifiedUser(api)
+    const created = await onboard(api, 'Link')
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], {
+      origin: new URL(requireBase(baseURL)).origin,
+    })
+    await signIn(page, admin)
+    await enterApp(page, created.name)
+    await page.goto('/settings/organization')
+    const expected = `${new URL(requireBase(baseURL)).origin}/c/${created.publicChatKey}`
+
+    await expect(page.getByTestId('web-chat-link')).toHaveText(expected)
+    await page.getByRole('button', { name: 'Copiar' }).click()
+
+    await expect(page.getByText('Link copiado.')).toBeVisible()
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(expected)
   })
 
   test('shows the brokerage form to the owner', async ({ page, api }) => {

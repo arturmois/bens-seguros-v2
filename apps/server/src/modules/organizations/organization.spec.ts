@@ -93,6 +93,10 @@ describe('GET and PATCH /api/v1/organization', () => {
         id: organizationId,
         name: 'Papéis',
         slug: created.json().slug,
+        publicChatKey: created.json().publicChatKey,
+        brandColor: null,
+        greeting: null,
+        logoUpdatedAt: null,
         role,
       })
     }
@@ -202,8 +206,45 @@ describe('GET and PATCH /api/v1/organization', () => {
 
     const response = await client.get('/api/v1/organization')
 
+    const keys = await Promise.all(
+      [tenantA, tenantB].map((tenant) =>
+        deps.db.withTenant(tenant, (tx) =>
+          tx.organization.findUniqueOrThrow({
+            where: { id: tenant.organizationId },
+            select: { publicChatKey: true },
+          }),
+        ),
+      ),
+    )
+
     expect(response.statusCode).toBe(200)
     expect(response.json().id).toBe(tenantA.organizationId)
+    expect(response.json().publicChatKey).toBe(keys[0]?.publicChatKey)
     expect(response.body).not.toContain(tenantB.organizationId)
+    expect(response.body).not.toContain(keys[1]?.publicChatKey)
+  })
+
+  it('never returns the logo bytes with the organization', async () => {
+    const client = new TestClient(app)
+    await signedInUser(client, deps)
+    await acceptCurrentTerms(client)
+    const created = await client.post('/api/v1/onboarding', { name: 'Sem Bytes' })
+    const organizationId = created.json().id as string
+    await deps.db.withTenant({ organizationId }, (tx) =>
+      tx.organization.update({
+        where: { id: organizationId },
+        data: {
+          logo: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+          logoMimeType: 'image/png',
+          logoUpdatedAt: new Date(),
+        },
+      }),
+    )
+
+    const response = await client.get('/api/v1/organization')
+
+    expect(response.statusCode).toBe(200)
+    expect(Object.keys(response.json())).not.toContain('logo')
+    expect(response.json().logoUpdatedAt).toEqual(expect.any(String))
   })
 })
