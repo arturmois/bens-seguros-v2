@@ -20,7 +20,8 @@
 Escopo, fases e decisões: `docs/roadmap.md`, ADR-011 a ADR-017. Cada fase: `plan.md` revisado → `checks.md` → build → Verifier.
 
 - **Pivot documentado:** gates do v2 verdes (31 arquivos, 272 testes); análise validada contra o código; decisões abertas resolvidas (`WAITING` = aguardando o cliente; opt-in "SIM" no WhatsApp, pendente de parecer jurídico antes do go-live; P1–P6 confirmadas; `Organization.maxUsers`; staging publicado vira marco antes da F3); ADRs 011–017 escritos e ADRs do v2 marcados; `architecture.md`, `roadmap.md`, `CLAUDE.md` e este arquivo reescritos; `migration.md` aposentado.
-- **Próximo:** F0 — poda do ERP (`.specs/features/erp-prune/`), depois o checkpoint H3.
+- **F0 fechada (2026-09-23):** `erp-prune` com `verification.md` PASS na rodada 3 (`e1f406c`). Rodada 1 FAIL em `0983bf8` (smoke do staging vermelho; landing e Termos ainda descreviam o ERP → AC 17/C31, Termos viram bloqueio de go-live); rodada 2 FAIL em `cdb059c` (C31 com mutante sobrevivente → L-038). O smoke só fechou com `staging-signup-env` (PASS, `cdb059c`): desde `152bf11` a pilha de produção não repassava `SIGNUP_MODE`/`TURNSTILE_*` e não subia.
+- **Próximo:** checkpoint H3 (`harness-eval`, Track A, numa sessão nova), depois F1.
 - **Pendências registradas:** revisão da AD-008 (F2) e da AD-009 (F2/F5); AD nova para o tenant do link público (F3) e para a função `SECURITY DEFINER` do runtime WhatsApp (F9); parecer jurídico do opt-in do WhatsApp e reescrita dos Termos de Uso para o MVP, com nova versão (antes do go-live).
 
 ## Histórico v2 (Fases 3–4, concluídas)
