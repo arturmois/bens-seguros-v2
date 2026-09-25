@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 60,
+  "next_id": 61,
   "lessons": [
     {
       "id": "L-001",
@@ -1070,6 +1070,24 @@
       ],
       "created": "2026-09-25T00:54:04Z",
       "last_seen": "2026-09-25T00:54:04Z"
+    },
+    {
+      "id": "L-060",
+      "key": "surviving_mutant::when a rule moves into a pure function also prove that its caller uses it or the call site can drop it with the unit test green",
+      "text": "When a rule moves into a pure function, also prove that its caller uses it, or the call site can drop it with the unit test green",
+      "signal": "surviving_mutant",
+      "scope": "infrastructure",
+      "status": "candidate",
+      "features": [
+        "realtime-events"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "F12, apps/server/src/infrastructure/events.ts:126 (listener bypasses nextRetryDelay) (infrastructure)"
+      ],
+      "created": "2026-09-25T00:57:43Z",
+      "last_seen": "2026-09-25T00:57:43Z"
     }
   ]
 }

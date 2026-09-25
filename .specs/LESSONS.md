@@ -366,6 +366,12 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: F10, apps/server/src/infrastructure/events.ts:121 (backoff cap) (infrastructure)
 - last seen: 2026-09-25T00:54:04Z
 
+### L-060 - When a rule moves into a pure function, also prove that its caller uses it, or the call site can drop it with the unit test green
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `infrastructure` · harmful: 0
+- features: realtime-events
+- evidence: F12, apps/server/src/infrastructure/events.ts:126 (listener bypasses nextRetryDelay) (infrastructure)
+- last seen: 2026-09-25T00:57:43Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.
