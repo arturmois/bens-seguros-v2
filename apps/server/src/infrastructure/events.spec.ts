@@ -49,7 +49,10 @@ async function eventually<T>(read: () => Promise<T> | T, accept: (value: T) => b
 }
 
 // A started listener on this worker's channel, recording every event and every log line.
-async function listening(databaseUrl = testDatabaseUrl()) {
+async function listening(
+  databaseUrl = testDatabaseUrl(),
+  retryDelay?: (previousMs: number) => number,
+) {
   const lines: { level: number; msg: string; time: number; raw: string }[] = []
   const logger = pino(
     { level: 'debug' },
@@ -61,7 +64,12 @@ async function listening(databaseUrl = testDatabaseUrl()) {
     },
   )
   const { connectionString, schema } = parseDatabaseUrl(databaseUrl)
-  const listener = createEventListener({ connectionString, schema, logger })
+  const listener = createEventListener({
+    connectionString,
+    schema,
+    logger,
+    ...(retryDelay && { retryDelay }),
+  })
   const seen: AppEvent[] = []
   listener.on('message.created', async (event) => {
     seen.push(event)
@@ -364,5 +372,50 @@ describe('events', () => {
     }
 
     expect(waits).toEqual([1000, 2000, 4000, 8000, 16_000, 30_000, 30_000])
+    // The listener's own schedule when none is given.
+    const { connectionString, schema } = parseDatabaseUrl(testDatabaseUrl())
+    const listener = createEventListener({
+      connectionString,
+      schema,
+      logger: pino({ level: 'silent' }),
+    })
+    expect(listener.retryDelay).toBe(nextRetryDelay)
+  })
+
+  it('waits what the retry delay answers between failed attempts', async () => {
+    const role = `events_probe_${workerSchema()}`
+    await withOwnerClient(async (client) => {
+      await client.query(`DROP ROLE IF EXISTS ${role}`)
+      await client.query(`CREATE ROLE ${role} LOGIN PASSWORD '${role}'`)
+    })
+    const url = new URL(testDatabaseUrl())
+    url.username = role
+    url.password = role
+    const asked: number[] = []
+    const events = await listening(url.toString(), (previousMs) => {
+      asked.push(previousMs)
+      return 100
+    })
+    try {
+      const [pid] = await eventually(listenerPids, (pids) => pids.length === 1)
+      await withOwnerClient(async (client) => {
+        await client.query(`ALTER ROLE ${role} NOLOGIN`)
+        await client.query('SELECT pg_terminate_backend($1)', [pid])
+      })
+      const failed = await eventually(
+        () => events.lines.filter((line) => line.msg === 'events listener reconnection failed'),
+        (lines) => lines.length >= 3,
+      )
+      await withOwnerClient((client) => client.query(`ALTER ROLE ${role} LOGIN`))
+      await eventually(listenerPids, (pids) => pids.length === 1 && pids[0] !== pid)
+
+      // Asked with the first wait (1 s), then with each answer it gave.
+      expect(asked.slice(0, 3)).toEqual([1000, 100, 100])
+      // Its 100 ms answer, not the default doubling (2 s, then 4 s).
+      expect((failed[2]?.time ?? 0) - (failed[1]?.time ?? 0)).toBeLessThan(900)
+    } finally {
+      await events.listener.stop()
+      await withOwnerClient((client) => client.query(`DROP ROLE IF EXISTS ${role}`))
+    }
   })
 })

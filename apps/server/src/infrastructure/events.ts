@@ -51,7 +51,10 @@ export function createEventListener(options: {
   connectionString: string
   schema: string
   logger: Logger
+  // The wait after a failed attempt, given the previous one. Only tests pass another.
+  retryDelay?: (previousMs: number) => number
 }) {
+  const retryDelay = options.retryDelay ?? nextRetryDelay
   const channel = eventChannel(options.schema)
   const log = options.logger.child({ component: 'events', channel })
   const handlers = new Map<AppEventType, AppEventHandler[]>()
@@ -123,7 +126,7 @@ export function createEventListener(options: {
         (error: unknown) => {
           if (stopped) return
           log.debug({ err: error }, 'events listener reconnection failed')
-          retry(nextRetryDelay(delayMs))
+          retry(retryDelay(delayMs))
         },
       )
     }, delayMs)
@@ -131,6 +134,7 @@ export function createEventListener(options: {
 
   return {
     channel,
+    retryDelay,
 
     on(type: AppEventType, handler: AppEventHandler) {
       handlers.set(type, [...(handlers.get(type) ?? []), handler])
