@@ -14,7 +14,9 @@ const config = loadConfig({
   APP_URL: 'http://localhost:3000',
   BETTER_AUTH_SECRET: 'openapi-placeholder-secret-32-chars',
 })
-const app = buildApp(createDependencies(config))
+const deps = createDependencies(config)
+// `onReady` starts the events listener (ADR-012), which would dial the placeholder database.
+const app = buildApp({ ...deps, events: { ...deps.events, start: async () => {} } })
 await app.ready()
 
 const output = new URL('../openapi.json', import.meta.url)
