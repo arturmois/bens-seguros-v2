@@ -4,7 +4,6 @@ import { signedInUser, TestClient } from '../../../test/auth.ts'
 import { withOwnerClient, workerSchema } from '../../../test/setup-db.ts'
 import type { App } from '../../app.ts'
 import type { Deps } from '../../dependencies.ts'
-import { createDefaultChannel } from '../channels/index.ts'
 import { onboard } from './onboarding.ts'
 
 const DAY = 24 * 60 * 60 * 1000
@@ -251,8 +250,10 @@ describe('POST /api/v1/onboarding', () => {
           db: deps.db,
           maxOrgsPerUser: 3,
           setupOrganization: [
+            // A real write of another module's step (the Web Chat channel), without importing it:
+            // `organizations` never depends on a domain module (AD-017).
             async (tx) => {
-              await createDefaultChannel(tx)
+              await tx.channel.create({ data: { kind: 'WEB_CHAT', name: 'Web Chat' } })
               channelStepRan = true
             },
             () => Promise.reject(new Error('setup failed')),

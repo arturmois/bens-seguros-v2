@@ -3,7 +3,7 @@
 Profile: standard
 Plan: `.specs/features/public-chat-api/plan.md`
 
-44 checks in 7 slices · 7 one-way doors · 1 open (blocks go-live, none blocks the build)
+45 checks in 7 slices · 7 one-way doors · 1 open (blocks go-live, none blocks the build)
 
 Every proof runs from `apps/server` with `pnpm exec vitest run <file> -t "<name>"` against the real
 PostgreSQL of the docker compose. The route tests use `buildTestApp` + `app.inject` (no panel
@@ -165,13 +165,16 @@ Proof: `grep -c '"@fastify/rate-limit": "11\.' apps/server/package.json` prints 
 **C44** - `WEB_CHAT_NOTICE_VERSION` is `'2026-09-25'` and `GET /api/public/chat/:key` reports it (Impact "domain", AC 1)
 Proof: `src/modules/channels/public-chat.spec.ts -t "describes the web chat of the key"`
 
+**C45** - Repeating `POST /sessions` with the same body answers `201` with the same message, and the same `clientMessageId` with another phone answers `409` without that message's id or text; the organization keeps 1 contact, 1 conversation, 1 message and 1 consent (Surface `409`, added in build; door 7)
+Proof: `src/modules/channels/public-chat.spec.ts -t "answers a repeated start with the same session"`
+
 ## Coverage
 
 | Set (size) | Member -> proof | Unproven |
 | --- | --- | --- |
 | `GET /api/public/chat/:key` statuses (4) | 200 C9 · 400 C24 · 404 C10 · 429 C37 | - |
 | `GET /api/public/chat/:key/logo` statuses (4) | 200 C39 · 400 C24 · 404 C10, C39 · 429 C37 | - |
-| `POST /api/public/chat/:key/sessions` statuses (6) | 201 C11 · 400 C17, C24 · 403 C20, C22, C40 · 404 C10 · 422 C18, C19 · 429 C34, C35 | - |
+| `POST /api/public/chat/:key/sessions` statuses (7) | 201 C11, C45 · 400 C17, C24 · 403 C20, C22, C40 · 404 C10 · 409 C45 · 422 C18, C19 · 429 C34, C35 | - |
 | `POST /api/public/chat/:key/messages` statuses (8) | 200 C26 · 201 C25 · 400 C24 · 401 C29 · 403 C40 (same origin hook, asserted on `/sessions`; the hook is global, `app.spec` covers every path) · 404 C10 · 409 C27 · 429 C36 | - |
 | `GET /api/public/chat/:key/messages` statuses (5) | 200 C30 · 400 C24 · 401 C29 · 404 C10 · 429 C37 | - |
 | Landing doors (7) | 1 key tenant C1, C2, C3 · 2 ConsentRecord C4, C13 · 3 atomic consent C7, C8 · 4 visitor token C5, C6, C14 · 5 seq cut C30, C31, C32 · 6 rate limit C34–C38, C43 · 7 externalId C26, C27 | - |
@@ -208,7 +211,7 @@ Cost: 3 unit proofs in 1 file. Without it, the 6 rejection causes would be prove
 
 - validation: C17, C18, C19, C24
 - failure modes: C8 (consent and message roll back together), C22
-- idempotency: C26, C27 (dedupe by `webchat:<clientMessageId>`, door 7)
+- idempotency: C26, C27, C45 (dedupe by `webchat:<clientMessageId>`, door 7)
 - authorization: C10, C16, C29, C31, C40 (the key is the capability; the cookie scopes the conversation)
 - concurrency: existing - two first messages of one phone share one contact and one conversation (`conversation-core` C-series on `receiveInbound`); the start reuses it unchanged
 - data lifecycle: C13 (one consent per start, never deleted); cookie expiry C6, C14; nothing to backfill (`ConsentRecord` starts empty)
@@ -219,3 +222,16 @@ Cost: 3 unit proofs in 1 file. Without it, the 6 rejection causes would be prove
 ## Handoff
 
 - S0 ~23k + S1 ~20k + S2 ~10k + S3 ~10k + S4 ~8k + S5 ~8k + S6 ~15k ≈ 94k tokens (≈ 375 KB read: `inbound.spec.ts` 15 KB, `schema.spec.ts` 43 KB, `database.spec.ts` 13 KB, `signup-gates.spec.ts` 14 KB for the siteverify fake, `branding.spec.ts` 17 KB, `openapi.json` ~45 KB, `app.ts`, `config.ts`, `database.ts`, migration SQL; new `public-chat.routes.ts`, `public-chat.ts`, `visitor-token.ts`, their specs, a migration), under the 150k budget - one builder
+
+- **Boundary:** C1-C45 closed at the commit `feat(channels): serve the public web chat api`
+- **Settled mid-build:**
+  - C45 added (additive): a retried start is idempotent, and the plan's `Surface` gained `409` on `POST /sessions`.
+  - C23 names `invite_only`, but the `SIGNUP_MODE` enum has `closed` and `self_serve` only. The proof covers both real modes, and the check text is left as approved.
+  - C14 production half: the route builds the cookie through `visitorCookieFor(config, …)`, proven with `loadConfig(NODE_ENV=production)` at its own layer. An app with `NODE_ENV=production` in the test would call the real siteverify.
+  - C2: outside every setting, the `Organization` policy fails closed (it throws), as it did before. "Reads no organization row" is proven by that rejection.
+  - `@fastify/rate-limit` marks a request once any of its hooks has run (`rateLimitRan`), so stacking two `rateLimit()` hooks skips the second. The limits use `createRateLimit` in one `onRequest` per route.
+  - `organizations/onboarding.spec.ts` stopped importing `channels`. That spec-only edge plus `channels → organizations` formed an import cycle in `architecture.spec`. The step now writes the channel directly.
+  - Pre-existing CI break fixed first as its own feature, `openapi-export` (`1eaf414`, PASS): `pnpm api:generate` had been failing since `realtime-events`.
+  - Local DB only: the `public` schema had lost the `bens_app` grants after the F1 `migrate reset`. They were re-applied from `docker/postgres/init/01-app-role.sh`, with no code change.
+- **Abandoned:** two stacked `fastify.rateLimit()` hooks (see above)
+

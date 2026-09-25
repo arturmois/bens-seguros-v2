@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import fastifyHelmet from '@fastify/helmet'
+import fastifyRateLimit from '@fastify/rate-limit'
 import fastifySwagger from '@fastify/swagger'
 import fastifySwaggerUi from '@fastify/swagger-ui'
 import Fastify, { LogController } from 'fastify'
@@ -13,7 +14,7 @@ import { z } from 'zod'
 import type { Deps } from './dependencies.ts'
 import { createRealtime, type Realtime } from './infrastructure/realtime.ts'
 import { authRoutes, headersOf, resolveSession } from './modules/auth/index.ts'
-import { createDefaultChannel } from './modules/channels/index.ts'
+import { createDefaultChannel, publicChatRoutes } from './modules/channels/index.ts'
 import { moveContactOwner } from './modules/contacts/index.ts'
 import {
   conversationRoutes,
@@ -65,6 +66,9 @@ export function buildApp(deps: Deps) {
     // The API returns JSON; the SPA's CSP is set by Caddy. Swagger UI (dev only) needs inline code.
     contentSecurityPolicy: config.NODE_ENV === 'production',
   })
+
+  // Only the routes that ask for it are limited (the public chat, door 6 of `public-chat-api`).
+  app.register(fastifyRateLimit, { global: false })
 
   // Collects every route schema; scripts/export-openapi.ts writes it for Orval (ADR-007).
   app.register(fastifySwagger, {
@@ -152,6 +156,7 @@ export function buildApp(deps: Deps) {
   app.register(invitationRoutes(deps))
   app.register(memberRoutes({ ...deps, portfolioMoves: [moveContactOwner] }))
   app.register(conversationRoutes(deps))
+  app.register(publicChatRoutes(deps))
 
   return app
 }

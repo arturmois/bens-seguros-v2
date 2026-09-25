@@ -100,7 +100,7 @@ export async function removeLogo(deps: Deps, ctx: RequestContext) {
   })
 }
 
-export async function readLogo(deps: Deps, ctx: RequestContext) {
+export async function readLogo(deps: Deps, ctx: Pick<RequestContext, 'organizationId'>) {
   const row = await deps.db.withTenant(ctx, (tx) =>
     tx.organization.findUnique({
       where: { id: ctx.organizationId },

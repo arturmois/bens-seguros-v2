@@ -17,13 +17,13 @@ Quando isso for entregue, o visitante abre o link, informa telefone, aceita o av
 
 Reusa o `receiveInbound` da F2 (normalização E.164, `seq`, dedupe, reabertura, evento `message.created`), o padrão do `withInvitation` (a chave é a capacidade; o `organizationId` sai da linha), o fake de siteverify do `signup-gates.spec` e o `{ error: { code, message } }` de `shared/errors.ts`.
 
-1. `GET /api/public/chat/:key` -> `infrastructure/database.ts` (exists) `withPublicChatKey` (door 1) lê `Organization` pela chave -> `channels` (exists) devolve nome, cor, saudação, se há logo, `noticeVersion` e a site key do Turnstile
+1. `GET /api/public/chat/:key` -> `channels` (exists) -> `organizations` (exists) `findPublicChat` lê `Organization` pela chave em `withPublicChatKey` (door 1, `infrastructure/database.ts`) -> `channels` devolve nome, cor, saudação, se há logo, `noticeVersion` e a site key do Turnstile
 2. `POST /api/public/chat/:key/sessions` -> `channels` - Zod (telefone, `consent: true`, `noticeVersion`, `turnstileToken`, primeira mensagem com `clientMessageId`) -> siteverify do Turnstile -> `withPublicChatKey` resolve o tenant
-3. `channels` -> `conversations` (exists) `receiveInbound` com o canal `WEB_CHAT` da organização e `externalId` derivado do `clientMessageId`; na mesma transação (door 3) grava `ConsentRecord` (door 2, tabela do `contacts`) -> COMMIT -> `notify` (exists) empurra ao painel
+3. `channels` -> `conversations` (exists) `receiveInbound` com o canal `WEB_CHAT` da organização e `externalId` derivado do `clientMessageId`; na mesma transação (door 3) o `onReceived` chama `recordConsent` do `contacts` (exists), que grava `ConsentRecord` (door 2) -> COMMIT -> `notify` (exists) empurra ao painel. Um início repetido (mesmo `clientMessageId`) devolve a mesma mensagem e um token novo; se a mensagem guardada é de outro telefone, `409`
 4. `channels` assina o token do visitante (door 4) com `organizationId`, `contactId`, `conversationId` e `fromSeq` = `seq` da primeira mensagem -> `Set-Cookie` httpOnly com `Path=/api/public/chat/<key>`
 5. `POST /api/public/chat/:key/messages` -> `channels` valida o cookie (assinatura, validade, organização da chave) -> `receiveInbound` com o telefone do contato do token -> a mensagem precisa cair na conversa do token
 6. `GET /api/public/chat/:key/messages?after=<seq>` -> `channels` valida o cookie -> mensagens da conversa do token com `seq ≥ fromSeq` e `seq > after`, em `seq` crescente (door 5)
-7. `GET /api/public/chat/:key/logo` -> `channels` lê o logo pela chave, com o mesmo cache do logo do painel
+7. `GET /api/public/chat/:key/logo` -> `channels` resolve a organização pela chave e lê o logo pelo `readLogo` do `organizations` (exists), com `ETag`
 8. rate limit (door 6) antes do handler: início por IP e por chave; mensagens por token
 
 ## Impact
@@ -59,7 +59,7 @@ Restrições de mão única:
 | --- | --- | --- | --- |
 | `GET /api/public/chat/:key` | params `key` (32 hex) | `{ name, brandColor, greeting, hasLogo, noticeVersion, turnstileSiteKey }` | `200`, `400`, `404`, `429` |
 | `GET /api/public/chat/:key/logo` | params `key` | bytes da imagem, `Content-Type` do logo, `Cache-Control` | `200`, `400`, `404`, `429` |
-| `POST /api/public/chat/:key/sessions` | params `key`; body `phone`, `consent: true`, `noticeVersion`, `turnstileToken`, `clientMessageId` (uuid), `text` (1–4 000) | `201 { message: PublicMessage }` + `Set-Cookie` do visitante | `201`, `400`, `403`, `404`, `422`, `429` |
+| `POST /api/public/chat/:key/sessions` | params `key`; body `phone`, `consent: true`, `noticeVersion`, `turnstileToken`, `clientMessageId` (uuid), `text` (1–4 000) | `201 { message: PublicMessage }` + `Set-Cookie` do visitante | `201`, `400`, `403`, `404`, `409`, `422`, `429` |
 | `POST /api/public/chat/:key/messages` | params `key`; cookie do visitante; body `clientMessageId` (uuid), `text` (1–4 000) | `201 { message }` (nova) ou `200 { message }` (repetida) | `200`, `201`, `400`, `401`, `403`, `404`, `429` |
 | `GET /api/public/chat/:key/messages` | params `key`; cookie; query `after?` (inteiro ≥ 0) | `{ items: PublicMessage[] }` (até 100, `seq` crescente) | `200`, `400`, `401`, `404`, `429` |
 
@@ -70,6 +70,7 @@ De onde vem cada status:
 - `401 VISITOR_SESSION_REQUIRED`: cookie ausente, adulterado, vencido ou de outra organização;
 - `403`: `TURNSTILE_FAILED` e o `ORIGIN_NOT_ALLOWED` que já existe (AD-004) nos `POST`;
 - `404 NOT_FOUND`: chave desconhecida;
+- `409 CONFLICT` (acrescentado no build): o `clientMessageId` já guardado é de outra conversa (`POST /messages`) ou de outro telefone (`POST /sessions`);
 - `422`: `INVALID_PHONE` (do `receiveInbound`) e `NOTICE_OUTDATED`;
 - `429 RATE_LIMITED`.
 
