@@ -336,6 +336,30 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: C48 (repo-layer)
 - last seen: 2026-09-24T23:13:50Z
 
+### L-055 - A status added to the plan's Surface during the build gets its own check and proof in the same commit
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `specs` · harmful: 0
+- features: realtime-events
+- evidence: apps/server/src/infrastructure/realtime.ts:65 (Coverage join statuses: 500 INTERNAL_ERROR) (specs)
+- last seen: 2026-09-25T00:48:11Z
+
+### L-056 - Prove a reconnect backoff with a reconnection attempt that fails, not only with a first attempt that succeeds
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `infrastructure` · harmful: 0
+- features: realtime-events
+- evidence: apps/server/src/infrastructure/events.ts:118 (Coverage LISTEN lifecycle: failed reconnection backoff) (infrastructure)
+- last seen: 2026-09-25T00:48:11Z
+
+### L-057 - Count emitted events by the aggregate they name, not by the ids that were stored, so an event from a rolled-back write is counted
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `events` · harmful: 0
+- features: realtime-events
+- evidence: C12, conversation-events.spec.ts:129 (fault F4) (events)
+- last seen: 2026-09-25T00:48:11Z
+
+### L-058 - Name in a check's proof list every test that asserts one of its clauses
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
+- features: realtime-events
+- evidence: C21, test/architecture.spec.ts:352 (checks)
+- last seen: 2026-09-25T00:48:11Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

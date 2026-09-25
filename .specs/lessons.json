@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 55,
+  "next_id": 59,
   "lessons": [
     {
       "id": "L-001",
@@ -980,6 +980,78 @@
       ],
       "created": "2026-09-24T23:13:50Z",
       "last_seen": "2026-09-24T23:13:50Z"
+    },
+    {
+      "id": "L-055",
+      "key": "ac_gap::a status added to the plan s surface during the build gets its own check and proof in the same commit",
+      "text": "A status added to the plan's Surface during the build gets its own check and proof in the same commit",
+      "signal": "ac_gap",
+      "scope": "specs",
+      "status": "candidate",
+      "features": [
+        "realtime-events"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "apps/server/src/infrastructure/realtime.ts:65 (Coverage join statuses: 500 INTERNAL_ERROR) (specs)"
+      ],
+      "created": "2026-09-25T00:48:11Z",
+      "last_seen": "2026-09-25T00:48:11Z"
+    },
+    {
+      "id": "L-056",
+      "key": "ac_gap::prove a reconnect backoff with a reconnection attempt that fails not only with a first attempt that succeeds",
+      "text": "Prove a reconnect backoff with a reconnection attempt that fails, not only with a first attempt that succeeds",
+      "signal": "ac_gap",
+      "scope": "infrastructure",
+      "status": "candidate",
+      "features": [
+        "realtime-events"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "apps/server/src/infrastructure/events.ts:118 (Coverage LISTEN lifecycle: failed reconnection backoff) (infrastructure)"
+      ],
+      "created": "2026-09-25T00:48:11Z",
+      "last_seen": "2026-09-25T00:48:11Z"
+    },
+    {
+      "id": "L-057",
+      "key": "spec_precision_gap::count emitted events by the aggregate they name not by the ids that were stored so an event from a rolled back write is counted",
+      "text": "Count emitted events by the aggregate they name, not by the ids that were stored, so an event from a rolled-back write is counted",
+      "signal": "spec_precision_gap",
+      "scope": "events",
+      "status": "candidate",
+      "features": [
+        "realtime-events"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "C12, conversation-events.spec.ts:129 (fault F4) (events)"
+      ],
+      "created": "2026-09-25T00:48:11Z",
+      "last_seen": "2026-09-25T00:48:11Z"
+    },
+    {
+      "id": "L-058",
+      "key": "spec_precision_gap::name in a check s proof list every test that asserts one of its clauses",
+      "text": "Name in a check's proof list every test that asserts one of its clauses",
+      "signal": "spec_precision_gap",
+      "scope": "checks",
+      "status": "candidate",
+      "features": [
+        "realtime-events"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "C21, test/architecture.spec.ts:352 (checks)"
+      ],
+      "created": "2026-09-25T00:48:11Z",
+      "last_seen": "2026-09-25T00:48:11Z"
     }
   ]
 }
