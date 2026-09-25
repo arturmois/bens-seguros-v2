@@ -138,6 +138,11 @@
   body {
     @apply bg-background font-sans text-foreground antialiased;
   }
+  /* Tailwind v4's preflight no longer gives buttons a pointer. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
 }
 
 @theme inline {
