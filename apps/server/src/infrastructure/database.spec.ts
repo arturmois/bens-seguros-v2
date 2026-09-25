@@ -145,6 +145,49 @@ describe('row level security', () => {
     ).rejects.toThrow()
   })
 
+  it('reads only the organization of the public chat key', async () => {
+    const [keyA] = await deps.db.withTenant(tenantA, (tx) =>
+      tx.organization.findMany({ select: { publicChatKey: true } }),
+    )
+    if (!keyA) throw new Error('tenant A has no organization')
+
+    const byKey = await deps.db.withPublicChatKey(keyA.publicChatKey, (tx) =>
+      tx.organization.findMany({ select: { id: true } }),
+    )
+    const unknown = await deps.db.withPublicChatKey('0'.repeat(32), (tx) =>
+      tx.organization.findMany(),
+    )
+
+    expect(byKey).toEqual([{ id: tenantA.organizationId }])
+    expect(unknown).toEqual([])
+    await expect(
+      deps.db.withPublicChatKey(keyA.publicChatKey, (tx) => tx.contact.findMany()),
+    ).rejects.toThrow()
+    await expect(
+      deps.db.withPublicChatKey(keyA.publicChatKey, (tx) =>
+        tx.organization.update({ where: { id: tenantA.organizationId }, data: { name: 'x' } }),
+      ),
+    ).rejects.toThrow()
+  })
+
+  it('does not leak the public chat key to the next transaction', async () => {
+    const [keyA] = await deps.db.withTenant(tenantA, (tx) =>
+      tx.organization.findMany({ select: { publicChatKey: true } }),
+    )
+    if (!keyA) throw new Error('tenant A has no organization')
+    for (let i = 0; i < 5; i++) {
+      await deps.db.withPublicChatKey(keyA.publicChatKey, (tx) => tx.organization.count())
+    }
+
+    // Without any setting the policy fails closed: no organization row is ever returned.
+    for (let i = 0; i < 10; i++) {
+      await expect(
+        deps.db.withoutTenant((tx) => tx.organization.findMany()),
+        `outside #${i}`,
+      ).rejects.toThrow()
+    }
+  })
+
   it('lists only the caller organizations', async () => {
     const user = await createUser()
     await createMember(tenantA, user.id)

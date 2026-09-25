@@ -27,16 +27,17 @@ model Organization {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  members       Member[]
-  invitations   Invitation[]
-  channels      Channel[]
-  contacts      Contact[]
-  conversations Conversation[]
-  messages      Message[]
-  auditLogs     AuditLog[]
-  subscription  Subscription?
-  sessions      Session[]
-  lastActiveBy  User[]         @relation("UserLastActiveOrganization")
+  members        Member[]
+  invitations    Invitation[]
+  channels       Channel[]
+  contacts       Contact[]
+  conversations  Conversation[]
+  consentRecords ConsentRecord[]
+  messages       Message[]
+  auditLogs      AuditLog[]
+  subscription   Subscription?
+  sessions       Session[]
+  lastActiveBy   User[]          @relation("UserLastActiveOrganization")
 }
 
 enum Role {
@@ -283,8 +284,9 @@ model Channel {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
-  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  conversations Conversation[]
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  conversations  Conversation[]
+  consentRecords ConsentRecord[]
 
   @@unique([id, organizationId])
 }
@@ -300,9 +302,10 @@ model Contact {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  owner         Member?        @relation(fields: [organizationId, ownerId], references: [organizationId, userId], onDelete: Restrict, onUpdate: Restrict)
-  conversations Conversation[]
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  owner          Member?         @relation(fields: [organizationId, ownerId], references: [organizationId, userId], onDelete: Restrict, onUpdate: Restrict)
+  conversations  Conversation[]
+  consentRecords ConsentRecord[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, phoneE164])
@@ -339,11 +342,12 @@ model Conversation {
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  contact      Contact      @relation(fields: [contactId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
-  channel      Channel      @relation(fields: [channelId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
-  assignee     Member?      @relation(fields: [organizationId, assigneeId], references: [organizationId, userId], onDelete: Restrict, onUpdate: Restrict)
-  messages     Message[]
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  contact        Contact         @relation(fields: [contactId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  channel        Channel         @relation(fields: [channelId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  assignee       Member?         @relation(fields: [organizationId, assigneeId], references: [organizationId, userId], onDelete: Restrict, onUpdate: Restrict)
+  messages       Message[]
+  consentRecords ConsentRecord[]
 
   @@unique([id, organizationId])
   // Target of the message foreign key: a message's channel is its conversation's channel.
@@ -401,4 +405,24 @@ model Message {
 
   @@unique([id, organizationId])
   @@unique([organizationId, conversationId, seq])
+}
+
+// The customer's acceptance of the channel notice before being served (ADR-014, LGPD §41): one row
+// per Web Chat session start (and, in F9, per WhatsApp opt-in). Tenant-scoped (ADR-004). Owned by
+// `modules/contacts`.
+model ConsentRecord {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @default(dbgenerated("(current_setting('app.tenant_id'::text))::uuid")) @db.Uuid
+  contactId      String   @db.Uuid
+  conversationId String   @db.Uuid
+  channelId      String   @db.Uuid
+  noticeVersion  String
+  acceptedAt     DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  contact      Contact      @relation(fields: [contactId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  conversation Conversation @relation(fields: [conversationId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  channel      Channel      @relation(fields: [channelId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([id, organizationId])
 }

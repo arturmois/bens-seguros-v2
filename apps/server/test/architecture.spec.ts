@@ -141,6 +141,7 @@ const TABLE_OWNERS: Record<string, string> = {
   Plan: 'billing',
   Subscription: 'billing',
   Contact: 'contacts',
+  ConsentRecord: 'contacts',
   Conversation: 'conversations',
   Message: 'conversations',
   Channel: 'channels',

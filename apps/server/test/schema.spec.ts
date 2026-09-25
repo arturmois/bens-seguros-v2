@@ -1011,6 +1011,45 @@ describe('conversation tables', () => {
     }
   })
 
+  it('protects the consent record with tenant_isolation', async () => {
+    const { forced, policies, foreignKeys } = await withOwnerClient(async (client) => ({
+      forced: await forcedRowSecurity(client, workerSchema(), ['ConsentRecord']),
+      policies: (
+        await client.query<{ qual: string; check: string }>(
+          `SELECT qual, with_check AS check FROM pg_policies
+            WHERE schemaname = $1 AND tablename = 'ConsentRecord' AND policyname = 'tenant_isolation'`,
+          [workerSchema()],
+        )
+      ).rows,
+      foreignKeys: (
+        await client.query<{ definition: string }>(
+          `SELECT pg_get_constraintdef(c.oid) AS definition
+             FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid
+             JOIN pg_namespace n ON n.oid = t.relnamespace
+            WHERE n.nspname = $1 AND t.relname = 'ConsentRecord' AND c.contype = 'f'
+            ORDER BY 1`,
+          [workerSchema()],
+        )
+      ).rows.map((row) => row.definition),
+    }))
+
+    expect(forced).toEqual([{ table: 'ConsentRecord', forced: true }])
+    expect(policies).toHaveLength(1)
+    expect(policies[0]?.qual).toContain('app.tenant_id')
+    expect(policies[0]?.check).toContain('app.tenant_id')
+    const target = (name: string) =>
+      new RegExp(
+        `FOREIGN KEY \\("${name}Id", "organizationId"\\) REFERENCES (?:\\S+\\.)?"${name[0]?.toUpperCase()}${name.slice(1)}"\\(id, "organizationId"\\) ON UPDATE RESTRICT ON DELETE RESTRICT`,
+      )
+    expect(foreignKeys).toHaveLength(4)
+    for (const name of ['contact', 'conversation', 'channel']) {
+      expect(
+        foreignKeys.some((fk) => target(name).test(fk)),
+        name,
+      ).toBe(true)
+    }
+  })
+
   it('keeps a message consistent with its direction, author, kind and conversation', async () => {
     const result = await withOwnerClient(async (client) => {
       const graph = await seedGraph(client)

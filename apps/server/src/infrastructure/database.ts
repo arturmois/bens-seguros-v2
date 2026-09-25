@@ -57,6 +57,16 @@ export function createDatabase(databaseUrl: string) {
         })
       },
 
+      // The Web Chat link before the visitor has a tenant (AD-018). The key is the capability: only
+      // its organization is readable, and the organization id comes back from the row. Writes still
+      // need `withTenant`.
+      withPublicChatKey<T>(key: string, run: (tx: Transaction) => Promise<T>): Promise<T> {
+        return client.$transaction(async (tx) => {
+          await tx.$executeRaw`SELECT set_config('app.public_chat_key', ${key}, true)`
+          return run(tx)
+        })
+      },
+
       // A transaction with no tenant, for user-level tables (identity) and the queue: every
       // tenant-scoped table fails inside it, as outside `withTenant`.
       withoutTenant<T>(run: (tx: Transaction) => Promise<T>): Promise<T> {
