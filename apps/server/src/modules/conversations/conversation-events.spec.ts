@@ -113,8 +113,10 @@ async function socketOf(client: TestClient) {
   }
 }
 
-// The events the listener delivered for these message ids, counted once a later sentinel arrived.
-async function eventsFor(messageIds: string[]) {
+// Every event the listener delivered for these conversations, counted once a later sentinel
+// arrived. By conversation, not by stored message id: an event of a rolled-back duplicate carries
+// an id that was never stored.
+async function eventsFor(conversationIds: string[]) {
   const sentinel: AppEvent = {
     type: 'message.created',
     organizationId: randomUUID(),
@@ -126,7 +128,7 @@ async function eventsFor(messageIds: string[]) {
     () => seen.some((event) => event.messageId === sentinel.messageId),
     (found) => found,
   )
-  return seen.filter((event) => messageIds.includes(event.messageId))
+  return seen.filter((event) => conversationIds.includes(event.conversationId))
 }
 
 // A conversation that exists through the real entry point, and the phone that reaches it again.
@@ -148,7 +150,7 @@ describe('message events', () => {
     const reopened = await inbound(deps.db, tenant, { fromPhone: closed.phoneE164 })
     expect(reopened.conversationId).toBe(closed.id)
 
-    const events = await eventsFor([created.messageId, reopened.messageId])
+    const events = await eventsFor([created.conversationId, closed.id])
 
     expect(events).toEqual([
       {
@@ -221,7 +223,12 @@ describe('message events', () => {
     const messageIds = [...new Set([...sequential, ...concurrent].map((r) => r.messageId))]
     expect(messageIds).toHaveLength(2)
 
-    const events = await eventsFor(messageIds)
+    const conversationIds = [
+      ...new Set([...sequential, ...concurrent].map((r) => r.conversationId)),
+    ]
+    expect(conversationIds).toHaveLength(1)
+
+    const events = await eventsFor(conversationIds)
 
     expect(events.filter((event) => event.messageId === sequential[0]?.messageId)).toHaveLength(1)
     expect(events.filter((event) => event.messageId === concurrent[0]?.messageId)).toHaveLength(1)

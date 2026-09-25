@@ -43,18 +43,18 @@ async function eventually<T>(read: () => Promise<T> | T, accept: (value: T) => b
 }
 
 // A started listener on this worker's channel, recording every event and every log line.
-async function listening() {
-  const lines: { level: number; msg: string; raw: string }[] = []
+async function listening(databaseUrl = testDatabaseUrl()) {
+  const lines: { level: number; msg: string; time: number; raw: string }[] = []
   const logger = pino(
     { level: 'debug' },
     {
       write(raw: string) {
-        const parsed: { level: number; msg: string } = JSON.parse(raw)
-        lines.push({ level: parsed.level, msg: parsed.msg, raw })
+        const parsed: { level: number; msg: string; time: number } = JSON.parse(raw)
+        lines.push({ level: parsed.level, msg: parsed.msg, time: parsed.time, raw })
       },
     },
   )
-  const { connectionString, schema } = parseDatabaseUrl(testDatabaseUrl())
+  const { connectionString, schema } = parseDatabaseUrl(databaseUrl)
   const listener = createEventListener({ connectionString, schema, logger })
   const seen: AppEvent[] = []
   listener.on('message.created', async (event) => {
@@ -291,5 +291,63 @@ describe('events', () => {
     await eventually(listenerPids, (pids) => pids.length === 0)
     await new Promise((resolve) => setTimeout(resolve, 2000))
     expect(await listenerPids()).toEqual([])
+  })
+
+  it('retries a failed reconnection with a doubled wait', async () => {
+    // A login role of this worker only: refusing its logins cannot disturb another worker.
+    const role = `events_probe_${workerSchema()}`
+    await withOwnerClient(async (client) => {
+      await client.query(`DROP ROLE IF EXISTS ${role}`)
+      await client.query(`CREATE ROLE ${role} LOGIN PASSWORD '${role}'`)
+    })
+    const url = new URL(testDatabaseUrl())
+    url.username = role
+    url.password = role
+    const events = await listening(url.toString())
+    try {
+      const [pid] = await eventually(listenerPids, (pids) => pids.length === 1)
+      await withOwnerClient(async (client) => {
+        await client.query(`ALTER ROLE ${role} NOLOGIN`)
+        await client.query('SELECT pg_terminate_backend($1)', [pid])
+      })
+      const failed = await eventually(
+        () => events.lines.filter((line) => line.msg === 'events listener reconnection failed'),
+        (lines) => lines.length === 1,
+      )
+      await withOwnerClient((client) => client.query(`ALTER ROLE ${role} LOGIN`))
+      // Events sent while it is down are lost by design (ADR-012): wait for the new backend.
+      await eventually(listenerPids, (pids) => pids.length === 1 && pids[0] !== pid)
+
+      const after = await commitEvent()
+      await events.until(after.messageId)
+
+      const reconnected = events.lines.find((line) => line.msg === 'events listener reconnected')
+      // 1 s before the failed attempt, then 2 s (not 1 s again) before the one that worked.
+      expect((reconnected?.time ?? 0) - (failed[0]?.time ?? 0)).toBeGreaterThanOrEqual(1900)
+      expect(events.seen).toContainEqual(after)
+    } finally {
+      await events.listener.stop()
+      await withOwnerClient((client) => client.query(`DROP ROLE IF EXISTS ${role}`))
+    }
+  })
+
+  it('ignores a payload outside the schema on its channel', async () => {
+    const events = await listening()
+    try {
+      const channel = eventChannel(workerSchema())
+      await withOwnerClient(async (client) => {
+        await client.query('SELECT pg_notify($1, $2)', [channel, 'nao-json'])
+        await client.query('SELECT pg_notify($1, $2)', [
+          channel,
+          JSON.stringify({ ...newEvent(), text: 'Olá' }),
+        ])
+      })
+      const sentinel = await commitEvent()
+
+      expect(await events.until(sentinel.messageId)).toEqual([])
+      expect(events.seen).toEqual([sentinel])
+    } finally {
+      await events.listener.stop()
+    }
   })
 })

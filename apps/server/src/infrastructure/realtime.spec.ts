@@ -1,8 +1,11 @@
+import { randomUUID } from 'node:crypto'
+import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { io as connect, type Socket } from 'socket.io-client'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { buildTestApp, TEST_APP_URL } from '../../test/app.ts'
 import { acceptCurrentTerms, signedInUser, TestClient } from '../../test/auth.ts'
+import { createRealtime } from './realtime.ts'
 
 let testApp: Awaited<ReturnType<typeof buildTestApp>>
 let baseUrl: string
@@ -132,5 +135,39 @@ describe('realtime', () => {
     const response = await fetch(`${baseUrl}/api/health`)
 
     expect(response.status).toBe(200)
+  })
+
+  it('answers an internal error when the room authorization fails', async () => {
+    const httpServer = createServer()
+    const realtime = createRealtime(httpServer, {
+      allowedOrigin: TEST_APP_URL,
+      authenticate: async () => ({
+        userId: randomUUID(),
+        sessionId: randomUUID(),
+        isSuperAdmin: false,
+        organizationId: randomUUID(),
+      }),
+      authorizeJoin: async () => {
+        throw new Error('database down')
+      },
+    })
+    await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve))
+    const { port } = httpServer.address() as AddressInfo
+    const socket = connect(`http://127.0.0.1:${port}`, {
+      path: '/socket.io',
+      transports: ['websocket'],
+      extraHeaders: { origin: TEST_APP_URL },
+      reconnection: false,
+    })
+    try {
+      expect(await outcome(socket)).toEqual({ connected: true })
+
+      const ack = await socket.emitWithAck('conversation:join', { conversationId: randomUUID() })
+
+      expect(ack).toEqual({ ok: false, status: 500, code: 'INTERNAL_ERROR' })
+    } finally {
+      socket.disconnect()
+      await realtime.close()
+    }
   })
 })

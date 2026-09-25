@@ -3,7 +3,7 @@
 Profile: standard
 Plan: `.specs/features/realtime-events/plan.md`
 
-21 checks in 4 slices · 3 one-way doors · 0 open
+24 checks in 4 slices (C22–C24 added in round 2, for members the Verifier found unproven) · 3 one-way doors · 0 open
 
 Every proof runs from `apps/server` with `pnpm exec vitest run <file> -t "<name>"` against the real
 PostgreSQL of the docker compose. Socket proofs use `buildTestApp` listening on a random port and
@@ -89,16 +89,31 @@ Proof: `src/modules/conversations/conversation-events.spec.ts -t "ignores an eve
 Proof: `src/modules/conversations/conversation-events.spec.ts -t "pushes the message to the room in under two seconds"`
 Proof: `test/architecture.spec.ts -t "the source tree has no boundary violations|finds no import cycle between modules|lets each module write only its own tables"`
 Proof: `! grep -nE "events\.(start|listen)" src/server.ts`
+Proof: `test/architecture.spec.ts -t "forbids the conversation module dependencies the adr rules out"`
+
+Round 2 note: "with no option" means no option that starts the listener; the proof's `buildTestApp({ workers: true })` only starts the queue, which the sign-up e-mail needs.
+
+### Round 2 - membros sem prova na rodada 1
+
+**C22** - When the injected `authorizeJoin` throws, `conversation:join` answers `{ ok: false, status: 500, code: 'INTERNAL_ERROR' }` (Surface, appended in the build)
+Proof: `src/infrastructure/realtime.spec.ts -t "answers an internal error when the room authorization fails"`
+
+**C23** - When a reconnection attempt fails (the listener's login role refused), the listener retries, and the attempt that works comes at least 1.9 s after the failed one (the wait doubled from 1 s to 2 s); an event committed after it is delivered (door 2)
+Proof: `src/infrastructure/events.spec.ts -t "retries a failed reconnection with a doubled wait"`
+
+**C24** - A payload that is not JSON, and one with a field outside the schema, sent with `pg_notify` on the listener's own channel reach no handler; a sentinel committed afterwards is the only event seen (door 1, the listening side)
+Proof: `src/infrastructure/events.spec.ts -t "ignores a payload outside the schema on its channel"`
 
 ## Coverage
 
 | Set (size) | Member -> proof | Unproven |
 | --- | --- | --- |
-| `emit conversation:join` statuses (3) | 200 C14 · 400 C17 · 404 C15, C16 | - |
+| `emit conversation:join` statuses (4) | 200 C14 · 400 C17 · 404 C15, C16 · 500 C22 | - |
 | `emit conversation:leave` statuses (2) | 200 C18 · 400 C17 | - |
 | server-pushed events (2) | `message.created` C13 · `events:resync` C19 | - |
 | Landing doors (3) | door 1 C1, C4, C5 · door 2 C6, C8, C9, C19 · door 3 C14, C15, C16 | - |
 | `notify` outcomes (4) | committed C1 · held open C2 · rolled back C3 · refused by the schema C4 | - |
+| payloads received on the channel (2) | outside the schema C24 · not JSON C24 | - |
 | invalid event fields (3) | extra field C4 · non-UUID id C4 · unknown `type` C4 | - |
 | emitting use cases (4 paths) | inbound new C10 · inbound reopening C10 · outbound sent C11 · outbound refused (none) C11 | - |
 | duplicate inbound (2) | sequential C12 · 10 concurrent C12 | - |
@@ -106,7 +121,7 @@ Proof: `! grep -nE "events\.(start|listen)" src/server.ts`
 | join acceptance by role (2) | ADMIN C14 · COMMERCIAL on `QUEUE` of another's contact C14 | - |
 | invalid room payloads (3) | extra field C17 · non-UUID C17 · missing id C17 | - |
 | sockets that must not receive (3) | not joined C18 · left C18 · refused C15 | - |
-| `LISTEN` lifecycle (4) | drop -> reconnect C6 · drop -> `warn` C7 · drop -> resync C19 · stop -> no reconnect C8 | - |
+| `LISTEN` lifecycle (5) | drop -> reconnect C6 · drop -> `warn` C7 · drop -> resync C19 · stop -> no reconnect C8 · failed attempt -> doubled retry C23 | - |
 | event whose message is not found (2) | random ids C20 · other organization C20 | - |
 | startup config: listener started (2 assemblies) | `server.ts` C21 (no own start; uses `buildApp`) · test harness C21, C13 | - |
 | channel naming (2 schemas) | `public` -> `app_events` C5 · worker schema -> `app_events_<schema>` C5 | - |
@@ -136,3 +151,4 @@ Test policy: the repo answers both questions (`CLAUDE.md` "Testes": endpoint -> 
 - **Boundary:** C1-C9 closed at `72c4928`; C10-C21 closed at the commit that adds this line
 - **Settled mid-build:** `notify` is a stateless function (channel from the transaction's `current_schema()`), not a method of an injected `events` dependency, so the 36 call sites of `receiveInbound`/`sendMessage` keep `{ db }` (door 1's shape: `pg_notify` on `app_events`/`app_events_<schema>` in the transaction); the listener starts in `buildApp`'s `onReady` instead of `server.ts` (C21's shared assembly; `Impact` updated); `conversation:join` answers `500 INTERNAL_ERROR` when the authorization itself fails (appended to `Surface`)
 - **Abandoned:** none
+- **Round 2:** C12's count went from the stored message ids to the conversation (an event of a rolled-back duplicate carries an id never stored; Verifier gap 3); C22–C24 added for the members found unproven; C21 gained the forbidden-edge proof and a note on "no option"
