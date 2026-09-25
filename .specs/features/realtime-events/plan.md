@@ -119,9 +119,9 @@ Eventos empurrados pelo server (sem entrada e sem ack):
 
 | Assumption | Chosen default | Rationale | Confirmed? |
 | --- | --- | --- | --- |
-| o que o socket recebe | o `Message` completo, relido pelo server com `withTenant`, só para a room autorizada | "o socket relê o que precisar" (prompt da F2); o `NOTIFY` continua só com ids | n |
-| tipos de evento da F2 | só `message.created`; mudanças de `status`/`handler` sem mensagem (take, close) ganham tipo com as rotas da F3/F5 | a F2 só muda a conversa junto com uma mensagem | n |
-| rooms `org:` e `user:` | não recebem `message.created` na F2 | ids de conversa fora da carteira não vazam para a room da organização; a F3 decide o aviso do inbox com a carteira | n |
+| o que o socket recebe | o `Message` completo, relido pelo server com `withTenant`, só para a room autorizada | "o socket relê o que precisar" (prompt da F2); o `NOTIFY` continua só com ids | y (2026-09-24) |
+| tipos de evento da F2 | só `message.created`; mudanças de `status`/`handler` sem mensagem (take, close) ganham tipo com as rotas da F3/F5 | a F2 só muda a conversa junto com uma mensagem | y (2026-09-24) |
+| rooms `org:` e `user:` | não recebem `message.created` na F2 | ids de conversa fora da carteira não vazam para a room da organização; a F3 decide o aviso do inbox com a carteira | y (2026-09-24) |
 
 **Open questions:** none - all resolved or logged above.
 
