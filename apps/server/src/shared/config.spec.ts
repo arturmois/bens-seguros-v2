@@ -60,4 +60,22 @@ describe('loadConfig', () => {
     expect(load).toThrow(/APP_URL/)
     expect(loadConfig(required).BETTER_AUTH_SECRET).toHaveLength(32)
   })
+
+  it('requires turnstile keys in production in every signup mode', () => {
+    const production = { ...required, NODE_ENV: 'production' }
+    const keys = { TURNSTILE_SECRET_KEY: 'secret-key', TURNSTILE_SITE_KEY: 'site-key' }
+
+    for (const mode of ['closed', 'self_serve']) {
+      const { TURNSTILE_SECRET_KEY: _secret, ...withoutSecret } = keys
+      const { TURNSTILE_SITE_KEY: _site, ...withoutSite } = keys
+      const missingSecret = () => loadConfig({ ...production, SIGNUP_MODE: mode, ...withoutSecret })
+      const missingSite = () => loadConfig({ ...production, SIGNUP_MODE: mode, ...withoutSite })
+
+      expect(missingSecret, mode).toThrow(ConfigError)
+      expect(missingSecret, mode).toThrow(/TURNSTILE_SECRET_KEY/)
+      expect(missingSite, mode).toThrow(ConfigError)
+      expect(missingSite, mode).toThrow(/TURNSTILE_SITE_KEY/)
+      expect(loadConfig({ ...production, SIGNUP_MODE: mode, ...keys }).SIGNUP_MODE).toBe(mode)
+    }
+  })
 })

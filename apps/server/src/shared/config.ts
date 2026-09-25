@@ -23,30 +23,31 @@ const configSchema = z
     EMAIL_FROM: z.string().min(3),
 
     // Public sign-up. `closed` blocks only POST /api/auth/sign-up/email; invite acceptance does not
-    // pass through it. Production self-serve requires both Turnstile keys (the process exits otherwise).
+    // pass through it. Production requires both Turnstile keys in every mode: the Web Chat start is
+    // public too (ADR-014); the process exits otherwise.
     SIGNUP_MODE: z.enum(['closed', 'self_serve']).default('self_serve'),
     TURNSTILE_SECRET_KEY: z.string().min(1).optional(),
     TURNSTILE_SITE_KEY: z.string().min(1).optional(),
-    // Tests point the captcha plugin at a local siteverify. Ignored outside `test`.
+    // Tests point the captcha checks at a local siteverify. Ignored outside `test`.
     TURNSTILE_SITEVERIFY_URL: z.url().optional(),
 
     // Memberships one user may hold. Onboarding past this answers 422 ORG_LIMIT_REACHED.
     MAX_ORGS_PER_USER: z.coerce.number().int().min(1).default(3),
   })
   .superRefine((value, ctx) => {
-    if (value.NODE_ENV !== 'production' || value.SIGNUP_MODE !== 'self_serve') return
+    if (value.NODE_ENV !== 'production') return
     if (!value.TURNSTILE_SECRET_KEY) {
       ctx.addIssue({
         code: 'custom',
         path: ['TURNSTILE_SECRET_KEY'],
-        message: 'Required when NODE_ENV is production and SIGNUP_MODE is self_serve',
+        message: 'Required when NODE_ENV is production',
       })
     }
     if (!value.TURNSTILE_SITE_KEY) {
       ctx.addIssue({
         code: 'custom',
         path: ['TURNSTILE_SITE_KEY'],
-        message: 'Required when NODE_ENV is production and SIGNUP_MODE is self_serve',
+        message: 'Required when NODE_ENV is production',
       })
     }
   })
