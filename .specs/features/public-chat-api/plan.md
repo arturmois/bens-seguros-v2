@@ -60,7 +60,7 @@ Restrições de mão única:
 | `GET /api/public/chat/:key` | params `key` (32 hex) | `{ name, brandColor, greeting, hasLogo, noticeVersion, turnstileSiteKey }` | `200`, `400`, `404`, `429` |
 | `GET /api/public/chat/:key/logo` | params `key`; `If-None-Match?` | bytes da imagem, `Content-Type` do logo, `Cache-Control: public, no-cache`, `ETag` | `200`, `304`, `400`, `404`, `429` |
 | `POST /api/public/chat/:key/sessions` | params `key`; body `phone`, `consent: true`, `noticeVersion`, `turnstileToken`, `clientMessageId` (uuid), `text` (1–4 000) | `201 { message: PublicMessage }` + `Set-Cookie` do visitante | `201`, `400`, `403`, `404`, `409`, `422`, `429` |
-| `POST /api/public/chat/:key/messages` | params `key`; cookie do visitante; body `clientMessageId` (uuid), `text` (1–4 000) | `201 { message }` (nova) ou `200 { message }` (repetida) | `200`, `201`, `400`, `401`, `403`, `404`, `429` |
+| `POST /api/public/chat/:key/messages` | params `key`; cookie do visitante; body `clientMessageId` (uuid), `text` (1–4 000) | `201 { message }` (nova) ou `200 { message }` (repetida) | `200`, `201`, `400`, `401`, `403`, `404`, `409`, `429` |
 | `GET /api/public/chat/:key/messages` | params `key`; cookie; query `after?` (inteiro ≥ 0) | `{ items: PublicMessage[] }` (até 100, `seq` crescente) | `200`, `400`, `401`, `404`, `429` |
 
 `PublicMessage` = `id` · `seq` · `direction` · `author` (`CONTACT | AI | HUMAN | SYSTEM`) · `kind` · `text` · `sentAt`. Sem `authorUserId`, `deliveryStatus`, `conversationId` nem dado do contato.
