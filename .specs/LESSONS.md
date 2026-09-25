@@ -14,6 +14,24 @@ Corroborated across multiple features. Safe to apply as guidance.
 - evidence: Coverage AC 38 - realtime.spec.ts:53-63 (expired session untested over the socket) (specs) (+2 more)
 - last seen: 2026-09-23T14:09:19Z
 
+### L-030 - Recompute Coverage members from the claim; a member attributed to a proof that never asserts it is unproven
+- signal: `ac_gap` · recurrence: 2 feature(s) · scope: `verification` · harmful: 0
+- features: org-core, public-chat-api
+- evidence: Coverage isSuperAdmin pairs / neither (verification) (+1 more)
+- last seen: 2026-09-25T11:48:48Z
+
+### L-031 - Seed rows in an order different from the expected sort, so removing the sort fails the test
+- signal: `surviving_mutant` · recurrence: 2 feature(s) · scope: `tests` · harmful: 0
+- features: org-web, public-chat-api
+- evidence: F4 apps/server/src/modules/auth/me.ts:34-40; C8 me.spec.ts:230 (tests) (+1 more)
+- last seen: 2026-09-25T11:48:48Z
+
+### L-048 - Derive each route's status list in the plan from the route handler, not from memory
+- signal: `spec_precision_gap` · recurrence: 2 feature(s) · scope: `specs` · harmful: 0
+- features: f1-identity, public-chat-api
+- evidence: C47 and plan.md:51 claimed a 422 that invitation.ts:56-120 never returns (round 1, e89952f) (specs) (+1 more)
+- last seen: 2026-09-25T11:48:48Z
+
 ## Candidates (under observation - do NOT load as guidance yet)
 
 Seen once or not yet corroborated. Tracked, not trusted.
@@ -186,18 +204,6 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: session-context.ts:42 vs C19 (auth)
 - last seen: 2026-09-22T21:30:24Z
 
-### L-030 - Recompute Coverage members from the claim; a member attributed to a proof that never asserts it is unproven
-- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `verification` · harmful: 0
-- features: org-core
-- evidence: Coverage isSuperAdmin pairs / neither (verification)
-- last seen: 2026-09-22T21:30:24Z
-
-### L-031 - Seed rows in an order different from the expected sort, so removing the sort fails the test
-- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `tests` · harmful: 0
-- features: org-web
-- evidence: F4 apps/server/src/modules/auth/me.ts:34-40; C8 me.spec.ts:230 (tests)
-- last seen: 2026-09-23T12:35:52Z
-
 ### L-032 - Establish in the test every precondition the check names; a mocked field in one response does not create the server state it describes
 - signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `web-e2e` · harmful: 0
 - features: org-web
@@ -294,12 +300,6 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: C10 member.spec.ts race proof flaky on a legitimate 403 loser (round 1, e89952f) (concurrency)
 - last seen: 2026-09-24T13:00:36Z
 
-### L-048 - Derive each route's status list in the plan from the route handler, not from memory
-- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `specs` · harmful: 0
-- features: f1-identity
-- evidence: C47 and plan.md:51 claimed a 422 that invitation.ts:56-120 never returns (round 1, e89952f) (specs)
-- last seen: 2026-09-24T13:00:36Z
-
 ### L-049 - Prove a health or status probe against a redirect and a non-200 answer, not only a closed port: curl --fail passes a 3xx.
 - signal: `ac_gap` · recurrence: 1 feature(s) · scope: `ci` · harmful: 0
 - features: cd-vps
@@ -371,6 +371,18 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - features: realtime-events
 - evidence: F12, apps/server/src/infrastructure/events.ts:126 (listener bypasses nextRetryDelay) (infrastructure)
 - last seen: 2026-09-25T00:57:43Z
+
+### L-061 - A claim that names several access paths needs a located assertion for each path; a proof of one path does not cover the others
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `rls` · harmful: 0
+- features: public-chat-api
+- evidence: C3 - withTenant half, no evidence (rls)
+- last seen: 2026-09-25T11:48:48Z
+
+### L-062 - Name an enum member in a check only after reading the enum's definition
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · harmful: 0
+- features: public-chat-api
+- evidence: C23 - config.ts:28 (invite_only is not a SIGNUP_MODE)
+- last seen: 2026-09-25T11:48:48Z
 
 ## Quarantined (failed when applied - ignore)
 

@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 61,
+  "next_id": 63,
   "lessons": [
     {
       "id": "L-001",
@@ -537,17 +537,19 @@
       "text": "Recompute Coverage members from the claim; a member attributed to a proof that never asserts it is unproven",
       "signal": "ac_gap",
       "scope": "verification",
-      "status": "candidate",
+      "status": "confirmed",
       "features": [
-        "org-core"
+        "org-core",
+        "public-chat-api"
       ],
-      "recurrence": 1,
+      "recurrence": 2,
       "harmful": 0,
       "evidence": [
-        "Coverage isSuperAdmin pairs / neither (verification)"
+        "Coverage isSuperAdmin pairs / neither (verification)",
+        "C37 - public-chat.spec.ts:840 (429 on GET /logo and GET /messages)"
       ],
       "created": "2026-09-22T21:30:24Z",
-      "last_seen": "2026-09-22T21:30:24Z"
+      "last_seen": "2026-09-25T11:48:48Z"
     },
     {
       "id": "L-031",
@@ -555,17 +557,19 @@
       "text": "Seed rows in an order different from the expected sort, so removing the sort fails the test",
       "signal": "surviving_mutant",
       "scope": "tests",
-      "status": "candidate",
+      "status": "confirmed",
       "features": [
-        "org-web"
+        "org-web",
+        "public-chat-api"
       ],
-      "recurrence": 1,
+      "recurrence": 2,
       "harmful": 0,
       "evidence": [
-        "F4 apps/server/src/modules/auth/me.ts:34-40; C8 me.spec.ts:230 (tests)"
+        "F4 apps/server/src/modules/auth/me.ts:34-40; C8 me.spec.ts:230 (tests)",
+        "public-chat.ts:245 (fault 5, C30)"
       ],
       "created": "2026-09-23T12:35:52Z",
-      "last_seen": "2026-09-23T12:35:52Z"
+      "last_seen": "2026-09-25T11:48:48Z"
     },
     {
       "id": "L-032",
@@ -861,17 +865,19 @@
       "text": "Derive each route's status list in the plan from the route handler, not from memory",
       "signal": "spec_precision_gap",
       "scope": "specs",
-      "status": "candidate",
+      "status": "confirmed",
       "features": [
-        "f1-identity"
+        "f1-identity",
+        "public-chat-api"
       ],
-      "recurrence": 1,
+      "recurrence": 2,
       "harmful": 0,
       "evidence": [
-        "C47 and plan.md:51 claimed a 422 that invitation.ts:56-120 never returns (round 1, e89952f) (specs)"
+        "C47 and plan.md:51 claimed a 422 that invitation.ts:56-120 never returns (round 1, e89952f) (specs)",
+        "public-chat.routes.ts:104-105 (304, ETag, Cache-Control on GET /logo)"
       ],
       "created": "2026-09-24T13:00:36Z",
-      "last_seen": "2026-09-24T13:00:36Z"
+      "last_seen": "2026-09-25T11:48:48Z"
     },
     {
       "id": "L-049",
@@ -1088,6 +1094,42 @@
       ],
       "created": "2026-09-25T00:57:43Z",
       "last_seen": "2026-09-25T00:57:43Z"
+    },
+    {
+      "id": "L-061",
+      "key": "ac_gap::a claim that names several access paths needs a located assertion for each path a proof of one path does not cover the others",
+      "text": "A claim that names several access paths needs a located assertion for each path; a proof of one path does not cover the others",
+      "signal": "ac_gap",
+      "scope": "rls",
+      "status": "candidate",
+      "features": [
+        "public-chat-api"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "C3 - withTenant half, no evidence (rls)"
+      ],
+      "created": "2026-09-25T11:48:48Z",
+      "last_seen": "2026-09-25T11:48:48Z"
+    },
+    {
+      "id": "L-062",
+      "key": "spec_precision_gap::name an enum member in a check only after reading the enum s definition",
+      "text": "Name an enum member in a check only after reading the enum's definition",
+      "signal": "spec_precision_gap",
+      "scope": "",
+      "status": "candidate",
+      "features": [
+        "public-chat-api"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "C23 - config.ts:28 (invite_only is not a SIGNUP_MODE)"
+      ],
+      "created": "2026-09-25T11:48:48Z",
+      "last_seen": "2026-09-25T11:48:48Z"
     }
   ]
 }
