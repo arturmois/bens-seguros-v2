@@ -360,6 +360,12 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: C21, test/architecture.spec.ts:352 (checks)
 - last seen: 2026-09-25T00:48:11Z
 
+### L-059 - Prove a retry cap by reaching it, through a pure delay function or fake timers, not only the first doubling
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `infrastructure` · harmful: 0
+- features: realtime-events
+- evidence: F10, apps/server/src/infrastructure/events.ts:121 (backoff cap) (infrastructure)
+- last seen: 2026-09-25T00:54:04Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

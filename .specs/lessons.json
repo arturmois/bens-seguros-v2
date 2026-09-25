@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 59,
+  "next_id": 60,
   "lessons": [
     {
       "id": "L-001",
@@ -1052,6 +1052,24 @@
       ],
       "created": "2026-09-25T00:48:11Z",
       "last_seen": "2026-09-25T00:48:11Z"
+    },
+    {
+      "id": "L-059",
+      "key": "surviving_mutant::prove a retry cap by reaching it through a pure delay function or fake timers not only the first doubling",
+      "text": "Prove a retry cap by reaching it, through a pure delay function or fake timers, not only the first doubling",
+      "signal": "surviving_mutant",
+      "scope": "infrastructure",
+      "status": "candidate",
+      "features": [
+        "realtime-events"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "F10, apps/server/src/infrastructure/events.ts:121 (backoff cap) (infrastructure)"
+      ],
+      "created": "2026-09-25T00:54:04Z",
+      "last_seen": "2026-09-25T00:54:04Z"
     }
   ]
 }
