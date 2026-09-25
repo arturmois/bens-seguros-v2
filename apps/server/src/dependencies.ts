@@ -1,6 +1,7 @@
 import { pino } from 'pino'
 import { createDatabase, parseDatabaseUrl } from './infrastructure/database.ts'
 import { createMailer } from './infrastructure/email.ts'
+import { createEventListener } from './infrastructure/events.ts'
 import { createQueue } from './infrastructure/queue.ts'
 import { createAuth } from './modules/auth/index.ts'
 import type { Config } from './shared/config.ts'
@@ -25,6 +26,8 @@ export function createDependencies(config: Config) {
     logger,
     db,
     queue,
+    // Opens its connection on `start()`, when the app is ready (app.ts).
+    events: createEventListener({ connectionString, schema, logger }),
     mailer: createMailer(config),
     auth: createAuth({ config, db, queue }),
   }
@@ -33,6 +36,7 @@ export function createDependencies(config: Config) {
 export type Deps = ReturnType<typeof createDependencies>
 
 export async function closeDependencies(deps: Deps) {
+  await deps.events.stop()
   await deps.queue.stop()
   await deps.db.$disconnect()
   deps.mailer.close()
