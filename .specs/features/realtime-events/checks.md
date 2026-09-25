@@ -3,7 +3,7 @@
 Profile: standard
 Plan: `.specs/features/realtime-events/plan.md`
 
-24 checks in 4 slices (C22–C24 added in round 2, for members the Verifier found unproven) · 3 one-way doors · 0 open
+25 checks in 4 slices (C22–C24 added in round 2, C25 in round 3, for members the Verifier found unproven) · 3 one-way doors · 0 open
 
 Every proof runs from `apps/server` with `pnpm exec vitest run <file> -t "<name>"` against the real
 PostgreSQL of the docker compose. Socket proofs use `buildTestApp` listening on a random port and
@@ -104,6 +104,9 @@ Proof: `src/infrastructure/events.spec.ts -t "retries a failed reconnection with
 **C24** - A payload that is not JSON, and one with a field outside the schema, sent with `pg_notify` on the listener's own channel reach no handler; a sentinel committed afterwards is the only event seen (door 1, the listening side)
 Proof: `src/infrastructure/events.spec.ts -t "ignores a payload outside the schema on its channel"`
 
+**C25** - Starting from 1 s, the wait before each next reconnection attempt is 1, 2, 4, 8, 16, 30 and 30 s: it doubles and is capped at 30 s (door 2)
+Proof: `src/infrastructure/events.spec.ts -t "doubles the retry wait up to thirty seconds"`
+
 ## Coverage
 
 | Set (size) | Member -> proof | Unproven |
@@ -121,7 +124,7 @@ Proof: `src/infrastructure/events.spec.ts -t "ignores a payload outside the sche
 | join acceptance by role (2) | ADMIN C14 · COMMERCIAL on `QUEUE` of another's contact C14 | - |
 | invalid room payloads (3) | extra field C17 · non-UUID C17 · missing id C17 | - |
 | sockets that must not receive (3) | not joined C18 · left C18 · refused C15 | - |
-| `LISTEN` lifecycle (5) | drop -> reconnect C6 · drop -> `warn` C7 · drop -> resync C19 · stop -> no reconnect C8 · failed attempt -> doubled retry C23 | - |
+| `LISTEN` lifecycle (6) | drop -> reconnect C6 · drop -> `warn` C7 · drop -> resync C19 · stop -> no reconnect C8 · failed attempt -> doubled retry C23 · 30 s cap C25 | - |
 | event whose message is not found (2) | random ids C20 · other organization C20 | - |
 | startup config: listener started (2 assemblies) | `server.ts` C21 (no own start; uses `buildApp`) · test harness C21, C13 | - |
 | channel naming (2 schemas) | `public` -> `app_events` C5 · worker schema -> `app_events_<schema>` C5 | - |
@@ -152,3 +155,4 @@ Test policy: the repo answers both questions (`CLAUDE.md` "Testes": endpoint -> 
 - **Settled mid-build:** `notify` is a stateless function (channel from the transaction's `current_schema()`), not a method of an injected `events` dependency, so the 36 call sites of `receiveInbound`/`sendMessage` keep `{ db }` (door 1's shape: `pg_notify` on `app_events`/`app_events_<schema>` in the transaction); the listener starts in `buildApp`'s `onReady` instead of `server.ts` (C21's shared assembly; `Impact` updated); `conversation:join` answers `500 INTERNAL_ERROR` when the authorization itself fails (appended to `Surface`)
 - **Abandoned:** none
 - **Round 2:** C12's count went from the stored message ids to the conversation (an event of a rolled-back duplicate carries an id never stored; Verifier gap 3); C22–C24 added for the members found unproven; C21 gained the forbidden-edge proof and a note on "no option"
+- **Round 3:** the retry wait moved into the pure `nextRetryDelay` so the 30 s cap is provable without waiting (C25; Verifier round 2 gap 1)

@@ -8,7 +8,13 @@ import { testDatabaseUrl, withOwnerClient, workerSchema } from '../../test/setup
 import type { Deps } from '../dependencies.ts'
 import { normalizePhone } from '../shared/phone.ts'
 import { parseDatabaseUrl } from './database.ts'
-import { type AppEvent, createEventListener, eventChannel, notify } from './events.ts'
+import {
+  type AppEvent,
+  createEventListener,
+  eventChannel,
+  nextRetryDelay,
+  notify,
+} from './events.ts'
 
 let deps: Deps
 
@@ -349,5 +355,14 @@ describe('events', () => {
     } finally {
       await events.listener.stop()
     }
+  })
+
+  it('doubles the retry wait up to thirty seconds', () => {
+    const waits = [1000]
+    for (let attempt = 0; attempt < 6; attempt++) {
+      waits.push(nextRetryDelay(waits.at(-1) ?? 0))
+    }
+
+    expect(waits).toEqual([1000, 2000, 4000, 8000, 16_000, 30_000, 30_000])
   })
 })

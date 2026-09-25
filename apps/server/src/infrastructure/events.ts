@@ -20,6 +20,11 @@ export type AppEventHandler = (event: AppEvent) => Promise<void>
 const FIRST_RETRY_MS = 1000
 const MAX_RETRY_MS = 30_000
 
+// The wait before the next reconnection attempt: doubles after each failure, capped at 30 s.
+export function nextRetryDelay(delayMs: number) {
+  return Math.min(delayMs * 2, MAX_RETRY_MS)
+}
+
 // Next to the app tables, like the queue: `test_w1` listens on `app_events_test_w1`.
 export function eventChannel(schema: string) {
   return schema === 'public' ? 'app_events' : `app_events_${schema}`
@@ -118,7 +123,7 @@ export function createEventListener(options: {
         (error: unknown) => {
           if (stopped) return
           log.debug({ err: error }, 'events listener reconnection failed')
-          retry(Math.min(delayMs * 2, MAX_RETRY_MS))
+          retry(nextRetryDelay(delayMs))
         },
       )
     }, delayMs)
