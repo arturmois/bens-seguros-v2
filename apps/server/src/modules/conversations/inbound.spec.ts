@@ -13,7 +13,7 @@ import { withTwoSalespeople, withTwoTenants } from '../../../test/factories.ts'
 import type { Deps } from '../../dependencies.ts'
 import { normalizePhone } from '../../shared/phone.ts'
 import type { RequestContext } from '../../shared/request-context.ts'
-import { sendMessage } from './index.ts'
+import { receiveInbound, sendMessage } from './index.ts'
 
 let deps: Deps
 let tenantA: RequestContext
@@ -419,5 +419,78 @@ describe('reopening', () => {
     expect(open).toEqual([{ id: closed.id }])
     expect(await reopenAudits(tenant, closed.id)).toHaveLength(1)
     expect(seqs(await messagesOf(deps.db, tenant, closed.id))).toEqual(range(1, 7))
+  })
+
+  it('runs the received step inside the transaction of a new message only', async () => {
+    const tenant = await freshTenant()
+    const channelId = await webChatOf(deps.db, tenant)
+    const phone = randomPhone()
+    const calls: { result: unknown; seen: number }[] = []
+    const onReceived = async (
+      tx: Parameters<Parameters<typeof deps.db.withTenant>[1]>[0],
+      result: { messageId: string },
+    ) => {
+      // Visible only inside the transaction that stored it.
+      const seen = await tx.message.count({ where: { id: result.messageId } })
+      calls.push({ result, seen })
+    }
+    const input = {
+      channelId,
+      externalId: `step-${randomUUID()}`,
+      fromPhone: phone,
+      kind: 'TEXT' as const,
+      text: 'Olá',
+      sentAt: new Date(),
+    }
+
+    const first = await receiveInbound(deps, tenant, input, { onReceived })
+    const repeated = await receiveInbound(deps, tenant, input, { onReceived })
+
+    const contact = await deps.db.withTenant(tenant, (tx) =>
+      tx.contact.findFirstOrThrow({ where: { phoneE164: normalizePhone(phone) ?? '' } }),
+    )
+    expect(repeated.created).toBe(false)
+    expect(calls).toEqual([
+      {
+        result: {
+          conversationId: first.conversationId,
+          messageId: first.messageId,
+          created: true,
+          contactId: contact.id,
+          seq: 1,
+        },
+        seen: 1,
+      },
+    ])
+  })
+
+  it('rolls the message back when the received step fails', async () => {
+    const tenant = await freshTenant()
+    const existing = await inbound(deps.db, tenant)
+    const phoneOfExisting = await deps.db.withTenant(tenant, (tx) =>
+      tx.conversation.findUniqueOrThrow({
+        where: { id: existing.conversationId },
+        select: { contact: { select: { phoneE164: true } } },
+      }),
+    )
+    const before = await rowsOf(tenant)
+    const failing = async () => {
+      throw new Error('consent failed')
+    }
+
+    await expect(inbound(deps.db, tenant, {}, { onReceived: failing })).rejects.toThrow(
+      'consent failed',
+    )
+    await expect(
+      inbound(
+        deps.db,
+        tenant,
+        { fromPhone: phoneOfExisting.contact.phoneE164 },
+        { onReceived: failing },
+      ),
+    ).rejects.toThrow('consent failed')
+
+    expect(await rowsOf(tenant)).toEqual(before)
+    expect((await conversationOf(deps.db, tenant, existing.conversationId)).lastSeq).toBe(1)
   })
 })

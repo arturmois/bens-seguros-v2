@@ -1,7 +1,11 @@
 import { randomInt, randomUUID } from 'node:crypto'
 import type { Prisma } from '../src/generated/prisma/client.ts'
 import type { Database } from '../src/infrastructure/database.ts'
-import { type InboundMessage, receiveInbound } from '../src/modules/conversations/index.ts'
+import {
+  type InboundMessage,
+  type InboundOptions,
+  receiveInbound,
+} from '../src/modules/conversations/index.ts'
 import { normalizePhone } from '../src/shared/phone.ts'
 
 type Tenant = { organizationId: string }
@@ -22,15 +26,25 @@ export async function webChatOf(db: Database, tenant: Tenant) {
 }
 
 // A customer message through the real entry point, with fresh defaults for what is not given.
-export async function inbound(db: Database, tenant: Tenant, message: Partial<InboundMessage> = {}) {
-  return receiveInbound({ db }, tenant, {
-    channelId: message.channelId ?? (await webChatOf(db, tenant)),
-    externalId: 'externalId' in message ? message.externalId : `ext-${randomUUID()}`,
-    fromPhone: message.fromPhone ?? randomPhone(),
-    kind: message.kind ?? 'TEXT',
-    text: 'text' in message ? message.text : 'Olá, quero um seguro.',
-    sentAt: message.sentAt ?? new Date(),
-  })
+export async function inbound(
+  db: Database,
+  tenant: Tenant,
+  message: Partial<InboundMessage> = {},
+  options: InboundOptions = {},
+) {
+  return receiveInbound(
+    { db },
+    tenant,
+    {
+      channelId: message.channelId ?? (await webChatOf(db, tenant)),
+      externalId: 'externalId' in message ? message.externalId : `ext-${randomUUID()}`,
+      fromPhone: message.fromPhone ?? randomPhone(),
+      kind: message.kind ?? 'TEXT',
+      text: 'text' in message ? message.text : 'Olá, quero um seguro.',
+      sentAt: message.sentAt ?? new Date(),
+    },
+    options,
+  )
 }
 
 // A contact and an empty conversation on the Web Chat, stored directly (a precondition, not the

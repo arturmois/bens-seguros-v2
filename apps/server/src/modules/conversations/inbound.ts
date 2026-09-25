@@ -31,6 +31,14 @@ export type InboundMessage = {
 
 export type InboundResult = { conversationId: string; messageId: string; created: boolean }
 
+// What a channel adds inside the transaction of a new message (the Web Chat consent, AD-018): it
+// runs after the insert and before the commit, so a failure rolls the message back with it. A
+// duplicate never calls it.
+export type ReceivedMessage = InboundResult & { created: true; contactId: string; seq: number }
+export type InboundOptions = {
+  onReceived?: (tx: Transaction, message: ReceivedMessage) => Promise<void>
+}
+
 type LockedConversation = {
   id: string
   status: Status
@@ -47,6 +55,7 @@ export async function receiveInbound(
   deps: { db: Database },
   ctx: Pick<RequestContext, 'organizationId'>,
   input: InboundMessage,
+  options: InboundOptions = {},
 ): Promise<InboundResult> {
   const phoneE164 = normalizePhone(input.fromPhone)
   if (!phoneE164) throw invalidPhone
@@ -111,6 +120,14 @@ export async function receiveInbound(
         conversationId: conversation.id,
         messageId,
       })
+      const received = {
+        conversationId: conversation.id,
+        messageId,
+        created: true as const,
+        contactId: contact.id,
+        seq,
+      }
+      await options.onReceived?.(tx, received)
       return { conversationId: conversation.id, messageId, created: true }
     })
   } catch (error) {
