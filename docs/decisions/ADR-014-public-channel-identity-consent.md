@@ -2,6 +2,14 @@
 
 **Status:** aceito (o opt-in do WhatsApp depende de validação jurídica antes do go-live) · **Data:** 2026-09-23
 
+> **Revisão (2026-09-25, F3 `public-chat-api`, AD-018):** a regra "só a própria sessão" virou um
+> **corte por `seq`**, porque o ADR-013 mantém uma conversa aberta por contato e canal. O visitante lê
+> a conversa do contato a partir da primeira mensagem da própria sessão (`seq ≥ fromSeq`) e nunca o
+> que veio antes. Duas sessões do mesmo telefone veem as mensagens novas uma da outra (decisão do
+> usuário, depois de comparar com Intercom, Zendesk, Crisp e Chatwoot). O cookie é escopado ao
+> link, `/api/public/chat/<publicChatKey>`, não a `/api/public/chat`, e carrega
+> `(organizationId, contactId, conversationId, fromSeq)`.
+
 ## Context
 O cliente final da corretora fala por um **link público, único e estável**, sem login (handoff §11),
 ou pelo WhatsApp. O telefone é o identificador (§9), único por organização, mas no Web Chat ele é

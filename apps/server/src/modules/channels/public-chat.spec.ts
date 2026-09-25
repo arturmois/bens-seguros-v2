@@ -262,6 +262,33 @@ describe('public chat link', () => {
     expect(logoB.headers['content-type']).toBe('image/webp')
     expect(logoB.rawPayload.equals(otherPng)).toBe(true)
   })
+
+  it('caches the public logo by its etag', async () => {
+    const target = await chat()
+    await deps.db.withTenant(target, (tx) =>
+      tx.organization.update({
+        where: { id: target.organizationId },
+        data: { logo: PNG, logoMimeType: 'image/png', logoUpdatedAt: new Date() },
+      }),
+    )
+    const client = visitor()
+
+    const first = await client.get(`/api/public/chat/${target.key}/logo`)
+    const etag = String(first.headers.etag)
+    const again = await client.get(`/api/public/chat/${target.key}/logo`, {
+      headers: { 'if-none-match': etag },
+    })
+    const stale = await client.get(`/api/public/chat/${target.key}/logo`, {
+      headers: { 'if-none-match': '"outro"' },
+    })
+
+    expect(first.headers['cache-control']).toBe('public, no-cache')
+    expect(etag).toMatch(/^"[0-9a-f]{32}"$/)
+    expect(again.statusCode).toBe(304)
+    expect(again.rawPayload).toHaveLength(0)
+    expect(stale.statusCode).toBe(200)
+    expect(stale.rawPayload.equals(PNG)).toBe(true)
+  })
 })
 
 describe('session start', () => {
@@ -484,6 +511,8 @@ describe('refused session start', () => {
     }
     const longest = await send(client, target, 'a'.repeat(4000))
     expect(longest.statusCode).toBe(201)
+    const longestStart = await start(target, { text: 'b'.repeat(4000) })
+    expect(longestStart.response.statusCode).toBe(201)
 
     const badKey = 'NAO-HEX'
     const keyResponses = [
@@ -708,22 +737,54 @@ describe('reading the session', () => {
     ])
   })
 
+  it('orders the session by seq, not by insertion', async () => {
+    const target = await chat()
+    const phone = randomPhone()
+    const { client } = await start(target, { phone })
+    const conversation = await conversationOfPhone(target, phone)
+    // Seq 4, 2, 3 inserted in that order (a precondition, not the behaviour under test).
+    await deps.db.withTenant(target, async (tx) => {
+      for (const seq of [4, 2, 3]) {
+        await tx.message.create({
+          data: {
+            conversationId: conversation.id,
+            channelId: conversation.channelId,
+            seq,
+            direction: 'INBOUND',
+            author: 'CONTACT',
+            kind: 'TEXT',
+            text: `seq ${seq}`,
+            sentAt: new Date(),
+          },
+        })
+      }
+      await tx.conversation.update({ where: { id: conversation.id }, data: { lastSeq: 4 } })
+    })
+
+    const response = await read(client, target)
+
+    expect(seqs(response)).toEqual([1, 2, 3, 4])
+  })
+
   it('hides every message before the session start', async () => {
     const target = await chat()
     const phone = randomPhone()
-    const earlier = await inbound(deps.db, target, { fromPhone: phone, text: 'Antes 1' })
-    await humanReply(target, earlier.conversationId, 'Antes 2 (resposta)')
-    await inbound(deps.db, target, { fromPhone: phone, text: 'Antes 3' })
+    const earlier = await start(target, { phone, text: 'Antes 1' })
+    const conversation = await conversationOfPhone(target, phone)
+    await humanReply(target, conversation.id, 'Antes 2 (resposta)')
+    await send(earlier.client, target, 'Antes 3')
 
     const { response, client } = await start(target, { phone })
     const afterStart = await read(client, target)
-    await inbound(deps.db, target, { fromPhone: phone, text: 'Da outra sessão' })
+    const fromEarlier = await send(earlier.client, target, 'Da outra sessão')
     const later = await read(client, target)
 
+    expect(fromEarlier.statusCode).toBe(201)
     expect(response.json().message.seq).toBe(4)
     expect(seqs(afterStart)).toEqual([4])
     expect(seqs(later)).toEqual([4, 5])
     expect(later.body).not.toContain('Antes')
+    expect(seqs(await read(earlier.client, target))).toEqual([1, 2, 3, 4, 5])
   })
 
   it('reads the session after a seq, a hundred at a time', async () => {
@@ -735,6 +796,7 @@ describe('reading the session', () => {
     for (let index = 0; index < 4; index++) await send(client, target, `Mensagem ${index}`)
 
     const belowStart = await read(client, target, '?after=1')
+    const afterTwo = await read(client, target, '?after=2')
     const afterFour = await read(client, target, '?after=4')
     for (let index = 0; index < 98; index++) {
       await inbound(deps.db, target, { fromPhone: phone })
@@ -743,6 +805,7 @@ describe('reading the session', () => {
     const pastEnd = await read(client, target, '?after=105')
 
     expect(seqs(belowStart)).toEqual([3, 4, 5, 6, 7])
+    expect(seqs(afterTwo)).toEqual([3, 4, 5, 6, 7])
     expect(seqs(afterFour)).toEqual([5, 6, 7])
     expect(seqs(firstPage)).toEqual(Array.from({ length: 100 }, (_, index) => index + 3))
     expect(pastEnd.json()).toEqual({ items: [] })
@@ -833,17 +896,20 @@ describe('rate limits', () => {
 
   it('limits public reads per ip', async () => {
     const target = await chat()
-    const client = visitor(limited.app)
+    const routes = ['', '/logo', '/messages']
 
-    const statuses: number[] = []
-    for (let index = 0; index < 120; index++) {
-      statuses.push((await client.get(`/api/public/chat/${target.key}`)).statusCode)
+    for (const route of routes) {
+      // Its own address per route: each one is limited, whatever it answers under the limit.
+      const client = visitor(limited.app)
+      const url = `/api/public/chat/${target.key}${route}`
+      const statuses: number[] = []
+      for (let index = 0; index < 120; index++) statuses.push((await client.get(url)).statusCode)
+      const next = await client.get(url)
+
+      expect(statuses.includes(429), route).toBe(false)
+      expect(next.statusCode, route).toBe(429)
+      expect(next.json().error.code, route).toBe('RATE_LIMITED')
     }
-    const next = await client.get(`/api/public/chat/${target.key}`)
-
-    expect(statuses.every((status) => status === 200)).toBe(true)
-    expect(next.statusCode).toBe(429)
-    expect(next.json().error.code).toBe('RATE_LIMITED')
   })
 
   it('limits only the public chat routes', async () => {

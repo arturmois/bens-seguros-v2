@@ -3,7 +3,7 @@
 Profile: standard
 Plan: `.specs/features/public-chat-api/plan.md`
 
-45 checks in 7 slices · 7 one-way doors · 1 open (blocks go-live, none blocks the build)
+46 checks in 7 slices · 7 one-way doors · 1 open (blocks go-live, none blocks the build)
 
 Every proof runs from `apps/server` with `pnpm exec vitest run <file> -t "<name>"` against the real
 PostgreSQL of the docker compose. The route tests use `buildTestApp` + `app.inject` (no panel
@@ -89,7 +89,7 @@ Proof: `src/modules/channels/public-chat.spec.ts -t "verifies the captcha token 
 **C22** - With `TURNSTILE_SECRET_KEY` set and the siteverify unreachable, `POST /sessions` answers `403 TURNSTILE_FAILED` and nothing is stored (fail closed; dependency failure)
 Proof: `src/modules/channels/public-chat.spec.ts -t "fails closed when the captcha is unreachable"`
 
-**C23** - `loadConfig` with `NODE_ENV=production` rejects a missing `TURNSTILE_SECRET_KEY` and a missing `TURNSTILE_SITE_KEY` under `SIGNUP_MODE=invite_only` and under `self_serve`, naming the variable; with both set it loads (AC 15)
+**C23** - `loadConfig` with `NODE_ENV=production` rejects a missing `TURNSTILE_SECRET_KEY` and a missing `TURNSTILE_SITE_KEY` under `SIGNUP_MODE=closed` and under `self_serve`, naming the variable; with both set it loads (AC 15)
 Proof: `src/shared/config.spec.ts -t "requires turnstile keys in production in every signup mode"`
 
 **C24** - An unknown body field, `text: ''`, `text` of 4 001 characters and `clientMessageId: 'x'` each answer `400` on `POST /sessions` and on `POST /messages`; `text` of exactly 4 000 characters is accepted; a key that is not 32 hex answers `400` on every route; an unknown query field and `after=-1` answer `400` on `GET /messages` (AC 16)
@@ -116,6 +116,7 @@ Proof: `src/modules/channels/public-chat.spec.ts -t "requires a valid visitor se
 
 **C30** - `GET /messages` answers `200 { items }` in ascending `seq`, each item exactly `{ id, seq, direction, author, kind, text, sentAt }` (no `authorUserId`, `deliveryStatus`, `conversationId`, `externalId`, contact data) (AC 22, door 5)
 Proof: `src/modules/channels/public-chat.spec.ts -t "lists the session messages in seq order"`
+Proof: `src/modules/channels/public-chat.spec.ts -t "orders the session by seq, not by insertion"`
 
 **C31** - A phone whose `WEB_CHAT` conversation already holds 3 messages (seq 1–3, one of them a HUMAN reply) starts a session: its message gets seq 4 and `GET /messages` returns only seq ≥ 4; a message sent by the earlier session afterwards (seq 5) is returned too, and none of seq 1–3 ever is (AC 23, door 5, decisão do usuário)
 Proof: `src/modules/channels/public-chat.spec.ts -t "hides every message before the session start"`
@@ -137,7 +138,7 @@ Proof: `src/modules/channels/public-chat.spec.ts -t "limits session starts per k
 **C36** - One visitor token gets `201` on 20 `POST /messages` in a minute and `429 RATE_LIMITED` on the 21st, while another token from the same IP still gets `201` (AC 28)
 Proof: `src/modules/channels/public-chat.spec.ts -t "limits messages per visitor"`
 
-**C37** - From one IP, 120 public `GET`s in a minute answer `200` and the 121st answers `429 RATE_LIMITED` (AC 29)
+**C37** - From one IP, 120 public `GET`s in a minute answer non-`429` and the 121st answers `429 RATE_LIMITED`, on each of `GET /:key`, `GET /logo` and `GET /messages` (AC 29)
 Proof: `src/modules/channels/public-chat.spec.ts -t "limits public reads per ip"`
 
 **C38** - After 121 public `GET`s and 6 starts from one IP, `GET /api/health` and an authenticated `GET /api/v1/me` from the same IP answer non-`429` (AC 30)
@@ -165,6 +166,9 @@ Proof: `grep -c '"@fastify/rate-limit": "11\.' apps/server/package.json` prints 
 **C44** - `WEB_CHAT_NOTICE_VERSION` is `'2026-09-25'` and `GET /api/public/chat/:key` reports it (Impact "domain", AC 1)
 Proof: `src/modules/channels/public-chat.spec.ts -t "describes the web chat of the key"`
 
+**C46** - `GET /logo` answers with `Cache-Control: public, no-cache` and an `ETag` of 32 hex characters in quotes; the same `If-None-Match` answers `304` with an empty body, and another one answers `200` with the bytes (Surface `/logo`, added in round 2)
+Proof: `src/modules/channels/public-chat.spec.ts -t "caches the public logo by its etag"`
+
 **C45** - Repeating `POST /sessions` with the same body answers `201` with the same message, and the same `clientMessageId` with another phone answers `409` without that message's id or text; the organization keeps 1 contact, 1 conversation, 1 message and 1 consent (Surface `409`, added in build; door 7)
 Proof: `src/modules/channels/public-chat.spec.ts -t "answers a repeated start with the same session"`
 
@@ -173,20 +177,21 @@ Proof: `src/modules/channels/public-chat.spec.ts -t "answers a repeated start wi
 | Set (size) | Member -> proof | Unproven |
 | --- | --- | --- |
 | `GET /api/public/chat/:key` statuses (4) | 200 C9 · 400 C24 · 404 C10 · 429 C37 | - |
-| `GET /api/public/chat/:key/logo` statuses (4) | 200 C39 · 400 C24 · 404 C10, C39 · 429 C37 | - |
+| `GET /api/public/chat/:key/logo` statuses (5) | 200 C39, C46 · 304 C46 · 400 C24 · 404 C10, C39 · 429 C37 | - |
+| `GET /logo` headers (2) | `Cache-Control` C46 · `ETag` C46 | - |
 | `POST /api/public/chat/:key/sessions` statuses (7) | 201 C11, C45 · 400 C17, C24 · 403 C20, C22, C40 · 404 C10 · 409 C45 · 422 C18, C19 · 429 C34, C35 | - |
 | `POST /api/public/chat/:key/messages` statuses (8) | 200 C26 · 201 C25 · 400 C24 · 401 C29 · 403 C40 (same origin hook, asserted on `/sessions`; the hook is global, `app.spec` covers every path) · 404 C10 · 409 C27 · 429 C36 | - |
 | `GET /api/public/chat/:key/messages` statuses (5) | 200 C30 · 400 C24 · 401 C29 · 404 C10 · 429 C37 | - |
-| Landing doors (7) | 1 key tenant C1, C2, C3 · 2 ConsentRecord C4, C13 · 3 atomic consent C7, C8 · 4 visitor token C5, C6, C14 · 5 seq cut C30, C31, C32 · 6 rate limit C34–C38, C43 · 7 externalId C26, C27 | - |
+| Landing doors (7) | 1 key tenant C1, C2, C3 · 2 ConsentRecord C4, C13 · 3 atomic consent C7, C8 · 4 visitor token C5, C6, C14 · 5 seq cut and ascending order C30, C31, C32 · 6 rate limit C34–C38, C43 · 7 externalId C26, C27 | - |
 | Invalid-cookie causes (4) | missing C29 · tampered C29, C6 · expired C29, C6 · other organization C29 | - |
 | Token rejections at its own layer (6) | payload byte C6 · signature byte C6 · other secret C6 · version C6 · expired C6 · garbage C6 | - |
 | Start refusals (5) | no consent C17 · outdated notice C18 · invalid phone C19 · captcha rejected C20 · captcha unreachable C22 | - |
 | Invalid inputs (8) | unknown body field C24 · empty text C24 · 4 001 chars C24 · bad `clientMessageId` C24 · bad key C24 · unknown query field C24 · `after=-1` C24 · `consent` missing C17 | - |
-| Rate limits (5) | start/IP C34 · start/key C35 · messages/token C36 · reads/IP C37 · only public routes C38 | - |
+| Rate limits (7) | start/IP C34 · start/key C35 · messages/token C36 · reads/IP on `GET /:key` C37 · reads/IP on `GET /logo` C37 · reads/IP on `GET /messages` C37 · only public routes C38 | - |
 | Cookie attributes (6) | `HttpOnly` C14 · `SameSite=Lax` C14 · `Path` C14 · `Max-Age` C14 · `Secure` in production C14 · value shape C5 | - |
 | `PublicMessage` keys (7) | C30, table-driven over all 7 (exact key set: `id`, `seq`, `direction`, `author`, `kind`, `text`, `sentAt`) | - |
 | Public chat description keys (6) | C9, table-driven over all 6 (exact key set: `name`, `brandColor`, `greeting`, `hasLogo`, `noticeVersion`, `turnstileSiteKey`) | - |
-| Config: Turnstile in production (4) | `invite_only` secret C23 · `invite_only` site key C23 · `self_serve` secret C23 · `self_serve` site key C23 | - |
+| Config: Turnstile in production (4) | `closed` secret C23 · `closed` site key C23 · `self_serve` secret C23 · `self_serve` site key C23 | - |
 | startup config: rate limit plugin (2 assemblies) | `server.ts` via `buildApp` C43 · `buildTestApp` via `buildApp` C34, C38 | - |
 
 - Claims naming a status, route or response shape (C9–C41) are proven over HTTP with `app.inject`; C1–C8 are proven at their own layer (database, token, use case) because that is where those decisions sit.
@@ -226,7 +231,7 @@ Cost: 3 unit proofs in 1 file. Without it, the 6 rejection causes would be prove
 - **Boundary:** C1-C45 closed at the commit `feat(channels): serve the public web chat api`
 - **Settled mid-build:**
   - C45 added (additive): a retried start is idempotent, and the plan's `Surface` gained `409` on `POST /sessions`.
-  - C23 names `invite_only`, but the `SIGNUP_MODE` enum has `closed` and `self_serve` only. The proof covers both real modes, and the check text is left as approved.
+  - C23 named `invite_only`, which the `SIGNUP_MODE` enum does not have (only `closed` and `self_serve`). In round 2 the text was corrected to `closed`, the real mode the proof already covered. The obligation did not change: every mode is covered.
   - C14 production half: the route builds the cookie through `visitorCookieFor(config, …)`, proven with `loadConfig(NODE_ENV=production)` at its own layer. An app with `NODE_ENV=production` in the test would call the real siteverify.
   - C2: outside every setting, the `Organization` policy fails closed (it throws), as it did before. "Reads no organization row" is proven by that rejection.
   - `@fastify/rate-limit` marks a request once any of its hooks has run (`rateLimitRan`), so stacking two `rateLimit()` hooks skips the second. The limits use `createRateLimit` in one `onRequest` per route.
@@ -234,4 +239,12 @@ Cost: 3 unit proofs in 1 file. Without it, the 6 rejection causes would be prove
   - Pre-existing CI break fixed first as its own feature, `openapi-export` (`1eaf414`, PASS): `pnpm api:generate` had been failing since `realtime-events`.
   - Local DB only: the `public` schema had lost the `bens_app` grants after the F1 `migrate reset`. They were re-applied from `docker/postgres/init/01-app-role.sh`, with no code change.
 - **Abandoned:** two stacked `fastify.rateLimit()` hooks (see above)
+
+**Round 2 fixes** (after verification round 1, FAIL):
+- gap 1 (surviving mutant, `orderBy` removed): new proof on C30 that seeds seq 4, 2, 3 out of insertion order.
+- gap 2 (C3 half proven): `lists only the caller organizations` now asserts `withTenant(A)` reads exactly A.
+- gap 3 (read limit on one route): C37 now runs over each of the three public `GET`s.
+- gap 4 (`/logo` headers and `304`): C46 added, and the plan's `Surface` gained `304` on `/logo`.
+- precision: C24 now also proves 4 000 characters accepted on `POST /sessions`; C32 asserts the literal `after=2`; C31 now sends the other session's message through that session's cookie.
+- ADR-014 now carries a revision note pointing to AD-018 (the seq cut and the cookie per link).
 

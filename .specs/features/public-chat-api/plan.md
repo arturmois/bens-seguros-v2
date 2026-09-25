@@ -34,7 +34,7 @@ Reusa o `receiveInbound` da F2 (normalização E.164, `seq`, dedupe, reabertura,
 | domain | termo novo: **aviso do Web Chat** (`WEB_CHAT_NOTICE_VERSION`). É a versão do aviso de privacidade que o visitante aceita, distinta dos Termos de Uso do painel (`terms`). O texto nasce na `web-chat-ui` |
 | domain | `receiveInbound` ganha um passo opcional, executado dentro da própria transação (o consentimento). Os chamadores atuais (testes) não mudam |
 | tenant | quarto caminho fora do tenant, `withPublicChatKey`. A política `tenant_isolation` de `Organization` ganha o ramo `publicChatKey = app.public_chat_key`. Quem depende dela hoje: `withUser` (troca de organização) e o `requireTenant`. O teste de schema e o `database.spec` cobrem os ramos atuais |
-| config | em `NODE_ENV=production`, as duas chaves do Turnstile passam a ser obrigatórias em qualquer `SIGNUP_MODE`, não só em `self_serve`. O staging já tem as duas. Uma produção futura em `invite_only` sem chaves passa a não subir |
+| config | em `NODE_ENV=production`, as duas chaves do Turnstile passam a ser obrigatórias em qualquer `SIGNUP_MODE`, não só em `self_serve`. O staging já tem as duas. Uma produção futura em `closed` sem chaves passa a não subir |
 | dependency | `@fastify/rate-limit` 11.x, registrado com `global: false` (só as rotas públicas) |
 | stored data | tabela nova `ConsentRecord`, vazia. Nada a migrar |
 
@@ -58,7 +58,7 @@ Restrições de mão única:
 | Route | In | Out | Status |
 | --- | --- | --- | --- |
 | `GET /api/public/chat/:key` | params `key` (32 hex) | `{ name, brandColor, greeting, hasLogo, noticeVersion, turnstileSiteKey }` | `200`, `400`, `404`, `429` |
-| `GET /api/public/chat/:key/logo` | params `key` | bytes da imagem, `Content-Type` do logo, `Cache-Control` | `200`, `400`, `404`, `429` |
+| `GET /api/public/chat/:key/logo` | params `key`; `If-None-Match?` | bytes da imagem, `Content-Type` do logo, `Cache-Control: public, no-cache`, `ETag` | `200`, `304`, `400`, `404`, `429` |
 | `POST /api/public/chat/:key/sessions` | params `key`; body `phone`, `consent: true`, `noticeVersion`, `turnstileToken`, `clientMessageId` (uuid), `text` (1–4 000) | `201 { message: PublicMessage }` + `Set-Cookie` do visitante | `201`, `400`, `403`, `404`, `409`, `422`, `429` |
 | `POST /api/public/chat/:key/messages` | params `key`; cookie do visitante; body `clientMessageId` (uuid), `text` (1–4 000) | `201 { message }` (nova) ou `200 { message }` (repetida) | `200`, `201`, `400`, `401`, `403`, `404`, `429` |
 | `GET /api/public/chat/:key/messages` | params `key`; cookie; query `after?` (inteiro ≥ 0) | `{ items: PublicMessage[] }` (até 100, `seq` crescente) | `200`, `400`, `401`, `404`, `429` |

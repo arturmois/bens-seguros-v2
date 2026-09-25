@@ -200,6 +200,12 @@ describe('row level security', () => {
     expect(listed.map((org) => org.id)).toContain(tenantA.organizationId)
     expect(listed.map((org) => org.id)).not.toContain(tenantB.organizationId)
     expect(listed.map((org) => org.name)).not.toContain(other.name)
+
+    // The tenant sees its own organization and no other, with the public chat branch in the policy.
+    const asTenant = await deps.db.withTenant(tenantA, (tx) =>
+      tx.organization.findMany({ select: { id: true } }),
+    )
+    expect(asTenant).toEqual([{ id: tenantA.organizationId }])
   })
 
   it('rejects a cross-tenant member write', async () => {
