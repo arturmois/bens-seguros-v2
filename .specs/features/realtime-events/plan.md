@@ -25,7 +25,7 @@ flowchart TD
     EV -->|"reconectou"| RS["io.emit('events:resync') (door 2)"]
 ```
 
-1. O use case chama `events.notify(tx, event)` dentro da transação do dado (door 1). O PostgreSQL entrega o `NOTIFY` só no commit.
+1. O use case chama `notify(tx, event)` de `infrastructure/events.ts` dentro da transação do dado (door 1). O PostgreSQL entrega o `NOTIFY` só no commit. O canal sai do `current_schema()` da própria transação (`app_events` no `public`, `app_events_<schema>` nos testes), então os use cases não ganham dependência nova; o listener usa a mesma regra (`eventChannel`).
 2. O processo da API mantém uma conexão `pg.Client` dedicada, fora do pool do Prisma, com `LISTEN` no canal (door 2). Cada payload é validado e entregue aos handlers registrados no `app.ts`.
 3. O handler de `message.created` relê a mensagem pelo `conversations` (`withTenant` com o `organizationId` do payload; não achou → ignora) e emite o `Message` da `conversations-api` para `conversation:<id>`.
 4. O socket entra na room com `conversation:join` e ack. O `realtime.ts` chama o `authorizeJoin` que o `app.ts` lhe entrega: `loadTenant` do momento (termos, membro ativo, papel) e `findReadableConversation`. Fora do tenant ou da carteira → ack `{ ok: false, status: 404, code: 'NOT_FOUND' }`.
@@ -36,7 +36,7 @@ flowchart TD
 | Front | What changes |
 | --- | --- |
 | domain | termo novo: **evento de app** - aviso transacional só com ids (`message.created`), canal `app_events`. Vive em `infrastructure/events.ts` |
-| runtime | o `server.ts` abre uma conexão a mais ao PostgreSQL (o `LISTEN`), inicia depois da fila e fecha no shutdown |
+| runtime | o processo da API abre uma conexão a mais ao PostgreSQL (o `LISTEN`): o `buildApp` a inicia no `onReady` (o `server.ts` e os testes passam pelo mesmo lugar) e o `closeDependencies` a fecha no shutdown |
 | realtime | `realtime.ts` passa a aceitar `conversation:join`/`conversation:leave`; as rooms `user:` e `org:` não mudam |
 | dependency | `pg` passa de `devDependencies` para `dependencies` do `apps/server` (mesma versão `8.23.0`, já instalada pelo `@prisma/adapter-pg`); nenhuma exceção no `pnpm-workspace.yaml` |
 | tests | cada worker do Vitest usa o próprio canal (`app_events_<schema>`), como já faz com o schema do pg-boss |
@@ -54,6 +54,8 @@ Contrato do Socket.IO consumido pelo web deste repo (painel), mesmo path `/socke
 | --- | --- | --- | --- |
 | `emit conversation:join` (cliente → server, com ack) | `{ conversationId }` (uuid, sem outros campos) | ack `{ ok: true }` ou `{ ok: false, status, code }` | `200` (`ok: true`), `400 VALIDATION_ERROR`, `404 NOT_FOUND` |
 | `emit conversation:leave` (cliente → server, com ack) | `{ conversationId }` | ack `{ ok: true }` ou `{ ok: false, status, code }` | `200` (`ok: true`), `400 VALIDATION_ERROR` |
+
+Adicionado no build: `conversation:join` responde `{ ok: false, status: 500, code: 'INTERNAL_ERROR' }` quando a própria autorização falha (banco fora), como o `500` da API.
 
 O ack de erro espelha o corpo de erro da API (`status` + `code` estável), para o web tratar os dois do mesmo jeito.
 

@@ -15,7 +15,11 @@ import { createRealtime, type Realtime } from './infrastructure/realtime.ts'
 import { authRoutes, headersOf, resolveSession } from './modules/auth/index.ts'
 import { createDefaultChannel } from './modules/channels/index.ts'
 import { moveContactOwner } from './modules/contacts/index.ts'
-import { conversationRoutes } from './modules/conversations/index.ts'
+import {
+  conversationRoutes,
+  findMessage,
+  findReadableConversation,
+} from './modules/conversations/index.ts'
 import {
   assertRouteDeclaresPermission,
   brandingRoutes,
@@ -86,10 +90,38 @@ export function buildApp(deps: Deps) {
         organizationId: ctx instanceof AppError ? null : ctx.organizationId,
       }
     },
+    authorizeJoin: async (user, conversationId) => {
+      const { userId, sessionId, isSuperAdmin } = user
+      // The tenant of this moment (terms, active organization, membership), not the handshake's.
+      const ctx = await loadTenant(deps, { requestId: '', userId, sessionId, isSuperAdmin })
+      if (ctx instanceof AppError) return false
+      return findReadableConversation(deps, ctx, conversationId).then(
+        () => true,
+        (error: unknown) => {
+          if (error instanceof AppError && error.status === 404) return false
+          throw error
+        },
+      )
+    },
   })
   app.decorate('realtime', realtime)
   app.addHook('preClose', async () => {
     await realtime.close()
+  })
+
+  // Events committed by any process (ADR-012) reach the sockets in the conversation's room.
+  deps.events.on('message.created', async (event) => {
+    const message = await findMessage(deps, event, event)
+    if (!message) return
+    realtime.io
+      .to(`conversation:${event.conversationId}`)
+      .emit('message.created', { conversationId: event.conversationId, message })
+  })
+  // Events sent while the listener was down are gone: every client reloads from the API.
+  deps.events.onReconnect(() => realtime.io.emit('events:resync', {}))
+  // One place starts the listener, for the server and the tests alike.
+  app.addHook('onReady', async () => {
+    await deps.events.start()
   })
 
   app.addHook('onRequest', async (request, reply) => {

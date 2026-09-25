@@ -1,4 +1,5 @@
 import type { Database, Transaction } from '../../infrastructure/database.ts'
+import { notify } from '../../infrastructure/events.ts'
 import { AppError } from '../../shared/errors.ts'
 import { uuidv7 } from '../../shared/id.ts'
 import { normalizePhone } from '../../shared/phone.ts'
@@ -104,6 +105,12 @@ export async function receiveInbound(
           },
         })
       }
+      await notify(tx, {
+        type: 'message.created',
+        organizationId: ctx.organizationId,
+        conversationId: conversation.id,
+        messageId,
+      })
       return { conversationId: conversation.id, messageId, created: true }
     })
   } catch (error) {

@@ -31,7 +31,7 @@ roadmap. Não crie pasta, tabela ou rota marcada [Fx] antes da fase.
  Web Chat     ─┼─▶ Caddy ── /api, /socket.io ──▶ api  (Fastify)                 [existe]  │
  (link público)│   │   └── /* ── SPA estática        ├── HTTP (REST + OpenAPI)             │
                │   │                                 ├── Socket.IO (painel [existe], visitantes [F3])
-               │   │                                 ├── LISTEN app_events → socket  [F2]  │
+               │   │                                 ├── LISTEN app_events → socket [existe]│
                │   │                                 ├── pg-boss workers (e-mail [existe], IA [F4])
                │   │                                 └── modules/*                         │
  WhatsApp ◀────┼───┼──── whatsapp (mesma imagem, outro entrypoint)               [F9]      │
@@ -79,7 +79,7 @@ bens-seguros-v2/
 │   │   │   │   ├── queue.ts         # [existe] interface mínima sobre o pg-boss
 │   │   │   │   ├── realtime.ts      # [existe] Socket.IO (auth por cookie, rooms)
 │   │   │   │   ├── email.ts         # [existe] SMTP + render de React Email
-│   │   │   │   └── events.ts        # [F2] notify(tx, …) + LISTEN app_events
+│   │   │   │   └── events.ts        # [existe] notify(tx, …) + LISTEN app_events
 │   │   │   ├── emails/              # [existe] templates React Email
 │   │   │   ├── shared/              # [existe] config, errors, logger, request-context, permissions, scope, crypto, money, pagination, id
 │   │   │   ├── app.ts               # [existe] buildApp(deps)
@@ -135,7 +135,7 @@ export async function claimLead(deps: Deps, ctx: RequestContext, id: string) {
     })
     if (count === 0) throw await claimConflict(tx, id)                       // 409 se já tem dono; 404 se não existe no tenant
     await audit.record(tx, ctx, { action: 'lead.claim', entityId: id, changes: { ownerId: [null, ctx.userId] } })
-    await events.notify(tx, { organizationId: ctx.organizationId, type: 'contact.updated', id })
+    await notify(tx, { type: 'contact.updated', organizationId: ctx.organizationId, contactId: id })
   })                                                                         // o evento só sai se o commit acontecer
 }
 ```
@@ -185,7 +185,7 @@ ai NÃO importa use cases de escrita de sales (ADR-015)
   exibição) são permitidas.
 - **Sem ciclos.** Quem inicia um fluxo o orquestra.
 - **Efeitos colaterais:** na mesma transação → chamada direta; repetíveis → job via
-  `queue.enqueue(tx, …)`; aviso de realtime → `events.notify(tx, …)` [F2]. Não há event bus.
+  `queue.enqueue(tx, …)`; aviso de realtime → `notify(tx, …)` de `infrastructure/events.ts` [existe]. Não há event bus.
 - **Enforcement:** `test/architecture.spec.ts` falha em import profundo entre módulos, em import de
   `pg-boss` fora do `queue.ts`, em `app.tenant_id` fora do `database.ts`, em `id` num schema de
   entrada, em ciclo de imports entre módulos, nas arestas proibidas acima e em escrita numa tabela
@@ -423,7 +423,7 @@ apps/web/src/routes/
   TanStack Query + tipos em `src/api/` (gerado, não editar). O CI falha se estiver desatualizado.
 - **Estado:** servidor → TanStack Query; filtros e paginação → search params validados com Zod;
   formulários → React Hook Form; sem store global.
-- **Tempo real:** o socket entra nas rooms `org:*` e `user:*` [existe] e `conversation:*` [F2]; eventos
+- **Tempo real:** o socket entra nas rooms `org:*` e `user:*` [existe] e `conversation:*` (`conversation:join` com ack, autorizado a cada entrada) [existe]; eventos
   chamam `setQueryData`/`invalidateQueries`; ao reconectar, refaz as consultas (o banco é a fonte de
   verdade).
 - **UI:** shadcn/ui + Tailwind 4; **4 estados** (vazio, carregando, erro, sucesso) em toda listagem.

@@ -132,3 +132,7 @@ Test policy: the repo answers both questions (`CLAUDE.md` "Testes": endpoint -> 
 ## Handoff
 
 - S1 ~3k + S2 ~8k + S3 ~12k + S4 ~6k ≈ 29k tokens to write, plus ≈ 100 KB read (`inbound.spec.ts` 15 KB, `read.spec.ts` 20 KB for the socket/session helpers, `realtime.spec.ts` 5 KB, `inbound.ts`, `outbound.ts`, `read.ts`, `app.ts`, `dependencies.ts`, `queue.ts`, `test/app.ts`, `test/conversations.ts`, `architecture.spec.ts` 15 KB) ≈ 25k → ≈ 55k, under the 150k budget - one builder
+
+- **Boundary:** C1-C9 closed at `72c4928`; C10-C21 closed at the commit that adds this line
+- **Settled mid-build:** `notify` is a stateless function (channel from the transaction's `current_schema()`), not a method of an injected `events` dependency, so the 36 call sites of `receiveInbound`/`sendMessage` keep `{ db }` (door 1's shape: `pg_notify` on `app_events`/`app_events_<schema>` in the transaction); the listener starts in `buildApp`'s `onReady` instead of `server.ts` (C21's shared assembly; `Impact` updated); `conversation:join` answers `500 INTERNAL_ERROR` when the authorization itself fails (appended to `Surface`)
+- **Abandoned:** none

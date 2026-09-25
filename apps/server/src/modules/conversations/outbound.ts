@@ -1,5 +1,6 @@
 import type { ChannelKind, DeliveryStatus } from '../../generated/prisma/client.ts'
 import type { Database } from '../../infrastructure/database.ts'
+import { notify } from '../../infrastructure/events.ts'
 import { AppError, isRecordNotFound } from '../../shared/errors.ts'
 import { uuidv7 } from '../../shared/id.ts'
 import type { RequestContext } from '../../shared/request-context.ts'
@@ -80,6 +81,12 @@ export async function sendMessage(
         sentAt: now,
       },
       select: { id: true, seq: true },
+    })
+    await notify(tx, {
+      type: 'message.created',
+      organizationId: ctx.organizationId,
+      conversationId: conversation.id,
+      messageId: message.id,
     })
     return { conversationId: conversation.id, messageId: message.id, seq: message.seq }
   })

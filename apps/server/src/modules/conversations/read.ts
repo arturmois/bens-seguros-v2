@@ -64,6 +64,23 @@ export async function findReadableConversation(deps: { db: Database }, ctx: Read
   return toSummary(row)
 }
 
+const messageSelect = {
+  id: true,
+  seq: true,
+  direction: true,
+  author: true,
+  authorUserId: true,
+  kind: true,
+  text: true,
+  deliveryStatus: true,
+  sentAt: true,
+  createdAt: true,
+} as const
+
+function toMessage<T extends { sentAt: Date; createdAt: Date }>(row: T) {
+  return { ...row, sentAt: row.sentAt.toISOString(), createdAt: row.createdAt.toISOString() }
+}
+
 // Newest first by seq, not by id: the id is generated before the conversation lock, so two
 // concurrent messages may have ids and seqs in different orders (plan door 2).
 export async function listConversationMessages(
@@ -76,28 +93,26 @@ export async function listConversationMessages(
     await readable(tx, ctx, id)
     return tx.message.findMany({
       where: { conversationId: id },
-      select: {
-        id: true,
-        seq: true,
-        direction: true,
-        author: true,
-        authorUserId: true,
-        kind: true,
-        text: true,
-        deliveryStatus: true,
-        sentAt: true,
-        createdAt: true,
-      },
+      select: messageSelect,
       ...pageArgs(query, { seq: 'desc' }),
     })
   })
   const page = toPage(rows, query)
-  return {
-    items: page.items.map((row) => ({
-      ...row,
-      sentAt: row.sentAt.toISOString(),
-      createdAt: row.createdAt.toISOString(),
-    })),
-    nextCursor: page.nextCursor,
-  }
+  return { items: page.items.map(toMessage), nextCursor: page.nextCursor }
+}
+
+// The message an event names, re-read in the event's tenant; null when it is not there (a stale or
+// foreign event). No portfolio filter: only sockets authorized for the room receive it.
+export async function findMessage(
+  deps: { db: Database },
+  tenant: Pick<RequestContext, 'organizationId'>,
+  ids: { conversationId: string; messageId: string },
+) {
+  const row = await deps.db.withTenant(tenant, (tx) =>
+    tx.message.findFirst({
+      where: { id: ids.messageId, conversationId: ids.conversationId },
+      select: messageSelect,
+    }),
+  )
+  return row && toMessage(row)
 }
