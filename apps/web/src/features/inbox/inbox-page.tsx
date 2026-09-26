@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useEffect, useRef, useState } from 'react'
 import {
   getGetConversationQueryKey,
   getListConversationMessagesQueryKey,
@@ -32,8 +32,11 @@ export function InboxPage({ view, conversationId }: InboxPageProps) {
   const list = useListConversations({ view }, { query: { retry: false } })
 
   return (
-    <section className="mx-auto flex w-full max-w-5xl flex-col gap-4" data-testid="inbox-page">
-      <header className="flex flex-wrap items-end justify-between gap-3">
+    <section
+      className="mx-auto flex h-[calc(100svh-5.5rem)] w-full max-w-5xl flex-col gap-4"
+      data-testid="inbox-page"
+    >
+      <header className="flex shrink-0 flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-semibold text-2xl tracking-tight">Inbox</h1>
           <p className="text-muted-foreground text-sm">Fila e conversas em atendimento.</p>
@@ -44,8 +47,8 @@ export function InboxPage({ view, conversationId }: InboxPageProps) {
         </nav>
       </header>
 
-      <div className="grid gap-4 md:grid-cols-[minmax(16rem,20rem)_1fr]">
-        <aside className="min-h-64 rounded-md border">
+      <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-[minmax(16rem,20rem)_1fr]">
+        <aside className="flex min-h-0 flex-col overflow-y-auto rounded-md border">
           {list.isPending ? (
             <p className="p-4 text-muted-foreground text-sm" data-testid="inbox-list-loading">
               Carregando conversas…
@@ -73,7 +76,7 @@ export function InboxPage({ view, conversationId }: InboxPageProps) {
           ) : null}
         </aside>
 
-        <div className="min-h-64 rounded-md border">
+        <div className="flex min-h-0 flex-col overflow-hidden rounded-md border">
           {conversationId ? (
             <Thread conversationId={conversationId} view={view} />
           ) : (
@@ -157,8 +160,17 @@ function Thread({ conversationId, view }: { conversationId: string; view: InboxV
   const [text, setText] = useState('')
   const [confirmClose, setConfirmClose] = useState(false)
   const [failure, setFailure] = useState<string>()
+  const bottom = useRef<HTMLDivElement>(null)
 
   usePanelSocket(conversation.isSuccess ? conversationId : undefined)
+
+  const ordered = [...(messages.data?.items ?? [])].sort((a, b) => a.seq - b.seq)
+  const lastMessageId = ordered.at(-1)?.id
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll on thread/message changes
+  useEffect(() => {
+    bottom.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [conversationId, lastMessageId])
 
   async function invalidate() {
     await Promise.all([
@@ -208,8 +220,6 @@ function Thread({ conversationId, view }: { conversationId: string; view: InboxV
   const canSend = data.handler === 'HUMAN' && data.assigneeId === me.id && data.status !== 'CLOSED'
   const showTake = data.handler === 'QUEUE' || data.handler === 'AI'
 
-  const ordered = [...(messages.data?.items ?? [])].sort((a, b) => a.seq - b.seq)
-
   async function onTake() {
     setFailure(undefined)
     try {
@@ -246,8 +256,8 @@ function Thread({ conversationId, view }: { conversationId: string; view: InboxV
   }
 
   return (
-    <div className="flex h-full min-h-64 flex-col" data-testid="inbox-thread">
-      <header className="flex flex-wrap items-start justify-between gap-3 border-b p-4">
+    <div className="flex min-h-0 flex-1 flex-col" data-testid="inbox-thread">
+      <header className="flex shrink-0 flex-wrap items-start justify-between gap-3 border-b p-4">
         <div>
           <p className="font-medium" data-testid="inbox-thread-phone">
             {data.contact.phoneE164}
@@ -292,7 +302,7 @@ function Thread({ conversationId, view }: { conversationId: string; view: InboxV
 
       {confirmClose ? (
         <div
-          className="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-4 py-3"
+          className="flex shrink-0 flex-wrap items-center gap-2 border-b bg-muted/40 px-4 py-3"
           data-testid="inbox-close-confirm"
         >
           <p className="text-sm">Encerrar conversa?</p>
@@ -310,7 +320,10 @@ function Thread({ conversationId, view }: { conversationId: string; view: InboxV
         </div>
       ) : null}
 
-      <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-4" data-testid="inbox-messages">
+      <div
+        className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-4"
+        data-testid="inbox-messages"
+      >
         {messages.isPending ? (
           <p className="text-muted-foreground text-sm">Carregando mensagens…</p>
         ) : null}
@@ -329,12 +342,13 @@ function Thread({ conversationId, view }: { conversationId: string; view: InboxV
             {message.text ?? '(mensagem sem texto)'}
           </div>
         ))}
+        <div ref={bottom} />
       </div>
 
-      {failure ? <p className="px-4 text-destructive text-sm">{failure}</p> : null}
+      {failure ? <p className="shrink-0 px-4 text-destructive text-sm">{failure}</p> : null}
 
       {canSend ? (
-        <form className="flex gap-2 border-t p-4" onSubmit={(event) => void onSend(event)}>
+        <form className="flex shrink-0 gap-2 border-t p-4" onSubmit={(event) => void onSend(event)}>
           <div className="flex-1">
             <Label htmlFor="inbox-reply" className="sr-only">
               Mensagem
