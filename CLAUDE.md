@@ -27,7 +27,7 @@ Legado (somente referência de comportamento, não de arquitetura: etapas do Kan
   - dados via hooks gerados pelo Orval (`src/api/`, não editar à mão; rodar `pnpm api:generate`);
   - filtros em search params do router;
   - 4 estados (vazio, carregando, erro, sucesso) em toda listagem;
-  - **fullstack + smoke no browser (a partir de 2026-09-25):** feature com superfície de usuário (tela, fluxo no painel ou link público) entrega API e UI na mesma feature e prova o caminho feliz com Playwright (`apps/web/e2e/`), não só `app.inject`/Socket.IO. Fatias só de infraestrutura ou de domínio sem UI ficam isentas; o gap da F3 (`public-chat-api`/`visitor-realtime` sem tela) fecha em `web-chat-ui` antes do `inbox-api`.
+  - **fullstack + smoke no browser (a partir de 2026-09-25):** feature com superfície de usuário (tela, fluxo no painel ou link público) entrega API e UI na mesma feature e prova o caminho feliz com Playwright (`apps/web/e2e/`), não só `app.inject`/Socket.IO. Fatias só de infraestrutura ou de domínio sem UI ficam isentas; o gap da F3 (`public-chat-api`/`visitor-realtime` sem tela) fechou em `web-chat-ui`; o painel é a fatia única `inbox` (AD-019).
 - **Idioma:** identificadores e comentários em inglês; textos de UI e mensagens de erro em pt-BR com acentuação correta.
 
 ## Acesso a infraestrutura

@@ -1,6 +1,6 @@
 # Visitor realtime
 
-> F3, feature 2 de 5 (`public-chat-api` → `visitor-realtime` → `inbox-api` → `web-chat-ui` → `inbox-web`, e o e2e no staging). Depende da `public-chat-api` (token, `PublicMessage`, corte por `seq`) e da `realtime-events` (`notify` + `LISTEN` + `message.created`). Perfil: standard (auth fora da sessão do painel, isolamento por `fromSeq`, payload público).
+> F3, feature 2 de 5 (`public-chat-api` → `visitor-realtime` → `web-chat-ui` → `inbox` → e2e no staging). Depende da `public-chat-api` (token, `PublicMessage`, corte por `seq`) e da `realtime-events` (`notify` + `LISTEN` + `message.created`). Perfil: standard (auth fora da sessão do painel, isolamento por `fromSeq`, payload público).
 
 ## Problem
 
@@ -113,7 +113,7 @@ O visitante autentica o namespace com o token e entra na room da conversa do tok
 | Excluded | Why |
 | --- | --- |
 | página `/c/:key`, UI do chat, texto do aviso, Open Graph | `web-chat-ui` |
-| inbox, assumir, responder, encerrar no painel | `inbox-api` / `inbox-web` |
+| inbox, assumir, responder, encerrar no painel | `inbox` |
 | polling como transporte principal do visitante | esta feature é o socket; o `GET /messages` continua para resync e carga inicial |
 | indicador de digitação, presença, confirmação de leitura | fora do MVP (§30) |
 | adapter Redis / 2+ réplicas da API | ADR-002 / ADR-006; sem gatilho |

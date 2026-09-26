@@ -29,7 +29,7 @@ Static: `rg -n "whatsapp|facebookexternalhit|/c/" Caddyfile` → lines 21–22; 
 | ADR-014 `docs/decisions/ADR-014-public-channel-identity-consent.md` | yes - full file + 2026-09-25 revision (`seq ≥ fromSeq`, cookie Path per key, `/c/:slug`, OG via API) | none - plan/checks `/c/:key` = publicChatKey | - |
 | AD-018 `.specs/STATE.md:24` | yes - `withPublicChatKey`, visitor token, `GET /session` + `auth.token`, `seq ≥ fromSeq` | none | - |
 | ADR-009 `docs/decisions/ADR-009-frontend-vite-tanstack-router.md` | yes - SPA Vite; OG HTML from API not Next (lines 13–15) | none | - |
-| roadmap F3 `docs/roadmap.md:82–83` | yes - `/c/:slug` + OG; order `web-chat-ui` before `inbox-api`; AD-019 | none | - |
+| roadmap F3 `docs/roadmap.md:82–83` | yes - `/c/:slug` + OG; order `web-chat-ui` before `inbox`; AD-019 | none | - |
 | AD-019 `.specs/STATE.md:25–26` | yes - UI features deliver API+UI + Playwright smoke | none | - |
 | plan Surface / Observable / Landing | yes - plan.md | none | - |
 

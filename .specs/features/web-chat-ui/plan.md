@@ -1,6 +1,6 @@
 # Web Chat UI
 
-> F3, fecha o gap: `public-chat-api` + `visitor-realtime` já existem sem tela. Antecipada antes de `inbox-api` (decisão 2026-09-25: toda feature com superfície de usuário é fullstack + smoke Playwright). Depois: `inbox-api` → `inbox-web` → e2e completo no staging. Perfil: **ui**.
+> F3, fecha o gap: `public-chat-api` + `visitor-realtime` já existem sem tela. Antecipada antes de `inbox` (decisão 2026-09-25: toda feature com superfície de usuário é fullstack + smoke Playwright). Depois: `inbox` → e2e completo no staging. Perfil: **ui**.
 
 ## Problem
 
@@ -39,7 +39,7 @@ flowchart TD
 | domain | termo novo na UI: **aviso do Web Chat** (texto ligado a `WEB_CHAT_NOTICE_VERSION`); provisório até revisão jurídica (F11) |
 | web | rota pública `c.$slug` fora do layout autenticado; cliente Socket.IO do visitante |
 | API | rota (ou handler) que serve HTML OG em `/c/:key` para crawlers, sem tirar a SPA do Caddy no browser |
-| process | AD-019: features com UI são fullstack + smoke Playwright; ordem F3: `web-chat-ui` antes de `inbox-api` |
+| process | AD-019: features com UI são fullstack + smoke Playwright; ordem F3: `web-chat-ui` antes de `inbox` |
 | stored data | nada a migrar |
 
 ## Relations
@@ -68,7 +68,7 @@ Eventos já existentes consumidos pela SPA (sem mudança de contrato): `message.
 | --- | --- | --- |
 | 1. Open Graph na API | `GET /c/:key` no Fastify: se o `User-Agent` casa com a lista de previews (WhatsApp, Facebook, Twitter/X, Slack, LinkedIn, Telegram — substring case-insensitive), responde `text/html` com meta `og:*` (nome, saudação truncada, logo absoluto via `/api/public/chat/:key/logo`); senão `404` (browser humano fica com a SPA no Caddy/Vite). Caddy faz proxy de `/c/*` só quando o UA casa com a mesma lista | SSR Next (ADR-009 rejeitou); meta só no `index.html` estático: o preview não recebe nome/logo por corretora |
 | 2. Token do socket no cliente | após `POST /sessions`, a SPA guarda `token` em `sessionStorage` sob a chave `bens_visitor_token:<publicChatKey>` e passa em `auth: { token }`; no reload, tenta `GET /session` (cookie) e só então `sessionStorage` | só cookie no socket: Path não cobre `/socket.io` (recusado na `visitor-realtime`); só `sessionStorage` sem `GET /session`: reload com cookie válido deixaria o socket morto |
-| 3. Envio do painel (smoke / inbox cedo) | `POST /api/v1/conversations/:id/messages` `{ text }`, permissão `conversation:write`; se `handler = QUEUE`, a mesma transação assume (`HUMAN` + `assigneeId = eu`) e chama `sendMessage` | esperar o `inbox-api` inteiro: bloqueia o smoke Playwright exigido; só SQL+notify no e2e: não exercita `sendMessage` |
+| 3. Envio do painel (smoke / inbox cedo) | `POST /api/v1/conversations/:id/messages` `{ text }`, permissão `conversation:write`; se `handler = QUEUE`, a mesma transação assume (`HUMAN` + `assigneeId = eu`) e chama `sendMessage` | esperar o `inbox` inteiro: bloqueia o smoke Playwright exigido; só SQL+notify no e2e: não exercita `sendMessage` |
 
 - Nada mais nesta mudança é difícil de reverter.
 
@@ -110,7 +110,7 @@ Eventos já existentes consumidos pela SPA (sem mudança de contrato): `message.
 
 | Excluded | Why |
 | --- | --- |
-| inbox do painel (lista, assumir, responder pela UI) | `inbox-api` / `inbox-web` |
+| inbox do painel (lista, assumir, responder pela UI) | `inbox` |
 | e2e completo cliente↔comercial no staging | fecha a F3 depois do inbox |
 | texto jurídico definitivo do aviso | F11 / revisão jurídica; versão provisória `2026-09-25` |
 | IA no Web Chat | F4 |
@@ -120,7 +120,7 @@ Eventos já existentes consumidos pela SPA (sem mudança de contrato): `message.
 
 | Assumption | Chosen default | Rationale | Confirmed? |
 | --- | --- | --- | --- |
-| ordem F3 | `web-chat-ui` antes de `inbox-api` | fecha o gap de tela + smoke; usuário 2026-09-25 | y |
+| ordem F3 | `web-chat-ui` antes de `inbox` | fecha o gap de tela + smoke; usuário 2026-09-25 | y |
 | resposta humana no smoke | `sendMessage` via API de teste, sem UI do painel | inbox ainda não existe; prova o socket do visitante | n |
 | Turnstile no e2e | ambiente de teste sem chaves (API pula), como cadastro | já é o padrão local; staging real fica para o e2e da F3 | n |
 | texto do aviso | provisório em pt-BR na SPA, versão = `WEB_CHAT_NOTICE_VERSION` | igual à API; jurídico na F11 | n |

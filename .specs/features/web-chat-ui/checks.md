@@ -109,7 +109,7 @@ Proof: `e2e/web-chat.spec.ts -g "reconnects the visitor socket after reload"`
 - failure modes: C6, C17
 - idempotency: n/a - UI uses existing API dedupe (`clientMessageId`)
 - authorization: C16
-- concurrency: n/a - single visitor smoke; panel race is inbox-api
+- concurrency: n/a - single visitor smoke; panel race is inbox
 - data lifecycle: n/a - nothing persisted beyond existing public chat
 - dependency failure: C17 (describe error)
 - state transitions: C11 (QUEUE → HUMAN on send)
@@ -123,4 +123,4 @@ Proof: `e2e/web-chat.spec.ts -g "reconnects the visitor socket after reload"`
 
 | One-way door | Literal shape | Alternative rejected |
 | --- | --- | --- |
-| 3. Panel outbound for smoke / early inbox | `POST /api/v1/conversations/:id/messages` body `{ text }` `.strict()`, permission `conversation:write` (ADMIN/MANAGER/COMMERCIAL). If handler is `QUEUE`, the same transaction takes (`HUMAN` + `assigneeId = me`) then `sendMessage` | SQL+notify only in e2e: would not exercise `sendMessage`; waiting for full inbox-api: blocks the smoke the user required |
+| 3. Panel outbound for smoke / early inbox | `POST /api/v1/conversations/:id/messages` body `{ text }` `.strict()`, permission `conversation:write` (ADMIN/MANAGER/COMMERCIAL). If handler is `QUEUE`, the same transaction takes (`HUMAN` + `assigneeId = me`) then `sendMessage` | SQL+notify only in e2e: would not exercise `sendMessage`; waiting for full inbox: blocks the smoke the user required |

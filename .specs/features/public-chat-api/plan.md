@@ -1,6 +1,6 @@
 # Public Chat API
 
-> F3, feature 1 de 5 (`public-chat-api` → `visitor-realtime` → `inbox-api` → `web-chat-ui` → `inbox-web`, e o e2e no staging). Depende da F2 (`receiveInbound`, `Channel` Web Chat padrão, `publicChatKey`). Perfil: standard (tenant fora da sessão, consentimento, rate limit).
+> F3, feature 1 de 5 (`public-chat-api` → `visitor-realtime` → `web-chat-ui` → `inbox` → e2e no staging). Depende da F2 (`receiveInbound`, `Channel` Web Chat padrão, `publicChatKey`). Perfil: standard (tenant fora da sessão, consentimento, rate limit).
 
 ## Problem
 
@@ -158,7 +158,7 @@ O visitante informa telefone e aceite, manda a primeira mensagem, e ela chega ao
 | Excluded | Why |
 | --- | --- |
 | socket do visitante (namespace próprio) | `visitor-realtime`, próxima feature; aqui o visitante lê por consulta |
-| assumir, responder e encerrar pelo painel; selo "telefone não verificado" no inbox | `inbox-api` / `inbox-web` |
+| assumir, responder e encerrar pelo painel; selo "telefone não verificado" no inbox | `inbox` |
 | página `/c/:key`, texto do aviso, HTML Open Graph | `web-chat-ui` |
 | IA respondendo | F4; sem IA a conversa nasce em `QUEUE` (ADR-014) |
 | revogar a sessão de outro navegador; OTP do telefone | recusados: corte por seq (decisão do usuário) e ADR-014 |
