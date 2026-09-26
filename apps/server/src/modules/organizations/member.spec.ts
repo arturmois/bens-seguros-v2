@@ -431,7 +431,7 @@ describe('PATCH /api/v1/members/:id', () => {
     expect(me.statusCode).toBe(200)
     expect(me.json()).toMatchObject({
       role: 'MANAGER',
-      permissions: ['organization:read', 'conversation:read'],
+      permissions: ['organization:read', 'conversation:read', 'conversation:write'],
     })
   })
 

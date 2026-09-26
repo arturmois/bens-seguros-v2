@@ -13,6 +13,11 @@ import {
   messageListQuery,
 } from './conversation.schema.ts'
 import { findReadableConversation, listConversationMessages, listConversations } from './read.ts'
+import {
+  sendConversationMessage,
+  sendConversationMessageInput,
+  sendConversationMessageOutput,
+} from './send.ts'
 
 export type ConversationRoutesDeps = { auth: Auth; db: Database }
 
@@ -21,6 +26,11 @@ export function conversationRoutes(deps: ConversationRoutesDeps): FastifyPluginA
     requireSession(deps.auth),
     requireTenant(deps),
     requirePermission('conversation:read'),
+  ]
+  const canWrite = [
+    requireSession(deps.auth),
+    requireTenant(deps),
+    requirePermission('conversation:write'),
   ]
   return async (app) => {
     app.get(
@@ -72,6 +82,29 @@ export function conversationRoutes(deps: ConversationRoutesDeps): FastifyPluginA
           request.params.id,
           request.query,
         ),
+    )
+
+    app.post(
+      '/api/v1/conversations/:id/messages',
+      {
+        schema: {
+          params: conversationIdParams,
+          body: sendConversationMessageInput,
+          response: { 201: sendConversationMessageOutput },
+          tags: ['Conversations'],
+          operationId: 'sendConversationMessage',
+        },
+        preHandler: canWrite,
+      },
+      async (request, reply) => {
+        const result = await sendConversationMessage(
+          { db: deps.db },
+          currentTenant(request),
+          request.params.id,
+          request.body,
+        )
+        return reply.status(201).send(result)
+      },
     )
   }
 }

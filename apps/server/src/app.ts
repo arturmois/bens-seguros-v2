@@ -16,6 +16,7 @@ import { createRealtime, type Realtime } from './infrastructure/realtime.ts'
 import { authRoutes, headersOf, resolveSession } from './modules/auth/index.ts'
 import {
   createDefaultChannel,
+  openGraphRoutes,
   publicChatRoutes,
   readVisitorToken,
   visitorTokenKey,
@@ -188,6 +189,7 @@ export function buildApp(deps: Deps) {
   app.register(memberRoutes({ ...deps, portfolioMoves: [moveContactOwner] }))
   app.register(conversationRoutes(deps))
   app.register(publicChatRoutes(deps))
+  app.register(openGraphRoutes(deps))
 
   return app
 }

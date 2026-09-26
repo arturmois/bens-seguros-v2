@@ -456,6 +456,8 @@ describe('conversation route contract', () => {
     const seen = new Map<string, { operationId: unknown; permissions: unknown[] }>()
     built.app.addHook('onRoute', (route: RouteOptions) => {
       if (!route.url.startsWith('/api/v1/conversations')) return
+      const method = Array.isArray(route.method) ? route.method.join(',') : String(route.method)
+      if (method !== 'GET') return
       const hooks = [route.preHandler].flat().filter((hook) => hook !== undefined)
       const schema = route.schema
       seen.set(route.url, {
