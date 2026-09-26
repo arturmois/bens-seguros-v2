@@ -78,11 +78,14 @@ export async function emailLink(to: string, subject: string) {
   return `${parsed.pathname}${parsed.search}`
 }
 
+// Cloudflare's always-pass test secret (CI) accepts this token and refuses an empty one; ignored
+// when Turnstile is off (local default).
+export const TURNSTILE_TEST_TOKEN = 'XXXX.DUMMY.TOKEN.XXXX'
+
 export async function signUp(api: APIRequestContext, email = uniqueEmail(), name = NAME) {
   const response = await api.post('/api/auth/sign-up/email', {
     data: { name, email, password: PASSWORD, callbackURL: '/login' },
-    // Cloudflare's always-pass test secret accepts this token; ignored when Turnstile is off.
-    headers: { 'x-captcha-response': 'XXXX.DUMMY.TOKEN.XXXX' },
+    headers: { 'x-captcha-response': TURNSTILE_TEST_TOKEN },
   })
   expect(response.status()).toBe(200)
   return { email, password: PASSWORD, name }

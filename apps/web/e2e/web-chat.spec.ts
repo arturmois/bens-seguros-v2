@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { visitorTokenStorageKey, WEB_CHAT_NOTICE_VERSION } from '../src/features/web-chat/constants'
-import { expect, onboard, test, verifiedUser } from './support'
+import { expect, onboard, TURNSTILE_TEST_TOKEN, test, verifiedUser } from './support'
 
 const VALID_PHONE = '(11) 98765-4321'
 const FIRST_MESSAGE = 'Olá, quero cotar um seguro auto.'
@@ -73,8 +73,9 @@ test.describe('web chat', () => {
     await expect(page.getByLabel('Telefone')).toHaveCount(0)
   })
 
-  // C7 + C9 + C10. One POST /sessions (public chat rate-limits 5/IP/min).
-  test('starts a session and shows the first message; stores the visitor token for the socket', async ({
+  // C7 + C9 + C10. The public chat rate-limits POST /sessions to 5/IP/min and this file runs in
+  // well under a minute, so the follow-up rides on this session instead of starting its own.
+  test('starts a session and shows the first message; stores the visitor token for the socket; sends a follow-up message in the thread', async ({
     page,
     api,
   }) => {
@@ -121,17 +122,6 @@ test.describe('web chat', () => {
     expect(sessions).toBe(0)
   })
 
-  // C10 title kept for the grep proof (also covered in the start test above).
-  test('sends a follow-up message in the thread', async ({ page, api }) => {
-    await verifiedUser(api)
-    const org = await brandedOrg(api)
-    await startVisitorChat(page, org.publicChatKey)
-
-    await page.getByLabel('Mensagem').fill(FOLLOW_UP)
-    await page.getByRole('button', { name: 'Enviar' }).click()
-    await expect(page.getByTestId('web-chat-message').filter({ hasText: FOLLOW_UP })).toBeVisible()
-  })
-
   // C12 + C13 + C15: prior seq below fromSeq, human leg, resync refetch.
   test('shows a human reply in under two seconds; reloads messages after events resync', async ({
     page,
@@ -145,7 +135,7 @@ test.describe('web chat', () => {
         phone: VALID_PHONE,
         consent: true,
         noticeVersion: WEB_CHAT_NOTICE_VERSION,
-        turnstileToken: '',
+        turnstileToken: TURNSTILE_TEST_TOKEN,
         clientMessageId: randomUUID(),
         text: PRIOR_MESSAGE,
       },
