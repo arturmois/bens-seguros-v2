@@ -44,8 +44,8 @@ Escopo, fases e decisões: `docs/roadmap.md`, ADR-011 a ADR-017. Cada fase: `pla
 - **F3 `visitor-realtime` (2026-09-25):** namespace Socket.IO `/visitor` autenticado por `auth.token`; `POST /sessions` devolve o token; `GET /session` remonta pelo cookie; emit de `PublicMessage` filtrado por `fromSeq`; `events:resync` no `/visitor`. `verification.md` PASS na rodada 1 (`415fe40`).
 - **Regra (2026-09-25, AD-019):** feature com superfície de usuário é fullstack (API+UI) e prova o caminho feliz com Playwright; isento só infra/domínio sem UI.
 - **F3 `web-chat-ui` (2026-09-25):** página `/c/:key`, HTML Open Graph (Caddy UA → API), `POST /conversations/:id/messages` (`conversation:write`, auto-take), cliente Socket.IO `/visitor`, smoke Playwright. `verification.md` PASS na rodada 2 (`f46bbbb`); rodada 1 FAIL (logo, igualdade do token, fromSeq, GET /session, nome do proof de permission) → fechado em `f46bbbb`.
+- **F3 `inbox` (2026-09-26):** fatia fullstack PASS na rodada 2 (`1918b32` / `69970c7`). Rodada 1 FAIL (C17 sem isolamento do assignee, ADMIN close, screen 404, join, inbound no painel, lista legado sem `view`).
 - **Próximo:** e2e completo no staging (fecha F3); depois F4 IA.
-- **F3 `inbox` (2026-09-26):** em build (plan/checks aprovados; Verifier pendente).
 - **Pendências registradas:** AD nova para a função `SECURITY DEFINER` do runtime WhatsApp (F9); parecer jurídico do opt-in do WhatsApp e reescrita dos Termos de Uso para o MVP, com nova versão (antes do go-live).
 
 ## Histórico v2 (Fases 3–4, concluídas)
