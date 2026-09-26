@@ -317,6 +317,9 @@ importers:
       react-qr-code:
         specifier: 2.2.0
         version: 2.2.0(react@19.3.0)
+      socket.io-client:
+        specifier: ^4.8.3
+        version: 4.8.3
       tailwind-merge:
         specifier: 3.7.0
         version: 3.7.0

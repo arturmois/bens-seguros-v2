@@ -613,3 +613,97 @@ export function useListPublicChatMessages<TData = Awaited<ReturnType<typeof list
 
 
 
+export const getGetPublicChatOpenGraphUrl = (key: string,) => {
+
+
+
+
+  return `/c/${key}`
+}
+
+export const getPublicChatOpenGraph = async (key: string, options?: Parameters<typeof http>[1]): Promise<void> => {
+
+  return http<void>(getGetPublicChatOpenGraphUrl(key),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPublicChatOpenGraphQueryKey = (key: string,) => {
+    return [
+    `/c/${key}`
+    ] as const;
+    }
+
+
+export const getGetPublicChatOpenGraphQueryOptions = <TData = Awaited<ReturnType<typeof getPublicChatOpenGraph>>, TError = ErrorType<unknown>>(key: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPublicChatOpenGraph>>, TError, TData>>, request?: SecondParameter<typeof http>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPublicChatOpenGraphQueryKey(key);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPublicChatOpenGraph>>> = ({ signal }) => getPublicChatOpenGraph(key, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: key !== null && key !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPublicChatOpenGraph>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetPublicChatOpenGraphQueryResult = NonNullable<Awaited<ReturnType<typeof getPublicChatOpenGraph>>>
+export type GetPublicChatOpenGraphQueryError = ErrorType<unknown>
+
+
+export function useGetPublicChatOpenGraph<TData = Awaited<ReturnType<typeof getPublicChatOpenGraph>>, TError = ErrorType<unknown>>(
+ key: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPublicChatOpenGraph>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getPublicChatOpenGraph>>,
+          TError,
+          Awaited<ReturnType<typeof getPublicChatOpenGraph>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof http>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetPublicChatOpenGraph<TData = Awaited<ReturnType<typeof getPublicChatOpenGraph>>, TError = ErrorType<unknown>>(
+ key: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPublicChatOpenGraph>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getPublicChatOpenGraph>>,
+          TError,
+          Awaited<ReturnType<typeof getPublicChatOpenGraph>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof http>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetPublicChatOpenGraph<TData = Awaited<ReturnType<typeof getPublicChatOpenGraph>>, TError = ErrorType<unknown>>(
+ key: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPublicChatOpenGraph>>, TError, TData>>, request?: SecondParameter<typeof http>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function useGetPublicChatOpenGraph<TData = Awaited<ReturnType<typeof getPublicChatOpenGraph>>, TError = ErrorType<unknown>>(
+ key: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPublicChatOpenGraph>>, TError, TData>>, request?: SecondParameter<typeof http>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetPublicChatOpenGraphQueryOptions(key,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+

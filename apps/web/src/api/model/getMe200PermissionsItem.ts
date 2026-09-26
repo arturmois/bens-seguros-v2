@@ -15,4 +15,5 @@ export const GetMe200PermissionsItem = {
   'member:update': 'member:update',
   'portfolio:transfer': 'portfolio:transfer',
   'conversation:read': 'conversation:read',
+  'conversation:write': 'conversation:write',
 } as const;
