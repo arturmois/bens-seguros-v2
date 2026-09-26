@@ -23,11 +23,12 @@ Legado (somente referência de comportamento, não de arquitetura: etapas do Kan
 - **Jobs:** apenas via `infrastructure/queue.ts` (`enqueue(tx, …)` dentro da transação). Handlers idempotentes. Nunca importar `pg-boss` direto.
 - **Dinheiro:** inteiros em centavos; percentuais em basis points; operações via `shared/money.ts`.
 - **TypeScript strict:** zero `any`, `@ts-ignore`, `@ts-expect-error`; evitar `as` (só em testes). Sem `console.log` (use o logger). Secrets só via `shared/config.ts`.
-- **Idioma:** identificadores e comentários em inglês; textos de UI e mensagens de erro em pt-BR com acentuação correta.
 - **Web:**
   - dados via hooks gerados pelo Orval (`src/api/`, não editar à mão; rodar `pnpm api:generate`);
   - filtros em search params do router;
-  - 4 estados (vazio, carregando, erro, sucesso) em toda listagem.
+  - 4 estados (vazio, carregando, erro, sucesso) em toda listagem;
+  - **fullstack + smoke no browser (a partir de 2026-09-25):** feature com superfície de usuário (tela, fluxo no painel ou link público) entrega API e UI na mesma feature e prova o caminho feliz com Playwright (`apps/web/e2e/`), não só `app.inject`/Socket.IO. Fatias só de infraestrutura ou de domínio sem UI ficam isentas; o gap da F3 (`public-chat-api`/`visitor-realtime` sem tela) fecha em `web-chat-ui` antes do `inbox-api`.
+- **Idioma:** identificadores e comentários em inglês; textos de UI e mensagens de erro em pt-BR com acentuação correta.
 
 ## Acesso a infraestrutura
 
@@ -55,6 +56,7 @@ Na dúvida entre lean e driven, escolha o **lean**. Se a escolha envolver decis�
 
 - **Regra pura:** teste unitário cobrindo todas as transições.
 - **Endpoint:** teste de integração com PostgreSQL real (`app.inject`), incluindo `withTwoTenants` e, onde houver carteira, `withTwoSalespeople`.
+- **Superfície de usuário:** além dos testes de API, smoke Playwright do caminho feliz da feature (`apps/web/e2e/`), na mesma entrega (regra Web fullstack).
 - **Não mockar o banco** (nem queries, nem repositories).
 - **O teste falha se o comportamento for removido:** semeie dados que um valor constante ou a ordem de inserção não satisfaçam, e crie no banco a precondição que o critério descreve, não num mock de resposta (L-031, L-032, L-033).
 

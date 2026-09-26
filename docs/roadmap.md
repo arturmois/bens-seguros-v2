@@ -80,6 +80,7 @@ F5 ─▶ F6 Leads/Comercial ─▶ F7 Kanban ─▶ F8 Follow-up ─▶ F9 What
 - **Requisitos:** F4 (Web Chat), F5, F13, N4, N9; parte de F7 (assumir, responder, encerrar).
 - **Dependências:** F2, marco de staging.
 - **Mudanças:** `/c/:slug` (SPA) + HTML Open Graph servido pela API; `/api/public/chat/*`; resolução do tenant por `publicChatKey` (AD nova); token de visitante; namespace de visitante no Socket.IO; telefone + aceite (`ConsentRecord`) + Turnstile; rate limit; inbox (fila, minhas conversas, responder, assumir, encerrar); sem IA → conversas nascem em `QUEUE` (ADR-014).
+- **Fatias (ordem 2026-09-25):** `public-chat-api` → `visitor-realtime` → **`web-chat-ui`** (fecha gap de tela + smoke Playwright) → `inbox-api` → `inbox-web` → e2e no staging. Features com UI são fullstack (AD-019).
 - **Testes:** link da org A nunca cria dado na org B; visitante não lê conversa anterior do mesmo telefone; sem aceite → 4xx; rate limit dispara; COMMERCIAL só encerra as próprias; MANAGER encerra qualquer; e2e: cliente envia → comercial vê → responde → cliente vê.
 - **Critério:** fluxo e2e verde no staging.
 
