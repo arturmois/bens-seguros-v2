@@ -63,6 +63,17 @@ test.describe('inbox', () => {
     await expect(page.getByTestId('inbox-list-empty')).toBeVisible()
   })
 
+  test('shows a thread not-found state for an unknown conversation', async ({ page, api }) => {
+    const user = await verifiedUser(api)
+    await onboard(api)
+    await signIn(page, user)
+
+    const missing = '01999999-9999-7999-8999-999999999999'
+    await page.goto(`/inbox?view=queue&conversationId=${missing}`)
+    await expect(page.getByTestId('inbox-thread-error')).toBeVisible()
+    await expect(page.getByText(/não encontrada/i)).toBeVisible()
+  })
+
   // C22–C28: one visitor session (public-chat rate-limits 5/IP/min).
   test('commercial replies and visitor sees it then close removes it from inbox views', async ({
     page,
@@ -89,10 +100,20 @@ test.describe('inbox', () => {
     await page.getByTestId('inbox-take').click()
     await expect(page.getByTestId('inbox-reply-input')).toBeVisible()
     await expect(page.getByTestId('inbox-message').filter({ hasText: FIRST_MESSAGE })).toBeVisible()
+    await expect
+      .poll(async () => page.evaluate(() => window.__bensPanelJoined), { timeout: 5_000 })
+      .toBeTruthy()
 
     await page.getByTestId('inbox-view-mine').click()
     await expect(page.getByTestId('inbox-conversation-row')).toHaveCount(1)
     await page.getByTestId('inbox-conversation-row').click()
+
+    const followUp = 'Segunda mensagem do visitante no smoke.'
+    await visitorPage.getByLabel('Mensagem').fill(followUp)
+    await visitorPage.getByRole('button', { name: 'Enviar' }).click()
+    await expect(page.getByTestId('inbox-message').filter({ hasText: followUp })).toBeVisible({
+      timeout: 2_000,
+    })
 
     await page.getByTestId('inbox-reply-input').fill(HUMAN_REPLY)
     await page.getByTestId('inbox-send').click()

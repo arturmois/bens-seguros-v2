@@ -27,6 +27,7 @@ Proof: `src/modules/conversations/inbox-list.spec.ts -t "scopes the inbox list b
 
 **C5** - Invalid `view` → `400`; without session → `401`; without `conversation:read` → `403`; inactive member → `404`; absent `view` keeps the legacy list (all portfolio rows, `id` desc) (Surface)
 Proof: `src/modules/conversations/inbox-list.spec.ts -t "rejects bad view auth and permission on the inbox list"`
+Proof: `src/modules/conversations/inbox-list.spec.ts -t "keeps the legacy list when view is absent"`
 Proof: `src/modules/conversations/read.spec.ts -t "hides conversation routes from an inactive member"`
 
 ### S2 - Assumir · conversations · ~30 KB · ~10k
@@ -66,8 +67,9 @@ Proof: `rg -n "useSendConversationMessage|sendConversationMessage" apps/web/src/
 **C15** - Assignee calling `POST …/close` on a non-closed conversation sets `status=CLOSED`, non-null `closedAt`, returns `200` (door 2, AC 14)
 Proof: `src/modules/conversations/inbox-close.spec.ts -t "closes an assigned conversation"`
 
-**C16** - MANAGER closes another member's HUMAN conversation with `200` (AC 15)
+**C16** - MANAGER or ADMIN closes another member's HUMAN conversation with `200` (AC 15)
 Proof: `src/modules/conversations/inbox-close.spec.ts -t "lets a manager close any readable conversation"`
+Proof: `src/modules/conversations/inbox-close.spec.ts -t "lets an admin close any readable conversation"`
 
 **C17** - COMMERCIAL closing a conversation whose `assigneeId` is not them → `404 NOT_FOUND` (AC 16)
 Proof: `src/modules/conversations/inbox-close.spec.ts -t "hides close from a commercial who is not the assignee"`
@@ -83,8 +85,9 @@ Proof: `src/modules/conversations/inbox-close.spec.ts -t "guards close auth perm
 
 ### S5 - Tela Inbox · web · ~80 KB · ~25k
 
-**C21** - Authenticated user with active org opens `/inbox` and sees the queue list with empty, loading, error and success states reachable (door 4, AC 19, AC 24)
+**C21** - Authenticated user with active org opens `/inbox` and sees the queue list with empty, loading, error and success states; unknown `conversationId` shows thread not-found (door 4, AC 19, AC 24, Surface screen 404)
 Proof: `e2e/inbox.spec.ts -g "shows the inbox queue with four list states"`
+Proof: `e2e/inbox.spec.ts -g "shows a thread not-found state for an unknown conversation"`
 
 **C22** - Choosing view `mine` (search param) lists only conversations assigned to the signed-in user (AC 20)
 Proof: `e2e/inbox.spec.ts -g "commercial replies and visitor sees it then close removes it from inbox views"`
@@ -121,7 +124,7 @@ Proof: `e2e/inbox.spec.ts -g "commercial replies and visitor sees it then close 
 | Landing doors (4) | door 1 C6–C12 · door 2 C15–C20 · door 3 C1–C5 · door 4 C21–C26 | - |
 | screen Inbox arrangement (4 regions) | nav C26 · list C21/C22 · thread C23 · actions Assumir/Encerrar C24/C23 | - |
 | take handler sources (2) | QUEUE C6 · AI C11 | - |
-| close roles (3) | assignee C15 · MANAGER any C16 · COMMERCIAL non-assignee 404 C17 | - |
+| close roles (4) | assignee C15 · MANAGER any C16 · ADMIN any C16 · COMMERCIAL non-assignee 404 C17 | - |
 | audit actions (2) | conversation.take C10 · conversation.close C19 | - |
 
 - Binding sources (ui): plan Sources (ADR-016, ADR-013, AD-019, architecture §9–10, roadmap F3); screen copy/arrangement enumerated above.

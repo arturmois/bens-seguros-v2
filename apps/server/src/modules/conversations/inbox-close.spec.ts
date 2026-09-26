@@ -78,16 +78,34 @@ describe('inbox close', () => {
     expect(response.json().status).toBe('CLOSED')
   })
 
+  it('lets an admin close any readable conversation', async () => {
+    const host = await brokerage()
+    const commercial = await colleague(host.organizationId, 'COMMERCIAL')
+    const seeded = await seedConversation(deps.db, host, {
+      handler: 'HUMAN',
+      assigneeId: commercial.userId,
+    })
+
+    const response = await host.client.post(`/api/v1/conversations/${seeded.id}/close`, {})
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json().status).toBe('CLOSED')
+  })
+
   it('hides close from a commercial who is not the assignee', async () => {
     const host = await brokerage()
     const commercial = await colleague(host.organizationId, 'COMMERCIAL')
     const other = await colleague(host.organizationId, 'COMMERCIAL')
+    // Readable via contact.ownerId = me, but assignee is someone else — hits the close gate, not portfolio.
     const seeded = await seedConversation(
       deps.db,
       host,
       { handler: 'HUMAN', assigneeId: other.userId },
-      { ownerId: other.userId },
+      { ownerId: commercial.userId },
     )
+
+    const readable = await commercial.client.get(`/api/v1/conversations/${seeded.id}`)
+    expect(readable.statusCode).toBe(200)
 
     const response = await commercial.client.post(`/api/v1/conversations/${seeded.id}/close`, {})
 

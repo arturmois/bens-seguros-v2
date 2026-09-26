@@ -9,6 +9,7 @@ type PanelMessage = ListConversationMessages200ItemsItem
 declare global {
   interface Window {
     __bensPanelSocket?: Socket
+    __bensPanelJoined?: string
   }
 }
 
@@ -43,7 +44,9 @@ export function usePanelSocket(conversationId: string | undefined) {
 
     socket.on('connect', () => {
       socket.emit('conversation:join', { conversationId }, (ack: { ok?: boolean }) => {
-        if (!ack?.ok) {
+        if (ack?.ok) {
+          window.__bensPanelJoined = conversationId
+        } else {
           void queryClient.invalidateQueries({
             queryKey: getListConversationMessagesQueryKey(conversationId),
           })

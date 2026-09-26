@@ -195,4 +195,23 @@ describe('inbox list', () => {
     expect(foreign.statusCode).toBe(200)
     expect(idsOf(foreign)).toEqual([])
   })
+
+  it('keeps the legacy list when view is absent', async () => {
+    const host = await brokerage()
+    const closed = await seedConversation(deps.db, host, {
+      handler: 'HUMAN',
+      assigneeId: host.userId,
+      status: 'CLOSED',
+      closedAt: new Date(),
+    })
+    const queued = await seedConversation(deps.db, host, { handler: 'QUEUE' })
+    // Insert older id after newer activity so id-desc ≠ insertion order (L-031).
+    const ids = [closed.id, queued.id].sort((a, b) => (a < b ? 1 : -1))
+
+    const response = await host.client.get('/api/v1/conversations')
+
+    expect(response.statusCode).toBe(200)
+    expect(idsOf(response)).toEqual(ids)
+    expect(idsOf(response)).toContain(closed.id)
+  })
 })
