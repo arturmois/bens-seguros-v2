@@ -69,7 +69,7 @@ F5 ─▶ F6 Leads/Comercial ─▶ F7 Kanban ─▶ F8 Follow-up ─▶ F9 What
 
 ## Marco — Staging publicado (antes da F3)
 
-> **Concluído em 2026-09-24:** `https://staging.bensseg.com`, deploy automático verde; cadastro, confirmação por e-mail e login feitos no navegador.
+> **Concluído em 2026-09-24:** `https://staging.bensseg.com` (domínio antigo; hoje `https://staging.bens360.com.br`, feature `domain-bens360`), deploy automático verde; cadastro, confirmação por e-mail e login feitos no navegador.
 
 - **Objetivo:** a pilha do `docker-compose.prod.yml` numa VPS, pelo tutorial `docs/runbooks/deploy.md`. O deploy automático (staging a cada push verde em `main`, produção por tag) já existe: feature `.specs/features/cd-vps/`.
 - **Dependências:** F0; VPS e DNS (ação do responsável pelo projeto).
@@ -77,14 +77,16 @@ F5 ─▶ F6 Leads/Comercial ─▶ F7 Kanban ─▶ F8 Follow-up ─▶ F9 What
 
 ## F3 — Web Chat + Inbox humano
 
+> **Concluída em 2026-09-26:** as quatro fatias com `verification.md` PASS e o fluxo cliente → comercial → cliente provado pelo e2e Playwright no CI (run `36250587672`, ci + e2e, 104 passed), com deploy verde no staging (run `36251067456`). O e2e no staging saiu do critério da fase por decisão do responsável (custo alto para o MVP) e virou item do go-live (F11).
+
 - **Objetivo:** primeiro fluxo real: o cliente fala pelo link, um humano responde.
 - **Requisitos:** F4 (Web Chat), F5, F13, N4, N9; parte de F7 (assumir, responder, encerrar).
 - **Dependências:** F2, marco de staging.
 - **Mudanças:** `/c/:slug` (SPA) + HTML Open Graph servido pela API; `/api/public/chat/*`; resolução do tenant por `publicChatKey` (AD nova); token de visitante; namespace de visitante no Socket.IO; telefone + aceite (`ConsentRecord`) + Turnstile; rate limit; inbox (fila, minhas conversas, responder, assumir, encerrar); sem IA → conversas nascem em `QUEUE` (ADR-014).
-- **Fatias (ordem 2026-09-25, revista 2026-09-25):** `public-chat-api` → `visitor-realtime` → **`web-chat-ui`** (fecha gap de tela + smoke Playwright) → **`inbox`** (API + tela do painel + smoke Playwright, AD-019) → e2e no staging. Não há fatia `inbox-api` / `inbox-web` isolada.
+- **Fatias (ordem 2026-09-25, revista 2026-09-25):** `public-chat-api` → `visitor-realtime` → **`web-chat-ui`** (fecha gap de tela + smoke Playwright) → **`inbox`** (API + tela do painel + smoke Playwright, AD-019). O e2e no staging foi adiado para o go-live (2026-09-26). Não há fatia `inbox-api` / `inbox-web` isolada.
 - **Testes:** link da org A nunca cria dado na org B; visitante não lê conversa anterior do mesmo telefone; sem aceite → 4xx; rate limit dispara; COMMERCIAL só encerra as próprias; MANAGER encerra qualquer; e2e: cliente envia → comercial vê → responde → cliente vê.
-- **Critério:** fluxo e2e verde no staging.
-- **Andamento (2026-09-26):** `public-chat-api`, `visitor-realtime`, `web-chat-ui` e `inbox` com `verification.md` PASS; falta o e2e no staging. Gaps de tela achados na auditoria e adiados de propósito: visão da equipe e lista em tempo real (F5), histórico de conversas encerradas (F6), dashboard (F11).
+- **Critério:** fluxo e2e verde no CI (revisto em 2026-09-26; antes, "no staging", adiado para o go-live).
+- **Andamento (2026-09-26):** `public-chat-api`, `visitor-realtime`, `web-chat-ui` e `inbox` com `verification.md` PASS; e2e verde no CI. Gaps de tela achados na auditoria e adiados de propósito: visão da equipe e lista em tempo real (F5), histórico de conversas encerradas (F6), dashboard (F11).
 
 ## F4 — IA
 
@@ -164,7 +166,7 @@ F5 ─▶ F6 Leads/Comercial ─▶ F7 Kanban ─▶ F8 Follow-up ─▶ F9 What
 - **Mudanças:** dashboard por consultas SQL (leads recebidos/atendidos, oportunidades, ganhos/perdas, tempo até o primeiro atendimento humano, conversão por etapa); Sentry sem PII; logs com `organizationId`/`conversationId`/`channelId`; `/api/ready`; monitor externo; alertas (job esgotado, canal fora > 30 min, runtime sem heartbeat); backup diário + restore testado; runbooks (deploy, rollback, restore, re-pareamento); deploy por tag.
 - **Telas:** o dashboard real no lugar do placeholder de `dashboard.tsx` (hoje só "Olá, {nome}"): cartões e gráficos das métricas acima, com período em search param e 4 estados; visão por comercial para ADMIN/MANAGER e só a própria carteira para COMMERCIAL.
 - **Testes:** `/ready` 503 com o PG fora; métricas com dados que não passam por constante ou ordem; restore num ambiente limpo. Smoke Playwright: o dashboard mostra os números de dados semeados e muda com o período.
-- **Critério:** restore executado; alerta de canal fora chega; go-live (com o parecer jurídico do opt-in do WhatsApp e os Termos de Uso reescritos para o MVP, nova versão).
+- **Critério:** restore executado; alerta de canal fora chega; fluxo web chat + inbox da F3 verde no staging (adiado da F3 em 2026-09-26; Turnstile real exige clique humano no visitante); go-live (com o parecer jurídico do opt-in do WhatsApp e os Termos de Uso reescritos para o MVP, nova versão).
 
 > **Observabilidade não é só a F11:** `requestId`/`organizationId`/`conversationId` no log e `/api/health` valem desde já; a F11 fecha alertas, Sentry e dashboards.
 
