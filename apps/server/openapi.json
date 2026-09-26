@@ -2045,10 +2045,56 @@
                         "sentAt"
                       ],
                       "additionalProperties": false
+                    },
+                    "token": {
+                      "type": "string",
+                      "minLength": 1
                     }
                   },
                   "required": [
-                    "message"
+                    "message",
+                    "token"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/public/chat/{key}/session": {
+      "get": {
+        "operationId": "getPublicChatSession",
+        "tags": [
+          "Public chat"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "token"
                   ],
                   "additionalProperties": false
                 }

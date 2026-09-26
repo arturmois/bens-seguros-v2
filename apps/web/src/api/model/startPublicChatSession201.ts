@@ -8,4 +8,6 @@ import type { StartPublicChatSession201Message } from './startPublicChatSession2
 
 export type StartPublicChatSession201 = {
   message: StartPublicChatSession201Message;
+  /** @minLength 1 */
+  token: string;
 };

@@ -47,4 +47,10 @@ export const publicMessage = z
 
 export const publicMessageOutput = z.object({ message: publicMessage }).strict()
 
+export const startSessionOutput = z
+  .object({ message: publicMessage, token: z.string().min(1) })
+  .strict()
+
+export const visitorSessionOutput = z.object({ token: z.string().min(1) }).strict()
+
 export const publicMessageListOutput = z.object({ items: z.array(publicMessage) }).strict()

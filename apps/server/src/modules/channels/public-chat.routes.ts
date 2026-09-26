@@ -12,11 +12,14 @@ import {
   publicMessageOutput,
   sendMessageInput,
   startSessionInput,
+  startSessionOutput,
+  visitorSessionOutput,
 } from './public-chat.schema.ts'
 import {
   describePublicChat,
   listVisitorMessages,
   publicChatOrganization,
+  readVisitorSessionToken,
   sendVisitorMessage,
   startSession,
 } from './public-chat.ts'
@@ -113,7 +116,7 @@ export function publicChatRoutes(deps: PublicChatRoutesDeps): FastifyPluginAsync
         schema: {
           params: publicChatParams,
           body: startSessionInput,
-          response: { 201: publicMessageOutput },
+          response: { 201: startSessionOutput },
           tags: ['Public chat'],
           operationId: 'startPublicChatSession',
         },
@@ -123,8 +126,23 @@ export function publicChatRoutes(deps: PublicChatRoutesDeps): FastifyPluginAsync
         const { key } = request.params
         const started = await startSession(deps, key, request.body, request.ip)
         reply.header('set-cookie', visitorCookieFor(deps.config, key, started.token))
-        return reply.status(201).send({ message: started.message })
+        return reply.status(201).send({ message: started.message, token: started.token })
       },
+    )
+
+    app.get(
+      '/api/public/chat/:key/session',
+      {
+        schema: {
+          params: publicChatParams,
+          response: { 200: visitorSessionOutput },
+          tags: ['Public chat'],
+          operationId: 'getPublicChatSession',
+        },
+        onRequest: limitReads,
+      },
+      (request) =>
+        readVisitorSessionToken(deps, request.params.key, visitorCookieOf(request.headers.cookie)),
     )
 
     app.post(

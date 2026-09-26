@@ -11,6 +11,14 @@ export type SocketUser = {
   organizationId: string | null
 }
 
+// The Web Chat visitor's signed session (AD-018), carried on the `/visitor` socket.
+export type VisitorSocketSession = {
+  organizationId: string
+  contactId: string
+  conversationId: string
+  fromSeq: number
+}
+
 export type RealtimeOptions = {
   // Only this origin may open a socket (the handshake carries the session cookie).
   allowedOrigin: string
@@ -19,12 +27,15 @@ export type RealtimeOptions = {
   // Whether the user may read the conversation now (tenant and portfolio, ADR-016). Asked at every
   // join, not at the handshake: the active organization and the portfolio change after it.
   authorizeJoin: (user: SocketUser, conversationId: string) => Promise<boolean>
+  // Visitor Web Chat (AD-018): the signed token from `auth.token`, or null when it is not a session.
+  authenticateVisitor: (token: string) => VisitorSocketSession | null
 }
 
 // The same `status` + stable `code` as an API error body, so the web handles both alike.
 export type RoomAck = { ok: true } | { ok: false; status: number; code: string }
 
 const roomInput = z.object({ conversationId: z.uuid() }).strict()
+const visitorAuth = z.object({ token: z.string().min(1) }).strict()
 
 const invalidRoom: RoomAck = { ok: false, status: 400, code: 'VALIDATION_ERROR' }
 const hiddenRoom: RoomAck = { ok: false, status: 404, code: 'NOT_FOUND' }
@@ -32,13 +43,14 @@ const failedRoom: RoomAck = { ok: false, status: 500, code: 'INTERNAL_ERROR' }
 
 declare module 'socket.io' {
   interface SocketData {
-    user: SocketUser
+    user?: SocketUser
+    session?: VisitorSocketSession
   }
 }
 
 // Socket.IO on the API's own HTTP server (same origin, no adapter: one instance, ADR-006).
-// `user:*` is every authenticated socket; `org:*` only when `requireTenant` would build a context;
-// `conversation:*` on request (`conversation:join`), for a conversation the user may read.
+// Default namespace: panel (`user:*`, `org:*`, `conversation:*` on join). `/visitor`: Web Chat
+// client authenticated by the visitor token (door 1 of `visitor-realtime`); one conversation.
 export function createRealtime(httpServer: HttpServer, options: RealtimeOptions) {
   const io = new Server(httpServer, {
     path: '/socket.io',
@@ -51,6 +63,7 @@ export function createRealtime(httpServer: HttpServer, options: RealtimeOptions)
 
   io.on('connection', (socket) => {
     const user = socket.data.user
+    if (!user) return
     void socket.join(`user:${user.userId}`)
     if (user.organizationId) void socket.join(`org:${user.organizationId}`)
 
@@ -88,8 +101,24 @@ export function createRealtime(httpServer: HttpServer, options: RealtimeOptions)
     )
   })
 
+  const visitor = io.of('/visitor')
+  visitor.use((socket, next) => {
+    const parsed = visitorAuth.safeParse(socket.handshake.auth)
+    if (!parsed.success) return next(new Error('UNAUTHENTICATED'))
+    const session = options.authenticateVisitor(parsed.data.token)
+    if (!session) return next(new Error('UNAUTHENTICATED'))
+    socket.data.session = session
+    next()
+  })
+  visitor.on('connection', (socket) => {
+    const session = socket.data.session
+    if (!session) return
+    void socket.join(`conversation:${session.conversationId}`)
+  })
+
   return {
     io,
+    visitor,
     close() {
       return io.close()
     },

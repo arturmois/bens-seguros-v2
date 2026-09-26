@@ -14,7 +14,12 @@ import { z } from 'zod'
 import type { Deps } from './dependencies.ts'
 import { createRealtime, type Realtime } from './infrastructure/realtime.ts'
 import { authRoutes, headersOf, resolveSession } from './modules/auth/index.ts'
-import { createDefaultChannel, publicChatRoutes } from './modules/channels/index.ts'
+import {
+  createDefaultChannel,
+  publicChatRoutes,
+  readVisitorToken,
+  visitorTokenKey,
+} from './modules/channels/index.ts'
 import { moveContactOwner } from './modules/contacts/index.ts'
 import {
   conversationRoutes,
@@ -107,6 +112,8 @@ export function buildApp(deps: Deps) {
         },
       )
     },
+    authenticateVisitor: (token) =>
+      readVisitorToken(visitorTokenKey(deps.config.BETTER_AUTH_SECRET), token),
   })
   app.decorate('realtime', realtime)
   app.addHook('preClose', async () => {
@@ -120,9 +127,33 @@ export function buildApp(deps: Deps) {
     realtime.io
       .to(`conversation:${event.conversationId}`)
       .emit('message.created', { conversationId: event.conversationId, message })
+    // Visitors get PublicMessage, and only from their session's fromSeq (door 3).
+    const publicMessage = {
+      id: message.id,
+      seq: message.seq,
+      direction: message.direction,
+      author: message.author,
+      kind: message.kind,
+      text: message.text,
+      sentAt: message.sentAt,
+    }
+    const visitors = await realtime.visitor
+      .in(`conversation:${event.conversationId}`)
+      .fetchSockets()
+    for (const socket of visitors) {
+      const session = socket.data.session
+      if (!session || message.seq < session.fromSeq) continue
+      socket.emit('message.created', {
+        conversationId: event.conversationId,
+        message: publicMessage,
+      })
+    }
   })
   // Events sent while the listener was down are gone: every client reloads from the API.
-  deps.events.onReconnect(() => realtime.io.emit('events:resync', {}))
+  deps.events.onReconnect(() => {
+    realtime.io.emit('events:resync', {})
+    realtime.visitor.emit('events:resync', {})
+  })
   // One place starts the listener, for the server and the tests alike.
   app.addHook('onReady', async () => {
     await deps.events.start()

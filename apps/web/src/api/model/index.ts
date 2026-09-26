@@ -32,6 +32,7 @@ export * from './getMe200Terms';
 export * from './getOrganization200';
 export * from './getOrganization200Role';
 export * from './getPublicChat200';
+export * from './getPublicChatSession200';
 export * from './getPublicInvitation200';
 export * from './getPublicInvitation200Role';
 export * from './getPublicInvitation200Status';

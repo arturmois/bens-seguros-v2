@@ -49,7 +49,7 @@ describe('realtime', () => {
     expect(await outcome(socket)).toEqual({ connected: true })
     const serverSockets = await testApp.app.realtime.io.fetchSockets()
     const serverSide = serverSockets.find((candidate) => candidate.id === socket.id)
-    expect(serverSide?.data.user.userId).toBe(userId)
+    expect(serverSide?.data.user?.userId).toBe(userId)
     socket.disconnect()
   })
 
@@ -150,6 +150,7 @@ describe('realtime', () => {
       authorizeJoin: async () => {
         throw new Error('database down')
       },
+      authenticateVisitor: () => null,
     })
     await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve))
     const { port } = httpServer.address() as AddressInfo

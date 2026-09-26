@@ -323,7 +323,25 @@ describe('session start', () => {
         text: body.text,
         sentAt: stored?.sentAt.toISOString(),
       },
+      token: expect.stringMatching(/^v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/),
     })
+  })
+
+  it('returns the visitor token beside the first message', async () => {
+    const target = await chat()
+
+    const { response } = await start(target)
+
+    expect(response.statusCode).toBe(201)
+    const body = response.json() as { message: { id: string }; token: string }
+    expect(body.token).toMatch(/^v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/)
+    expect(body.message.id).toEqual(expect.any(String))
+    const cookie = String(response.headers['set-cookie'])
+    expect(cookie).toContain(`bens_visitor=${body.token}`)
+    expect(cookie).toContain('HttpOnly')
+    expect(cookie).toContain('SameSite=Lax')
+    expect(cookie).toContain(`Path=/api/public/chat/${target.key}`)
+    expect(cookie).toContain('Max-Age=2592000')
   })
 
   it('opens the new conversation in the queue', async () => {
@@ -373,7 +391,8 @@ describe('session start', () => {
 
     expect(first.statusCode).toBe(201)
     expect(repeated.statusCode).toBe(201)
-    expect(repeated.json()).toEqual(first.json())
+    expect(repeated.json().message).toEqual(first.json().message)
+    expect(repeated.json().token).toMatch(/^v1\./)
     expect(otherPhone.statusCode).toBe(409)
     expect(otherPhone.body).not.toContain(first.json().message.id)
     expect(otherPhone.body).not.toContain(body.text)
@@ -709,6 +728,66 @@ describe('messages within the session', () => {
     expect((await rowsOf(b)).messages).toBe(0)
     expect((await rowsOf(a)).messages).toBe(1)
   })
+
+  it('returns the token from the visitor cookie', async () => {
+    const target = await chat()
+    const { response, client } = await start(target)
+    const cookieToken = client.cookies.get('bens_visitor')
+
+    const session = await client.get(`/api/public/chat/${target.key}/session`)
+
+    expect(response.statusCode).toBe(201)
+    expect(session.statusCode).toBe(200)
+    expect(session.json()).toEqual({ token: cookieToken })
+    expect(session.json().token).toBe(response.json().token)
+  })
+
+  it('requires a valid visitor session for GET session', async () => {
+    const a = await chat()
+    const b = await chat()
+    const { client } = await start(a)
+    const cookieA = client.cookies.get('bens_visitor') ?? ''
+    const conversation = await deps.db.withTenant(a, (tx) =>
+      tx.conversation.findFirstOrThrow({ select: { id: true, contactId: true } }),
+    )
+    const expired = signVisitorToken(
+      visitorTokenKey(deps.config.BETTER_AUTH_SECRET),
+      {
+        organizationId: a.organizationId,
+        contactId: conversation.contactId,
+        conversationId: conversation.id,
+        fromSeq: 1,
+      },
+      new Date(Date.now() - (VISITOR_TTL_SECONDS + 1) * 1000),
+    )
+    const last = cookieA.slice(-1)
+    const tampered = `${cookieA.slice(0, -1)}${last === 'A' ? 'B' : 'A'}`
+    const cases: [string, Chat, string | null][] = [
+      ['no cookie', a, null],
+      ['tampered', a, tampered],
+      ['expired', a, expired],
+      ['other organization', b, cookieA],
+    ]
+
+    for (const [name, target, token] of cases) {
+      const headers = token === null ? {} : { cookie: `bens_visitor=${token}` }
+      const response = await visitor().get(`/api/public/chat/${target.key}/session`, { headers })
+      expect(response.statusCode, name).toBe(401)
+      expect(response.json().error.code, name).toBe('VISITOR_SESSION_REQUIRED')
+    }
+  })
+
+  it('rejects a bad key on GET session', async () => {
+    const unknown = { key: 'a'.repeat(32) }
+    const badKey = 'not-a-valid-public-chat-key!!'
+
+    const missing = await visitor().get(`/api/public/chat/${unknown.key}/session`)
+    const invalid = await visitor().get(`/api/public/chat/${badKey}/session`)
+
+    expect(missing.statusCode).toBe(404)
+    expect(missing.json().error.code).toBe('NOT_FOUND')
+    expect(invalid.statusCode).toBe(400)
+  })
 })
 
 describe('reading the session', () => {
@@ -896,7 +975,7 @@ describe('rate limits', () => {
 
   it('limits public reads per ip', async () => {
     const target = await chat()
-    const routes = ['', '/logo', '/messages']
+    const routes = ['', '/logo', '/messages', '/session']
 
     for (const route of routes) {
       // Its own address per route: each one is limited, whatever it answers under the limit.
@@ -910,6 +989,22 @@ describe('rate limits', () => {
       expect(next.statusCode, route).toBe(429)
       expect(next.json().error.code, route).toBe('RATE_LIMITED')
     }
+  })
+
+  it('limits GET session with the other public GETs', async () => {
+    const target = await chat()
+    const client = visitor(limited.app)
+    const statuses: number[] = []
+    for (let index = 0; index < 60; index++) {
+      statuses.push((await client.get(`/api/public/chat/${target.key}`)).statusCode)
+      statuses.push((await client.get(`/api/public/chat/${target.key}/session`)).statusCode)
+    }
+    const next = await client.get(`/api/public/chat/${target.key}/session`)
+
+    expect(statuses.includes(429)).toBe(false)
+    expect(statuses).toHaveLength(120)
+    expect(next.statusCode).toBe(429)
+    expect(next.json().error.code).toBe('RATE_LIMITED')
   })
 
   it('limits only the public chat routes', async () => {

@@ -185,6 +185,13 @@ async function sessionOf(deps: Deps, key: string, token: string | null) {
   return session
 }
 
+// The token the socket needs after a reload: the cookie value, once it is still a session of this link.
+export async function readVisitorSessionToken(deps: Deps, key: string, token: string | null) {
+  await sessionOf(deps, key, token)
+  if (!token) throw sessionRequired
+  return { token }
+}
+
 export async function sendVisitorMessage(
   deps: Deps,
   key: string,

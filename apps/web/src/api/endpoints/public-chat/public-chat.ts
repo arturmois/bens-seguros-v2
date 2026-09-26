@@ -25,6 +25,7 @@ import type {
 
 import type {
   GetPublicChat200,
+  GetPublicChatSession200,
   ListPublicChatMessages200,
   ListPublicChatMessagesParams,
   SendPublicChatMessage200,
@@ -327,7 +328,101 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       > => {
       return useMutation(getStartPublicChatSessionMutationOptions(options), queryClient);
     }
-    export const getSendPublicChatMessageUrl = (key: string,) => {
+    export const getGetPublicChatSessionUrl = (key: string,) => {
+
+
+
+
+  return `/api/public/chat/${key}/session`
+}
+
+export const getPublicChatSession = async (key: string, options?: Parameters<typeof http>[1]): Promise<GetPublicChatSession200> => {
+
+  return http<GetPublicChatSession200>(getGetPublicChatSessionUrl(key),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPublicChatSessionQueryKey = (key: string,) => {
+    return [
+    `/api/public/chat/${key}/session`
+    ] as const;
+    }
+
+
+export const getGetPublicChatSessionQueryOptions = <TData = Awaited<ReturnType<typeof getPublicChatSession>>, TError = ErrorType<unknown>>(key: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPublicChatSession>>, TError, TData>>, request?: SecondParameter<typeof http>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPublicChatSessionQueryKey(key);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPublicChatSession>>> = ({ signal }) => getPublicChatSession(key, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: key !== null && key !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPublicChatSession>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetPublicChatSessionQueryResult = NonNullable<Awaited<ReturnType<typeof getPublicChatSession>>>
+export type GetPublicChatSessionQueryError = ErrorType<unknown>
+
+
+export function useGetPublicChatSession<TData = Awaited<ReturnType<typeof getPublicChatSession>>, TError = ErrorType<unknown>>(
+ key: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPublicChatSession>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getPublicChatSession>>,
+          TError,
+          Awaited<ReturnType<typeof getPublicChatSession>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof http>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetPublicChatSession<TData = Awaited<ReturnType<typeof getPublicChatSession>>, TError = ErrorType<unknown>>(
+ key: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPublicChatSession>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getPublicChatSession>>,
+          TError,
+          Awaited<ReturnType<typeof getPublicChatSession>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof http>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetPublicChatSession<TData = Awaited<ReturnType<typeof getPublicChatSession>>, TError = ErrorType<unknown>>(
+ key: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPublicChatSession>>, TError, TData>>, request?: SecondParameter<typeof http>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function useGetPublicChatSession<TData = Awaited<ReturnType<typeof getPublicChatSession>>, TError = ErrorType<unknown>>(
+ key: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPublicChatSession>>, TError, TData>>, request?: SecondParameter<typeof http>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetPublicChatSessionQueryOptions(key,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export const getSendPublicChatMessageUrl = (key: string,) => {
 
 
 
