@@ -76,6 +76,9 @@ function AppLayout() {
         </Link>
         <nav className="flex items-center gap-4 text-sm">
           <BrokerageSwitch me={me} />
+          <Link to="/inbox" className="text-muted-foreground hover:text-foreground">
+            Inbox
+          </Link>
           <Link to="/settings/organization" className="text-muted-foreground hover:text-foreground">
             Corretora
           </Link>

@@ -24,13 +24,17 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  CloseConversation200,
+  CloseConversationBody,
   GetConversation200,
   ListConversationMessages200,
   ListConversationMessagesParams,
   ListConversations200,
   ListConversationsParams,
   SendConversationMessage201,
-  SendConversationMessageBody
+  SendConversationMessageBody,
+  TakeConversation200,
+  TakeConversationBody
 } from '../../model';
 
 import { http } from '../../../lib/http';
@@ -441,4 +445,168 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getSendConversationMessageMutationOptions(options), queryClient);
+    }
+    export const getTakeConversationUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/conversations/${id}/take`
+}
+
+export const takeConversation = async (id: string,
+    takeConversationBody: TakeConversationBody, options?: Parameters<typeof http>[1]): Promise<TakeConversation200> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return http<TakeConversation200>(getTakeConversationUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(takeConversationBody)
+  }
+);}
+
+
+
+
+
+export const getTakeConversationMutationKey = () => ['takeConversation'] as const;
+
+export const getTakeConversationMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof takeConversation>>, TError,TakeConversationMutationVariables, TContext>, request?: SecondParameter<typeof http>}
+): UseMutationOptions<Awaited<ReturnType<typeof takeConversation>>, TError,TakeConversationMutationVariables, TContext> => {
+
+const mutationKey = getTakeConversationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof takeConversation>>, TakeConversationMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  takeConversation(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TakeConversationMutationResult = NonNullable<Awaited<ReturnType<typeof takeConversation>>>
+    export type TakeConversationMutationBody = TakeConversationBody
+    export type TakeConversationMutationError = ErrorType<unknown>
+    export type TakeConversationMutationVariables = {id: string;data: TakeConversationBody}
+
+    export const useTakeConversation = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof takeConversation>>, TError,TakeConversationMutationVariables, TContext>, request?: SecondParameter<typeof http>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof takeConversation>>,
+        TError,
+        TakeConversationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getTakeConversationMutationOptions(options), queryClient);
+    }
+    export const getCloseConversationUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/conversations/${id}/close`
+}
+
+export const closeConversation = async (id: string,
+    closeConversationBody: CloseConversationBody, options?: Parameters<typeof http>[1]): Promise<CloseConversation200> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return http<CloseConversation200>(getCloseConversationUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(closeConversationBody)
+  }
+);}
+
+
+
+
+
+export const getCloseConversationMutationKey = () => ['closeConversation'] as const;
+
+export const getCloseConversationMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof closeConversation>>, TError,CloseConversationMutationVariables, TContext>, request?: SecondParameter<typeof http>}
+): UseMutationOptions<Awaited<ReturnType<typeof closeConversation>>, TError,CloseConversationMutationVariables, TContext> => {
+
+const mutationKey = getCloseConversationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof closeConversation>>, CloseConversationMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  closeConversation(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CloseConversationMutationResult = NonNullable<Awaited<ReturnType<typeof closeConversation>>>
+    export type CloseConversationMutationBody = CloseConversationBody
+    export type CloseConversationMutationError = ErrorType<unknown>
+    export type CloseConversationMutationVariables = {id: string;data: CloseConversationBody}
+
+    export const useCloseConversation = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof closeConversation>>, TError,CloseConversationMutationVariables, TContext>, request?: SecondParameter<typeof http>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof closeConversation>>,
+        TError,
+        CloseConversationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCloseConversationMutationOptions(options), queryClient);
     }

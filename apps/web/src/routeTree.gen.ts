@@ -24,6 +24,7 @@ import { Route as publicIndexRouteImport } from './routes/(public)/index'
 import { Route as publicPrivacyRouteImport } from './routes/(public)/privacy'
 import { Route as publicTermsRouteImport } from './routes/(public)/terms'
 import { Route as AppDashboardRouteImport } from './routes/_app/dashboard'
+import { Route as AppInboxRouteImport } from './routes/_app/inbox'
 import { Route as CKeyRouteImport } from './routes/c.$key'
 import { Route as AppSettingsMembersRouteImport } from './routes/_app/settings/members'
 import { Route as AppSettingsOrganizationRouteImport } from './routes/_app/settings/organization'
@@ -104,6 +105,11 @@ const AppDashboardRoute = AppDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AppRoute,
 } as any)
+const AppInboxRoute = AppInboxRouteImport.update({
+  id: '/inbox',
+  path: '/inbox',
+  getParentRoute: () => AppRoute,
+} as any)
 const CKeyRoute = CKeyRouteImport.update({
   id: '/c/$key',
   path: '/c/$key',
@@ -140,6 +146,7 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof publicPrivacyRoute
   '/terms': typeof publicTermsRoute
   '/dashboard': typeof AppDashboardRoute
+  '/inbox': typeof AppInboxRoute
   '/c/$key': typeof CKeyRoute
   '/settings/members': typeof AppSettingsMembersRoute
   '/settings/organization': typeof AppSettingsOrganizationRoute
@@ -160,6 +167,7 @@ export interface FileRoutesByTo {
   '/privacy': typeof publicPrivacyRoute
   '/terms': typeof publicTermsRoute
   '/dashboard': typeof AppDashboardRoute
+  '/inbox': typeof AppInboxRoute
   '/c/$key': typeof CKeyRoute
   '/settings/members': typeof AppSettingsMembersRoute
   '/settings/organization': typeof AppSettingsOrganizationRoute
@@ -181,6 +189,7 @@ export interface FileRoutesById {
   '/(public)/privacy': typeof publicPrivacyRoute
   '/(public)/terms': typeof publicTermsRoute
   '/_app/dashboard': typeof AppDashboardRoute
+  '/_app/inbox': typeof AppInboxRoute
   '/c/$key': typeof CKeyRoute
   '/(public)/': typeof publicIndexRoute
   '/_app/settings/members': typeof AppSettingsMembersRoute
@@ -204,6 +213,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/terms'
     | '/dashboard'
+    | '/inbox'
     | '/c/$key'
     | '/settings/members'
     | '/settings/organization'
@@ -224,6 +234,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/terms'
     | '/dashboard'
+    | '/inbox'
     | '/c/$key'
     | '/settings/members'
     | '/settings/organization'
@@ -244,6 +255,7 @@ export interface FileRouteTypes {
     | '/(public)/privacy'
     | '/(public)/terms'
     | '/_app/dashboard'
+    | '/_app/inbox'
     | '/c/$key'
     | '/(public)/'
     | '/_app/settings/members'
@@ -376,6 +388,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDashboardRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/inbox': {
+      id: '/_app/inbox'
+      path: '/inbox'
+      fullPath: '/inbox'
+      preLoaderRoute: typeof AppInboxRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/c/$key': {
       id: '/c/$key'
       path: '/c/$key'
@@ -409,6 +428,7 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppDashboardRoute: typeof AppDashboardRoute
+  AppInboxRoute: typeof AppInboxRoute
   AppSettingsMembersRoute: typeof AppSettingsMembersRoute
   AppSettingsOrganizationRoute: typeof AppSettingsOrganizationRoute
   AppSettingsSecurityRoute: typeof AppSettingsSecurityRoute
@@ -416,6 +436,7 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppDashboardRoute: AppDashboardRoute,
+  AppInboxRoute: AppInboxRoute,
   AppSettingsMembersRoute: AppSettingsMembersRoute,
   AppSettingsOrganizationRoute: AppSettingsOrganizationRoute,
   AppSettingsSecurityRoute: AppSettingsSecurityRoute,

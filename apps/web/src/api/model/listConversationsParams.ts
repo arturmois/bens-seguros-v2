@@ -4,6 +4,7 @@
  * Bens Seguros API
  * OpenAPI spec version: 1.0.0
  */
+import type { ListConversationsView } from './listConversationsView';
 
 export type ListConversationsParams = {
 /**
@@ -15,4 +16,5 @@ cursor?: string;
  * @maximum 100
  */
 limit?: number;
+view?: ListConversationsView;
 };
