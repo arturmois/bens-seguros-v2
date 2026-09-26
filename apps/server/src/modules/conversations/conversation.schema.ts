@@ -1,7 +1,15 @@
 import { z } from 'zod'
-import { pageOutput, pageQuery } from '../../shared/pagination.ts'
+import { MAX_PAGE_SIZE, pageOutput, pageQuery } from '../../shared/pagination.ts'
 
-export const conversationListQuery = pageQuery.strict()
+export const conversationListQuery = z
+  .object({
+    cursor: z.uuid().optional(),
+    limit: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(50),
+    view: z.enum(['queue', 'mine']).optional(),
+  })
+  .strict()
+
+export type ConversationListQuery = z.infer<typeof conversationListQuery>
 
 export const messageListQuery = pageQuery.strict()
 
@@ -9,6 +17,8 @@ export const messageListQuery = pageQuery.strict()
 export const conversationQuery = z.object({}).strict()
 
 export const conversationIdParams = z.object({ id: z.uuid() }).strict()
+
+export const emptyBody = z.object({}).strict()
 
 export const conversationOutput = z
   .object({

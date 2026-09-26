@@ -19,3 +19,15 @@ export async function moveContactOwner(tx: Transaction, fromUserId: string, toUs
   })
   return count
 }
+
+// Take of a conversation (ADR-016): who assumes a contact without owner becomes the owner.
+export async function claimContactOwnerIfUnset(
+  tx: Transaction,
+  contactId: string,
+  ownerId: string,
+) {
+  await tx.contact.updateMany({
+    where: { id: contactId, ownerId: null },
+    data: { ownerId },
+  })
+}

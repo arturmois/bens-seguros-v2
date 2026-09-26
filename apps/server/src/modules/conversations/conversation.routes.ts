@@ -3,12 +3,14 @@ import type { Database } from '../../infrastructure/database.ts'
 import type { Auth } from '../auth/index.ts'
 import { requireSession } from '../auth/index.ts'
 import { currentTenant, requirePermission, requireTenant } from '../organizations/index.ts'
+import { closeConversation } from './close.ts'
 import {
   conversationIdParams,
   conversationListOutput,
   conversationListQuery,
   conversationOutput,
   conversationQuery,
+  emptyBody,
   messageListOutput,
   messageListQuery,
 } from './conversation.schema.ts'
@@ -18,6 +20,7 @@ import {
   sendConversationMessageInput,
   sendConversationMessageOutput,
 } from './send.ts'
+import { takeConversation } from './take.ts'
 
 export type ConversationRoutesDeps = { auth: Auth; db: Database }
 
@@ -105,6 +108,36 @@ export function conversationRoutes(deps: ConversationRoutesDeps): FastifyPluginA
         )
         return reply.status(201).send(result)
       },
+    )
+
+    app.post(
+      '/api/v1/conversations/:id/take',
+      {
+        schema: {
+          params: conversationIdParams,
+          body: emptyBody,
+          response: { 200: conversationOutput },
+          tags: ['Conversations'],
+          operationId: 'takeConversation',
+        },
+        preHandler: canWrite,
+      },
+      (request) => takeConversation({ db: deps.db }, currentTenant(request), request.params.id),
+    )
+
+    app.post(
+      '/api/v1/conversations/:id/close',
+      {
+        schema: {
+          params: conversationIdParams,
+          body: emptyBody,
+          response: { 200: conversationOutput },
+          tags: ['Conversations'],
+          operationId: 'closeConversation',
+        },
+        preHandler: canWrite,
+      },
+      (request) => closeConversation({ db: deps.db }, currentTenant(request), request.params.id),
     )
   }
 }

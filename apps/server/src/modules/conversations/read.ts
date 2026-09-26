@@ -1,8 +1,10 @@
+import type { Prisma } from '../../generated/prisma/client.ts'
 import type { Database, Transaction } from '../../infrastructure/database.ts'
 import { AppError } from '../../shared/errors.ts'
 import { type PageQuery, pageArgs, toPage } from '../../shared/pagination.ts'
 import type { RequestContext } from '../../shared/request-context.ts'
 import { scopeFor } from '../../shared/scope.ts'
+import type { ConversationListQuery } from './conversation.schema.ts'
 
 const conversationNotFound = new AppError(404, 'NOT_FOUND', 'Conversa não encontrada.')
 
@@ -27,7 +29,7 @@ type SummaryRow = {
   createdAt: Date
 }
 
-function toSummary<T extends SummaryRow>(row: T) {
+export function toConversationSummary<T extends SummaryRow>(row: T) {
   return {
     ...row,
     lastMessageAt: row.lastMessageAt?.toISOString() ?? null,
@@ -47,21 +49,72 @@ async function readable(tx: Transaction, ctx: Reader, id: string) {
   return row
 }
 
-export async function listConversations(deps: { db: Database }, ctx: Reader, query: PageQuery) {
-  const rows = await deps.db.withTenant(ctx, (tx) =>
-    tx.conversation.findMany({
-      where: scopeFor(ctx).conversation,
+function viewWhere(view: 'queue' | 'mine', userId: string): Prisma.ConversationWhereInput {
+  if (view === 'queue') return { handler: 'QUEUE', status: { not: 'CLOSED' } }
+  return { assigneeId: userId, status: { not: 'CLOSED' } }
+}
+
+// Keyset after (lastMessageAt DESC NULLS LAST, id DESC).
+function afterCursor(cursor: {
+  id: string
+  lastMessageAt: Date | null
+}): Prisma.ConversationWhereInput {
+  if (cursor.lastMessageAt === null) {
+    return { lastMessageAt: null, id: { lt: cursor.id } }
+  }
+  return {
+    OR: [
+      { lastMessageAt: { lt: cursor.lastMessageAt } },
+      { AND: [{ lastMessageAt: cursor.lastMessageAt }, { id: { lt: cursor.id } }] },
+      { lastMessageAt: null },
+    ],
+  }
+}
+
+export async function listConversations(
+  deps: { db: Database },
+  ctx: Reader,
+  query: ConversationListQuery,
+) {
+  if (query.view === undefined) {
+    const pageQuery: PageQuery = { cursor: query.cursor, limit: query.limit }
+    const rows = await deps.db.withTenant(ctx, (tx) =>
+      tx.conversation.findMany({
+        where: scopeFor(ctx).conversation,
+        select: summarySelect,
+        ...pageArgs(pageQuery),
+      }),
+    )
+    const page = toPage(rows, pageQuery)
+    return { items: page.items.map(toConversationSummary), nextCursor: page.nextCursor }
+  }
+
+  const filter = viewWhere(query.view, ctx.userId)
+  const rows = await deps.db.withTenant(ctx, async (tx) => {
+    const scope = scopeFor(ctx).conversation
+    let cursorFilter: Prisma.ConversationWhereInput = {}
+    if (query.cursor !== undefined) {
+      const cursorRow = await tx.conversation.findFirst({
+        where: { AND: [{ id: query.cursor }, scope] },
+        select: { id: true, lastMessageAt: true },
+      })
+      if (cursorRow) cursorFilter = afterCursor(cursorRow)
+      else cursorFilter = { id: { in: [] } }
+    }
+    return tx.conversation.findMany({
+      where: { AND: [scope, filter, cursorFilter] },
       select: summarySelect,
-      ...pageArgs(query),
-    }),
-  )
+      orderBy: [{ lastMessageAt: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }],
+      take: query.limit + 1,
+    })
+  })
   const page = toPage(rows, query)
-  return { items: page.items.map(toSummary), nextCursor: page.nextCursor }
+  return { items: page.items.map(toConversationSummary), nextCursor: page.nextCursor }
 }
 
 export async function findReadableConversation(deps: { db: Database }, ctx: Reader, id: string) {
   const row = await deps.db.withTenant(ctx, (tx) => readable(tx, ctx, id))
-  return toSummary(row)
+  return toConversationSummary(row)
 }
 
 const messageSelect = {
