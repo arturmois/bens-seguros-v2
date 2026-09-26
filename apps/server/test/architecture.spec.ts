@@ -280,6 +280,21 @@ describe('module boundaries', () => {
     expect(findBoundaryViolations(readSourceTree(srcRoot))).toEqual([])
   })
 
+  // Named proof for web-chat-ui C16 (and the boot gate in app.ts).
+  it('every /api/v1 route declares a permission', async () => {
+    const { buildTestApp } = await import('./app.ts')
+    const built = await buildTestApp()
+    try {
+      // `onRoute` → assertRouteDeclaresPermission throws if a /api/v1 route is bare.
+      await expect(built.app.ready()).resolves.toBeDefined()
+      const routes = built.app.printRoutes()
+      expect(routes).toMatch(/conversations/)
+      expect(routes).toMatch(/messages/)
+    } finally {
+      await built.close()
+    }
+  })
+
   describe('checker', () => {
     const check = (filePath: string, source: string) =>
       findBoundaryViolations([{ path: filePath, source }])

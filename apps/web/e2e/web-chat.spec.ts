@@ -1,17 +1,35 @@
-import { visitorTokenStorageKey } from '../src/features/web-chat/constants'
+import { randomUUID } from 'node:crypto'
+import { visitorTokenStorageKey, WEB_CHAT_NOTICE_VERSION } from '../src/features/web-chat/constants'
 import { expect, onboard, test, verifiedUser } from './support'
 
 const VALID_PHONE = '(11) 98765-4321'
 const FIRST_MESSAGE = 'Olá, quero cotar um seguro auto.'
 const FOLLOW_UP = 'Prefiro cobertura completa.'
 const HUMAN_REPLY = 'Claro, posso ajudar com a cotação.'
+const PRIOR_MESSAGE = 'Mensagem anterior à sessão do browser.'
 
-async function brandedOrg(api: Parameters<typeof onboard>[0], name = 'WebChat') {
+// A minimal valid PNG (1×1). The server decides the type by its magic bytes.
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  'base64',
+)
+
+async function brandedOrg(
+  api: Parameters<typeof onboard>[0],
+  name = 'WebChat',
+  options: { logo?: boolean } = {},
+) {
   const org = await onboard(api, name)
   const branding = await api.patch('/api/v1/organization/branding', {
     data: { brandColor: '#0b5fff', greeting: 'Bem-vindo ao chat da corretora!' },
   })
   expect(branding.ok()).toBeTruthy()
+  if (options.logo) {
+    const logo = await api.put('/api/v1/organization/logo', {
+      data: { image: PNG.toString('base64') },
+    })
+    expect(logo.ok()).toBeTruthy()
+  }
   return org
 }
 
@@ -33,12 +51,13 @@ async function startVisitorChat(
 test.describe('web chat', () => {
   test('shows the brokerage on the public link', async ({ page, api }) => {
     await verifiedUser(api)
-    const org = await brandedOrg(api, 'Marca Chat')
+    const org = await brandedOrg(api, 'Marca Chat', { logo: true })
 
     await page.goto(`/c/${org.publicChatKey}`)
 
     await expect(page.getByTestId('web-chat-brand').getByText(org.name)).toBeVisible()
     await expect(page.getByText('Bem-vindo ao chat da corretora!')).toBeVisible()
+    await expect(page.getByRole('img', { name: `Logo de ${org.name}` })).toBeVisible()
     await expect(page.getByTestId('web-chat-start')).toBeVisible()
   })
 
@@ -54,20 +73,32 @@ test.describe('web chat', () => {
     await expect(page.getByLabel('Telefone')).toHaveCount(0)
   })
 
-  // C7 + C9. Title matches both check greps; one start (public chat rate-limits 5/IP/min).
+  // C7 + C9 + C10. One POST /sessions (public chat rate-limits 5/IP/min).
   test('starts a session and shows the first message; stores the visitor token for the socket', async ({
     page,
     api,
   }) => {
     await verifiedUser(api)
     const org = await brandedOrg(api)
+    let startToken = ''
+    await page.route(`**/api/public/chat/${org.publicChatKey}/sessions`, async (route) => {
+      const response = await route.fetch()
+      const body = (await response.json()) as { token?: string }
+      startToken = body.token ?? ''
+      await route.fulfill({ response })
+    })
     await startVisitorChat(page, org.publicChatKey)
 
     const stored = await page.evaluate(
       (key) => sessionStorage.getItem(key),
       visitorTokenStorageKey(org.publicChatKey),
     )
-    expect(stored).toMatch(/^v1\./)
+    expect(startToken).toMatch(/^v1\./)
+    expect(stored).toBe(startToken)
+
+    await page.getByLabel('Mensagem').fill(FOLLOW_UP)
+    await page.getByRole('button', { name: 'Enviar' }).click()
+    await expect(page.getByTestId('web-chat-message').filter({ hasText: FOLLOW_UP })).toBeVisible()
   })
 
   test('requires accepting the notice', async ({ page, api }) => {
@@ -90,6 +121,7 @@ test.describe('web chat', () => {
     expect(sessions).toBe(0)
   })
 
+  // C10 title kept for the grep proof (also covered in the start test above).
   test('sends a follow-up message in the thread', async ({ page, api }) => {
     await verifiedUser(api)
     const org = await brandedOrg(api)
@@ -100,49 +132,59 @@ test.describe('web chat', () => {
     await expect(page.getByTestId('web-chat-message').filter({ hasText: FOLLOW_UP })).toBeVisible()
   })
 
-  test('shows a human reply in under two seconds', async ({ page, api }) => {
+  // C12 + C13 + C15: prior seq below fromSeq, human leg, resync refetch.
+  test('shows a human reply in under two seconds; reloads messages after events resync', async ({
+    page,
+    api,
+  }) => {
     await verifiedUser(api)
     const org = await brandedOrg(api)
+
+    const prior = await api.post(`/api/public/chat/${org.publicChatKey}/sessions`, {
+      data: {
+        phone: VALID_PHONE,
+        consent: true,
+        noticeVersion: WEB_CHAT_NOTICE_VERSION,
+        turnstileToken: '',
+        clientMessageId: randomUUID(),
+        text: PRIOR_MESSAGE,
+      },
+    })
+    expect(prior.status()).toBe(201)
+
     await startVisitorChat(page, org.publicChatKey)
+    await expect(
+      page.getByTestId('web-chat-message').filter({ hasText: PRIOR_MESSAGE }),
+    ).toHaveCount(0)
 
     const listed = await api.get('/api/v1/conversations')
     expect(listed.ok()).toBeTruthy()
     const conversationId = (await listed.json()).items[0].id as string
-
     const sent = await api.post(`/api/v1/conversations/${conversationId}/messages`, {
       data: { text: HUMAN_REPLY },
     })
     expect(sent.status()).toBe(201)
-
     await expect(page.getByTestId('web-chat-message').filter({ hasText: HUMAN_REPLY })).toBeVisible(
-      {
-        timeout: 2_000,
-      },
+      { timeout: 2_000 },
     )
-  })
-
-  test('reloads messages after events resync', async ({ page, api }) => {
-    await verifiedUser(api)
-    const org = await brandedOrg(api)
-    await startVisitorChat(page, org.publicChatKey)
 
     let messageFetches = 0
     await page.route(`**/api/public/chat/${org.publicChatKey}/messages**`, async (route) => {
       if (route.request().method() === 'GET') messageFetches += 1
       await route.continue()
     })
-
     await expect
       .poll(async () => page.evaluate(() => Boolean(window.__bensVisitorSocket?.connected)))
       .toBe(true)
-
     const before = messageFetches
     await page.evaluate(() => window.dispatchEvent(new Event('bens:visitor-resync')))
-
     await expect.poll(() => messageFetches).toBeGreaterThan(before)
     await expect(
       page.getByTestId('web-chat-message').filter({ hasText: FIRST_MESSAGE }),
     ).toBeVisible()
+    await expect(
+      page.getByTestId('web-chat-message').filter({ hasText: PRIOR_MESSAGE }),
+    ).toHaveCount(0)
   })
 
   test('shows loading and error for the public chat', async ({ page, api }) => {
@@ -170,17 +212,28 @@ test.describe('web chat', () => {
     await startVisitorChat(page, org.publicChatKey)
 
     let starts = 0
+    let sessionGets = 0
     await page.route(`**/api/public/chat/${org.publicChatKey}/sessions`, async (route) => {
       if (route.request().method() === 'POST') starts += 1
       await route.continue()
     })
+    await page.route(`**/api/public/chat/${org.publicChatKey}/session`, async (route) => {
+      if (route.request().method() === 'GET') sessionGets += 1
+      await route.continue()
+    })
 
+    // Force the cookie path (GET /session), not sessionStorage alone (door 2).
+    await page.evaluate(
+      (key) => sessionStorage.removeItem(key),
+      visitorTokenStorageKey(org.publicChatKey),
+    )
     await page.reload()
     await expect(page.getByTestId('web-chat-thread')).toBeVisible()
     await expect(
       page.getByTestId('web-chat-message').filter({ hasText: FIRST_MESSAGE }),
     ).toBeVisible()
     expect(starts).toBe(0)
+    expect(sessionGets).toBeGreaterThan(0)
 
     await expect
       .poll(async () => page.evaluate(() => Boolean(window.__bensVisitorSocket?.connected)))
