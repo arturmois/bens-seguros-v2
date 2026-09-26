@@ -45,6 +45,7 @@ Escopo, fases e decisões: `docs/roadmap.md`, ADR-011 a ADR-017. Cada fase: `pla
 - **Regra (2026-09-25, AD-019):** feature com superfície de usuário é fullstack (API+UI) e prova o caminho feliz com Playwright; isento só infra/domínio sem UI.
 - **F3 `web-chat-ui` (2026-09-25):** página `/c/:key`, HTML Open Graph (Caddy UA → API), `POST /conversations/:id/messages` (`conversation:write`, auto-take), cliente Socket.IO `/visitor`, smoke Playwright. `verification.md` PASS na rodada 2 (`f46bbbb`); rodada 1 FAIL (logo, igualdade do token, fromSeq, GET /session, nome do proof de permission) → fechado em `f46bbbb`.
 - **F3 `inbox` (2026-09-26):** fatia fullstack PASS na rodada 2 (`1918b32` / `69970c7`). Rodada 1 FAIL (C17 sem isolamento do assignee, ADMIN close, screen 404, join, inbound no painel, lista legado sem `view`).
+- **Auditoria fullstack (2026-09-26):** as 33 rotas de F0–F3 têm tela; 4 gaps de caso de uso ganharam dono no `roadmap.md` (visão Equipe para ADMIN/MANAGER e lista do inbox em tempo real → F5; histórico de conversas encerradas → F6; dashboard real → F11). Toda fase a partir da F4 lista **Telas** e smoke Playwright (feature `roadmap-fullstack`).
 - **Próximo:** e2e completo no staging (fecha F3); depois F4 IA.
 - **Pendências registradas:** AD nova para a função `SECURITY DEFINER` do runtime WhatsApp (F9); parecer jurídico do opt-in do WhatsApp e reescrita dos Termos de Uso para o MVP, com nova versão (antes do go-live).
 

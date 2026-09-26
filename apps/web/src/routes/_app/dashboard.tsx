@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useMe } from '@/hooks/use-me'
 
-// Placeholder: the real dashboard comes in Phase 10.
+// Placeholder: the real dashboard comes in F11 (docs/roadmap.md).
 export const Route = createFileRoute('/_app/dashboard')({
   component: Dashboard,
 })

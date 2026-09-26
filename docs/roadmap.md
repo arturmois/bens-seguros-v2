@@ -4,6 +4,7 @@
 > Cada fase termina com o CI verde (`pnpm lint && pnpm typecheck && pnpm test && pnpm build`) e com a pergunta: **"Qual requisito justifica essa complexidade?"**
 > **Processo:** no início de cada fase ou feature, o agente declara o nível de spec (`tlc-spec-lean` ou `tlc-spec-driven`) segundo o `CLAUDE.md`. Expectativa: lean em todas; driven só se a fase se mostrar grande e incerta (candidatas: F4 e F9).
 > O v2 (Fases 1–4 do roadmap anterior) está concluído e é a fundação: ver o *Apêndice — Histórico v2*.
+> **Fullstack (AD-019, a partir de 2026-09-25):** toda feature com superfície de usuário (tela no painel, fluxo ou link público) entrega API **e** tela na mesma feature e prova o caminho feliz com Playwright (`apps/web/e2e/`). Isentas só as fatias de infraestrutura ou de domínio sem UI. Por isso cada fase a partir da F4 lista **Telas** e o smoke Playwright nos **Testes**. F0–F3 foram feitas backend-first; a auditoria de 2026-09-26 achou as 33 rotas com tela e 4 gaps de caso de uso, cada um com dono abaixo (F5, F6, F11).
 
 ```text
 F0 Poda ─▶ [H3] ─▶ F1 Identity/Tenant ─▶ F2 Conversation core ─┬─▶ [Staging] ─▶ F3 Web Chat + Inbox ─▶ F4 IA ─▶ F5 Handoff + fila
@@ -83,6 +84,7 @@ F5 ─▶ F6 Leads/Comercial ─▶ F7 Kanban ─▶ F8 Follow-up ─▶ F9 What
 - **Fatias (ordem 2026-09-25, revista 2026-09-25):** `public-chat-api` → `visitor-realtime` → **`web-chat-ui`** (fecha gap de tela + smoke Playwright) → **`inbox`** (API + tela do painel + smoke Playwright, AD-019) → e2e no staging. Não há fatia `inbox-api` / `inbox-web` isolada.
 - **Testes:** link da org A nunca cria dado na org B; visitante não lê conversa anterior do mesmo telefone; sem aceite → 4xx; rate limit dispara; COMMERCIAL só encerra as próprias; MANAGER encerra qualquer; e2e: cliente envia → comercial vê → responde → cliente vê.
 - **Critério:** fluxo e2e verde no staging.
+- **Andamento (2026-09-26):** `public-chat-api`, `visitor-realtime`, `web-chat-ui` e `inbox` com `verification.md` PASS; falta o e2e no staging. Gaps de tela achados na auditoria e adiados de propósito: visão da equipe e lista em tempo real (F5), histórico de conversas encerradas (F6), dashboard (F11).
 
 ## F4 — IA
 
@@ -90,7 +92,8 @@ F5 ─▶ F6 Leads/Comercial ─▶ F7 Kanban ─▶ F8 Follow-up ─▶ F9 What
 - **Requisitos:** F9, N5, N6, N13; handoff automático de F7.
 - **Dependências:** F3.
 - **Mudanças:** módulo `ai` (ADR-015): `provider.ts` (modelo Claude escolhido na spec), `ai.reply`, contexto em janela, tools `get_lead`/`update_lead_information`/`request_human`, `AiRun`, limite mensal por org e de respostas por conversa, `aiEnabled` por org e canal; conversas nascem em `AI` quando habilitado; reabertura para `AI`/`QUEUE` (P1).
-- **Testes (`FakeAiModel`):** resposta persistida e entregue; `request_human` → `QUEUE`; provider falha em todas as tentativas → `QUEUE` + mensagem ao cliente; limite excedido → `QUEUE`; humano assume durante a geração → resposta descartada; mensagem nova durante a geração → reprocessa; tool não aceita IDs; campo fora da allowlist rejeitado; `AiRun` em todos os desfechos; `ai` não importa escrita de `sales` (arquitetura).
+- **Telas:** Configurações da organização e do canal com o liga/desliga da IA (`aiEnabled`) e o consumo do mês contra o limite; no inbox, mensagem da IA identificada como tal, responsável `AI` visível na lista e na conversa, e o motivo da transferência quando a IA passa para a fila.
+- **Testes (`FakeAiModel`):** resposta persistida e entregue; `request_human` → `QUEUE`; provider falha em todas as tentativas → `QUEUE` + mensagem ao cliente; limite excedido → `QUEUE`; humano assume durante a geração → resposta descartada; mensagem nova durante a geração → reprocessa; tool não aceita IDs; campo fora da allowlist rejeitado; `AiRun` em todos os desfechos; `ai` não importa escrita de `sales` (arquitetura). Smoke Playwright: visitante escreve no `/c/:key` → IA responde na tela do visitante → visitante pede humano → a conversa aparece na Fila do inbox; ADMIN desliga a IA e a próxima conversa nasce em `QUEUE`.
 - **Critério:** conversa completa no staging com a IA coletando nome e interesse e transferindo quando pedido.
 
 ## F5 — Handoff completo + fila de leads
@@ -99,7 +102,8 @@ F5 ─▶ F6 Leads/Comercial ─▶ F7 Kanban ─▶ F8 Follow-up ─▶ F9 What
 - **Requisitos:** F7, F8, N8, F12 (parte).
 - **Dependências:** F4.
 - **Mudanças:** assumir conversa de `AI` a qualquer momento; devolver à IA (ação explícita, permissão própria); devolver à fila; fila de leads (contatos sem dono); ADMIN/MANAGER atribuem; COMMERCIAL assume; quem assume conversa de contato sem dono vira o dono; auditoria de atribuição, handoff, entrada e saída de humano (ADR-016).
-- **Testes:** N comerciais assumem o mesmo lead/conversa em paralelo → exatamente 1 sucesso, demais 409; nenhuma transição automática para `AI`; auditoria em cada ação.
+- **Telas:** no inbox, as ações "Devolver à fila", "Devolver à IA" e "Atribuir a…" (seletor de membro ativo, só ADMIN/MANAGER); a visão **Equipe** (todas as conversas legíveis da organização, filtro por responsável em search param), só para ADMIN/MANAGER, que fecha o gap da F3 (hoje eles só alcançam Fila e Minhas, e não conseguem abrir para encerrar a conversa de outro membro, handoff §7/§21); **lista em tempo real**: a lista do inbox recebe as mudanças de conversa em < 2 s sem vazar ids fora da carteira (decidir o evento na spec); trilha de auditoria da conversa visível para ADMIN/MANAGER.
+- **Testes:** N comerciais assumem o mesmo lead/conversa em paralelo → exatamente 1 sucesso, demais 409; nenhuma transição automática para `AI`; auditoria em cada ação; COMMERCIAL não vê a visão Equipe (UI e API). Smoke Playwright: MANAGER abre a visão Equipe, atribui uma conversa da fila a um COMMERCIAL, que a vê em Minhas sem recarregar; o COMMERCIAL devolve à fila.
 - **Critério:** testes de concorrência verdes contra PG real; trilha de auditoria visível.
 
 ## F6 — Leads / Comercial
@@ -108,7 +112,8 @@ F5 ─▶ F6 Leads/Comercial ─▶ F7 Kanban ─▶ F8 Follow-up ─▶ F9 What
 - **Requisitos:** F10 (parte), F2 (carteira), F12; handoff §34.
 - **Dependências:** F5.
 - **Mudanças:** tela de contatos/leads (filtros por status, dono, fila); `leadStatus`; criar oportunidade a partir do contato ou da conversa; módulo `sales` com `Opportunity` (= proposta, ADR-011); contexto para outro corretor continuar (dados estruturados + histórico; resumo por IA só como botão).
-- **Testes:** carteira (`withTwoSalespeople`, incluindo "sem dono"); COMMERCIAL só cria oportunidade no próprio contato; auditoria.
+- **Telas:** lista de contatos/leads (filtros em search params, 4 estados); ficha do contato com dados, dono, `leadStatus`, oportunidades e o **histórico de conversas encerradas** (fecha o gap da F3: hoje uma conversa `CLOSED` some do inbox); "Criar oportunidade" a partir da ficha e da conversa no inbox; ADMIN/MANAGER atribuem o lead a partir da ficha.
+- **Testes:** carteira (`withTwoSalespeople`, incluindo "sem dono"); COMMERCIAL só cria oportunidade no próprio contato; auditoria. Smoke Playwright: da conversa no inbox → ficha do contato → criar oportunidade → a oportunidade aparece na ficha; conversa encerrada visível no histórico.
 - **Critério:** do chat ao lead e à oportunidade sem sair do painel.
 
 ## F7 — Kanban
@@ -117,7 +122,8 @@ F5 ─▶ F6 Leads/Comercial ─▶ F7 Kanban ─▶ F8 Follow-up ─▶ F9 What
 - **Requisitos:** F10, F12.
 - **Dependências:** F6.
 - **Mudanças:** etapas do v1 (`CAPTURE → QUOTE → PROTOCOL → INSPECTION → PAYMENT → POLICY_ISSUED | LOST`), movimento livre, `POLICY_ISSUED` = ganha, `LOST` com motivo, reabrir (ADR-011); rótulos de UI em pt-BR; `opportunity-stages.ts` puro; `dnd-kit`; tempo real.
-- **Testes:** todas as transições; `LOST` sem motivo → 422; COMMERCIAL não move oportunidade alheia; auditoria de etapa.
+- **Telas:** o Kanban (colunas por etapa, filtro por dono em search param, 4 estados), diálogo de motivo ao mover para `LOST`, reabrir, e o card levando à ficha do contato.
+- **Testes:** todas as transições; `LOST` sem motivo → 422; COMMERCIAL não move oportunidade alheia; auditoria de etapa. Smoke Playwright: arrastar o card para outra etapa persiste após recarregar e aparece na outra aba; mover para `LOST` pede o motivo.
 - **Critério:** arrastar o card persiste, audita e reflete em outra aba em < 2 s.
 
 ## F8 — Follow-up
@@ -126,7 +132,8 @@ F5 ─▶ F6 Leads/Comercial ─▶ F7 Kanban ─▶ F8 Follow-up ─▶ F9 What
 - **Requisitos:** F11, F12.
 - **Dependências:** F6 (F7 recomendado).
 - **Mudanças:** `FollowUp` (criar, concluir, reagendar); pendência por consulta, **sem cron**; contador no menu, lista "Hoje/Atrasados", badge no card.
-- **Testes:** carteira; pendência aparece e desaparece corretamente (datas semeadas que uma constante não satisfaz); auditoria.
+- **Telas:** criar, concluir e reagendar follow-up na ficha do contato e no card; contador no menu; lista "Hoje/Atrasados" (4 estados); badge no card do Kanban.
+- **Testes:** carteira; pendência aparece e desaparece corretamente (datas semeadas que uma constante não satisfaz); auditoria. Smoke Playwright: criar um follow-up para hoje → contador e lista "Hoje" mostram → concluir → somem.
 - **Critério:** o comercial vê o que tem pendente ao abrir o painel.
 
 ## F9 — WhatsApp
@@ -135,7 +142,8 @@ F5 ─▶ F6 Leads/Comercial ─▶ F7 Kanban ─▶ F8 Follow-up ─▶ F9 What
 - **Requisitos:** F4 (WhatsApp), F16, N7, N2.
 - **Dependências:** F2, S1; F4/F5 para IA e handoff iguais ao Web Chat.
 - **Mudanças:** entrypoint `whatsapp` (ADR-012); `WhatsAppAuthState` cifrado; advisory lock; função `SECURITY DEFINER` de boot (AD nova); pareamento por QR e código; status + alerta; reconexão com backoff; `whatsapp.send`/`whatsapp.control`; mídia → orientação; heartbeat; opt-in LGPD "SIM" (ADR-014; validação jurídica antes do go-live).
-- **Testes:** socket Baileys falso: entrada idempotente, ordem, `UNSUPPORTED` responde orientação, `loggedOut` → `NEEDS_PAIRING` sem retry, erro transitório → backoff; `PENDING → SENT/FAILED`; runtime fora → envios ficam `PENDING` e saem na volta; API reiniciada → sessões seguem; sem "SIM" a IA não processa. Teste manual com número real.
+- **Telas:** Configurações → WhatsApp: parear por QR e por código, status da conexão (conectado, reconectando, `NEEDS_PAIRING`) com alerta no painel, desconectar; no inbox, o canal da conversa identificado (WhatsApp × Web Chat) e o estado do envio (`PENDING`/`SENT`/`FAILED`) na mensagem.
+- **Testes:** socket Baileys falso: entrada idempotente, ordem, `UNSUPPORTED` responde orientação, `loggedOut` → `NEEDS_PAIRING` sem retry, erro transitório → backoff; `PENDING → SENT/FAILED`; runtime fora → envios ficam `PENDING` e saem na volta; API reiniciada → sessões seguem; sem "SIM" a IA não processa. Smoke Playwright com o runtime falso: a tela mostra o QR, o status muda para conectado, uma mensagem recebida aparece no inbox com o canal WhatsApp. Teste manual com número real.
 - **Critério:** número de teste conectado no staging por 7 dias, reconexões registradas, zero mensagem perdida.
 
 ## F10 — SaaS / Trial / Suspensão
@@ -144,7 +152,8 @@ F5 ─▶ F6 Leads/Comercial ─▶ F7 Kanban ─▶ F8 Follow-up ─▶ F9 What
 - **Requisitos:** F14; handoff §38–40.
 - **Dependências:** F1.
 - **Mudanças:** `Organization.status`, `trialEndsAt`, `maxUsers` (padrão 10) no lugar de `Plan`/`Subscription` e do módulo `billing`; trial expirado calculado na leitura; painel só leitura (402); IA desligada; Web Chat "indisponível" para conversas novas; mensagens sempre persistidas; ativação e suspensão pelo super-admin (ADR-017).
-- **Testes:** trial expirado bloqueia escrita e preserva dados; reativação restaura o acesso; mensagem recebida com a org suspensa é persistida; quota de usuários lida da organização.
+- **Telas:** aviso de trial (dias restantes) e de conta suspensa no painel, com o painel em só leitura (ações desabilitadas, sem erro genérico); Web Chat mostrando "indisponível" para conversa nova; o limite de usuários refletido no convite. Ativação e suspensão pelo super-admin (ADR-017): tela ou comando operacional, a decidir na spec da F10 (o ADR não define); se for tela, entra no smoke.
+- **Testes:** trial expirado bloqueia escrita e preserva dados; reativação restaura o acesso; mensagem recebida com a org suspensa é persistida; quota de usuários lida da organização. Smoke Playwright: org com trial expirado vê o aviso e não consegue responder no inbox; depois da reativação, a ação volta.
 - **Critério:** suspender e reativar uma org no staging sem perda.
 
 ## F11 — Métricas + Produção
@@ -153,7 +162,8 @@ F5 ─▶ F6 Leads/Comercial ─▶ F7 Kanban ─▶ F8 Follow-up ─▶ F9 What
 - **Requisitos:** F15, N10, N11.
 - **Dependências:** todas.
 - **Mudanças:** dashboard por consultas SQL (leads recebidos/atendidos, oportunidades, ganhos/perdas, tempo até o primeiro atendimento humano, conversão por etapa); Sentry sem PII; logs com `organizationId`/`conversationId`/`channelId`; `/api/ready`; monitor externo; alertas (job esgotado, canal fora > 30 min, runtime sem heartbeat); backup diário + restore testado; runbooks (deploy, rollback, restore, re-pareamento); deploy por tag.
-- **Testes:** `/ready` 503 com o PG fora; métricas com dados que não passam por constante ou ordem; restore num ambiente limpo.
+- **Telas:** o dashboard real no lugar do placeholder de `dashboard.tsx` (hoje só "Olá, {nome}"): cartões e gráficos das métricas acima, com período em search param e 4 estados; visão por comercial para ADMIN/MANAGER e só a própria carteira para COMMERCIAL.
+- **Testes:** `/ready` 503 com o PG fora; métricas com dados que não passam por constante ou ordem; restore num ambiente limpo. Smoke Playwright: o dashboard mostra os números de dados semeados e muda com o período.
 - **Critério:** restore executado; alerta de canal fora chega; go-live (com o parecer jurídico do opt-in do WhatsApp e os Termos de Uso reescritos para o MVP, nova versão).
 
 > **Observabilidade não é só a F11:** `requestId`/`organizationId`/`conversationId` no log e `/api/health` valem desde já; a F11 fecha alertas, Sentry e dashboards.
