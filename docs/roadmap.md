@@ -101,9 +101,9 @@ F5 ─▶ F6 Leads/Comercial ─▶ F7 Kanban ─▶ F8 Follow-up ─▶ F9 What
 - **Objetivo:** controle humano explícito e distribuição consistente.
 - **Requisitos:** F7, F8, N8, F12 (parte).
 - **Dependências:** F4.
-- **Mudanças:** assumir conversa de `AI` a qualquer momento; devolver à IA (ação explícita, permissão própria); devolver à fila; fila de leads (contatos sem dono); ADMIN/MANAGER atribuem; COMMERCIAL assume; quem assume conversa de contato sem dono vira o dono; auditoria de atribuição, handoff, entrada e saída de humano (ADR-016).
-- **Telas:** no inbox, as ações "Devolver à fila", "Devolver à IA" e "Atribuir a…" (seletor de membro ativo, só ADMIN/MANAGER); a visão **Equipe** (todas as conversas legíveis da organização, filtro por responsável em search param), só para ADMIN/MANAGER, que fecha o gap da F3 (hoje eles só alcançam Fila e Minhas, e não conseguem abrir para encerrar a conversa de outro membro, handoff §7/§21); **lista em tempo real**: a lista do inbox recebe as mudanças de conversa em < 2 s sem vazar ids fora da carteira (decidir o evento na spec); trilha de auditoria da conversa visível para ADMIN/MANAGER.
-- **Testes:** N comerciais assumem o mesmo lead/conversa em paralelo → exatamente 1 sucesso, demais 409; nenhuma transição automática para `AI`; auditoria em cada ação; COMMERCIAL não vê a visão Equipe (UI e API). Smoke Playwright: MANAGER abre a visão Equipe, atribui uma conversa da fila a um COMMERCIAL, que a vê em Minhas sem recarregar; o COMMERCIAL devolve à fila.
+- **Mudanças:** assumir conversa de `AI` a qualquer momento; devolver à IA (ação explícita, permissão própria); devolver à fila; fila de leads (contatos sem dono); ADMIN/MANAGER atribuem; COMMERCIAL assume; quem assume conversa de contato sem dono vira o dono; auditoria de atribuição, handoff, entrada e saída de humano (ADR-016); na API, a visão `team` em `listConversations` (só ADMIN/MANAGER) e o evento de mudança de conversa para a lista do inbox respeitando a carteira.
+- **Telas:** a **fila de leads** (contatos sem dono, 4 estados) com "Assumir" para COMMERCIAL e "Atribuir a…" para ADMIN/MANAGER; no inbox, as ações "Devolver à fila", "Devolver à IA" e "Atribuir a…" (seletor de membro ativo, só ADMIN/MANAGER); a visão **Equipe** (todas as conversas legíveis da organização, filtro por responsável em search param), só para ADMIN/MANAGER, que fecha o gap da F3 (hoje eles só alcançam Fila e Minhas, e não conseguem abrir para encerrar a conversa de outro membro, handoff §7/§21); **lista em tempo real**: a lista do inbox recebe as mudanças de conversa em < 2 s sem vazar ids fora da carteira (decidir o evento na spec); trilha de auditoria da conversa visível para ADMIN/MANAGER.
+- **Testes:** N comerciais assumem o mesmo lead/conversa em paralelo → exatamente 1 sucesso, demais 409; nenhuma transição automática para `AI`; auditoria em cada ação; COMMERCIAL não vê a visão Equipe (UI e API). Smoke Playwright: MANAGER abre a visão Equipe, atribui uma conversa da fila a um COMMERCIAL, que a vê em Minhas sem recarregar; o COMMERCIAL devolve à fila; na fila de leads, um COMMERCIAL assume um lead sem dono e ele sai da fila.
 - **Critério:** testes de concorrência verdes contra PG real; trilha de auditoria visível.
 
 ## F6 — Leads / Comercial
@@ -112,7 +112,7 @@ F5 ─▶ F6 Leads/Comercial ─▶ F7 Kanban ─▶ F8 Follow-up ─▶ F9 What
 - **Requisitos:** F10 (parte), F2 (carteira), F12; handoff §34.
 - **Dependências:** F5.
 - **Mudanças:** tela de contatos/leads (filtros por status, dono, fila); `leadStatus`; criar oportunidade a partir do contato ou da conversa; módulo `sales` com `Opportunity` (= proposta, ADR-011); contexto para outro corretor continuar (dados estruturados + histórico; resumo por IA só como botão).
-- **Telas:** lista de contatos/leads (filtros em search params, 4 estados); ficha do contato com dados, dono, `leadStatus`, oportunidades e o **histórico de conversas encerradas** (fecha o gap da F3: hoje uma conversa `CLOSED` some do inbox); "Criar oportunidade" a partir da ficha e da conversa no inbox; ADMIN/MANAGER atribuem o lead a partir da ficha.
+- **Telas:** lista de contatos/leads (filtros em search params, 4 estados); ficha do contato com dados, dono, `leadStatus`, oportunidades e o **histórico de conversas encerradas** (fecha o gap da F3: hoje uma conversa `CLOSED` some do inbox); "Criar oportunidade" a partir da ficha e da conversa no inbox; ADMIN/MANAGER atribuem o lead também a partir da ficha (a fila de leads é da F5).
 - **Testes:** carteira (`withTwoSalespeople`, incluindo "sem dono"); COMMERCIAL só cria oportunidade no próprio contato; auditoria. Smoke Playwright: da conversa no inbox → ficha do contato → criar oportunidade → a oportunidade aparece na ficha; conversa encerrada visível no histórico.
 - **Critério:** do chat ao lead e à oportunidade sem sair do painel.
 
@@ -132,7 +132,7 @@ F5 ─▶ F6 Leads/Comercial ─▶ F7 Kanban ─▶ F8 Follow-up ─▶ F9 What
 - **Requisitos:** F11, F12.
 - **Dependências:** F6 (F7 recomendado).
 - **Mudanças:** `FollowUp` (criar, concluir, reagendar); pendência por consulta, **sem cron**; contador no menu, lista "Hoje/Atrasados", badge no card.
-- **Telas:** criar, concluir e reagendar follow-up na ficha do contato e no card; contador no menu; lista "Hoje/Atrasados" (4 estados); badge no card do Kanban.
+- **Telas:** criar, concluir e reagendar follow-up na ficha do contato e no card; contador no menu; lista "Hoje/Atrasados" (4 estados); badge no card do Kanban (se a F7 já estiver entregue; senão, entra na F7).
 - **Testes:** carteira; pendência aparece e desaparece corretamente (datas semeadas que uma constante não satisfaz); auditoria. Smoke Playwright: criar um follow-up para hoje → contador e lista "Hoje" mostram → concluir → somem.
 - **Critério:** o comercial vê o que tem pendente ao abrir o painel.
 
@@ -152,7 +152,7 @@ F5 ─▶ F6 Leads/Comercial ─▶ F7 Kanban ─▶ F8 Follow-up ─▶ F9 What
 - **Requisitos:** F14; handoff §38–40.
 - **Dependências:** F1.
 - **Mudanças:** `Organization.status`, `trialEndsAt`, `maxUsers` (padrão 10) no lugar de `Plan`/`Subscription` e do módulo `billing`; trial expirado calculado na leitura; painel só leitura (402); IA desligada; Web Chat "indisponível" para conversas novas; mensagens sempre persistidas; ativação e suspensão pelo super-admin (ADR-017).
-- **Telas:** aviso de trial (dias restantes) e de conta suspensa no painel, com o painel em só leitura (ações desabilitadas, sem erro genérico); Web Chat mostrando "indisponível" para conversa nova; o limite de usuários refletido no convite. Ativação e suspensão pelo super-admin (ADR-017): tela ou comando operacional, a decidir na spec da F10 (o ADR não define); se for tela, entra no smoke.
+- **Telas:** aviso de trial (dias restantes) e de conta suspensa no painel, com o painel em só leitura (ações desabilitadas, sem erro genérico); Web Chat mostrando "indisponível" para conversa nova e a resposta automática fixa que o cliente recebe numa conversa em andamento (ADR-017); o limite de usuários refletido no convite. Ativação e suspensão pelo super-admin (ADR-017): tela ou comando operacional, a decidir na spec da F10 (o ADR não define); se for tela, entra no smoke.
 - **Testes:** trial expirado bloqueia escrita e preserva dados; reativação restaura o acesso; mensagem recebida com a org suspensa é persistida; quota de usuários lida da organização. Smoke Playwright: org com trial expirado vê o aviso e não consegue responder no inbox; depois da reativação, a ação volta.
 - **Critério:** suspender e reativar uma org no staging sem perda.
 
